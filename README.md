@@ -27,8 +27,13 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/repositories/analyze` returns demo repo intelligence and health
   - `POST /api/repositories/analyze` analyzes uploaded file inputs
   - `GET /api/verification` returns the current verification gate
+  - `POST /api/verification` runs configured verification commands and records evidence
+  - `POST /api/diffs` creates a diff preview for an approved plan
+  - `POST /api/executions` executes an approved dry run and generates preview output
+  - `GET /api/history` returns in-memory workflow history
 - Dry-run execution and report types.
 - A clean Next.js App Router dashboard showing repo health, planning, risk, validation evidence, and usage flow.
+- SQL persistence schema in `src/lib/persistence/database-schema.sql`.
 
 ## Product Name
 
@@ -98,6 +103,30 @@ Read the verification gate:
 
 ```bash
 curl http://localhost:3000/api/verification
+```
+
+Run verification for a plan:
+
+```bash
+curl -X POST http://localhost:3000/api/verification \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123"}'
+```
+
+Create a diff preview:
+
+```bash
+curl -X POST http://localhost:3000/api/diffs \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123"}'
+```
+
+Execute an approved dry run and generate a website preview:
+
+```bash
+curl -X POST http://localhost:3000/api/executions \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123","approved":true}'
 ```
 
 ## Product Loop

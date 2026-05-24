@@ -63,6 +63,26 @@ Initial API surfaces:
 - `POST /api/repositories/analyze` accepts uploaded file content and returns repo intelligence plus health signals.
 - `POST /api/plans` converts a request into a structured plan with health and verification context.
 - `GET /api/verification` exposes the current validation gate for the demo plan.
+- `POST /api/diffs` creates a reviewable generated-file preview before execution.
+- `POST /api/executions` requires explicit approval and stores dry-run worker output.
+- `POST /api/verification` runs configured verification commands and records pass/fail evidence.
+- `GET /api/history` exposes the in-memory workflow state for debugging.
+
+## Persistence
+
+The current scaffold uses an in-memory store for local workflow state and ships a SQL schema at `src/lib/persistence/database-schema.sql`.
+
+Tables:
+
+- repositories
+- repo_snapshots
+- architecture_memory
+- plans
+- diff_previews
+- executions
+- verification_results
+- preview_projects
+- rollback_snapshots
 
 ### Recovery
 

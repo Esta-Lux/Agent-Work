@@ -48,6 +48,30 @@ Read verification requirements:
 curl http://localhost:3000/api/verification
 ```
 
+Run verification:
+
+```bash
+curl -X POST http://localhost:3000/api/verification \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123"}'
+```
+
+Generate a diff preview:
+
+```bash
+curl -X POST http://localhost:3000/api/diffs \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123"}'
+```
+
+Execute an approved preview run:
+
+```bash
+curl -X POST http://localhost:3000/api/executions \
+  -H "Content-Type: application/json" \
+  -d '{"planId":"plan_123","approved":true}'
+```
+
 ## Clean UX Principles
 
 - Show the plan before code changes.
@@ -56,6 +80,7 @@ curl http://localhost:3000/api/verification
 - Keep rollback visible.
 - Make every result explainable.
 - Keep repo health visible before and after execution.
+- Preview generated app and website surfaces before treating them as shippable.
 
 ## Advanced Product Ideas
 

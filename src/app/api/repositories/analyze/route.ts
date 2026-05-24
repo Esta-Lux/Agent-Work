@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { demoRepo } from "@/lib/demo/demo-repo";
 import { buildRepoIntelligenceSnapshot, type SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
 
 interface AnalyzeRequestBody {
@@ -33,12 +34,28 @@ export async function POST(request: Request) {
 
   const repo = buildRepoIntelligenceSnapshot(files);
   const health = createRepoHealthSummary(repo);
+  const now = new Date().toISOString();
+  const repository = upsertRecord(memoryStore.repositories, {
+    id: `repo_${Date.now()}`,
+    name: "Uploaded Repository",
+    source: "uploaded",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const snapshot = upsertRecord(memoryStore.snapshots, {
+    id: `snapshot_${Date.now()}`,
+    repositoryId: repository.id,
+    snapshot: repo,
+    createdAt: now
+  });
 
   return NextResponse.json({
     product: "VerityOS",
     mode: "uploaded-files",
+    repository,
+    snapshotId: snapshot.id,
     repo,
     health
   });
 }
-

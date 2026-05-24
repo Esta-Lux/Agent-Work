@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { demoRepo } from "@/lib/demo/demo-repo";
+import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { createInitialChangePlan } from "@/lib/planning/planner";
 import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
@@ -30,6 +31,22 @@ export async function POST(request: Request) {
   }
 
   const plan = createInitialChangePlan(userRequest, demoRepo);
+  const now = new Date().toISOString();
+
+  upsertRecord(memoryStore.plans, {
+    id: plan.id,
+    repositoryId: "demo",
+    plan,
+    status: "draft",
+    createdAt: now
+  });
+
+  upsertRecord(memoryStore.verifications, {
+    id: `verification_${plan.id}`,
+    planId: plan.id,
+    checks: plan.validations,
+    createdAt: now
+  });
 
   return NextResponse.json({
     product: "VerityOS",

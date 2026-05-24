@@ -1,3 +1,4 @@
+import { BuilderWorkspace } from "@/components/builder-workspace";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { HealthLane } from "@/components/health-lane";
 import { PlanPanel } from "@/components/plan-panel";
@@ -85,6 +86,8 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-6 py-4">
         <RecommendationList items={health.recommendations} />
       </section>
+
+      <BuilderWorkspace />
 
       <section id="workflow" className="mx-auto max-w-7xl px-6 py-10">
         <div className="mb-5">

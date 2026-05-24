@@ -161,10 +161,12 @@ function buildValidations(files: string[]): ChangePlan["validations"] {
   const checks: Array<[VerificationKind, string, string | undefined]> = [
     ["typecheck", "Type safety", "npm run typecheck"],
     ["build", "Production build", "npm run build"],
+    ["lint", "Lint rules", "npm run lint"],
     ["test", "Targeted tests", "npm test"]
   ];
 
   if (files.some((file) => /page|component|app/i.test(file))) {
+    checks.push(["route", "Route smoke check", undefined]);
     checks.push(["visual", "Responsive UI smoke check", undefined]);
   }
 
@@ -180,4 +182,3 @@ function buildValidations(files: string[]): ChangePlan["validations"] {
     status: "pending"
   }));
 }
-

@@ -5,6 +5,7 @@ export type WorkerDomain = "frontend" | "backend" | "database" | "infra" | "test
 export type VerificationKind =
   | "build"
   | "typecheck"
+  | "lint"
   | "test"
   | "route"
   | "api-contract"
@@ -22,7 +23,16 @@ export interface RepoFile {
 
 export interface SymbolRecord {
   name: string;
-  kind: "function" | "component" | "hook" | "class" | "type" | "constant" | "route";
+  kind:
+    | "function"
+    | "component"
+    | "hook"
+    | "class"
+    | "type"
+    | "constant"
+    | "route"
+    | "server-action"
+    | "schema";
   filePath: string;
   exported: boolean;
 }
@@ -101,6 +111,38 @@ export interface ExecutionResult {
   completedStepIds: string[];
   changedFiles: string[];
   notes: string[];
+  logs?: ExecutionLog[];
+}
+
+export interface ExecutionLog {
+  id: string;
+  worker: WorkerDomain;
+  message: string;
+  status: "pending" | "running" | "completed" | "failed";
+  createdAt: string;
+}
+
+export interface GeneratedFile {
+  path: string;
+  before?: string;
+  after: string;
+  language: string;
+  summary: string;
+}
+
+export interface DiffPreview {
+  planId: string;
+  files: GeneratedFile[];
+  riskNotes: string[];
+}
+
+export interface PreviewProject {
+  id: string;
+  name: string;
+  description: string;
+  files: GeneratedFile[];
+  html: string;
+  createdAt: string;
 }
 
 export interface ChangeReport {
@@ -110,4 +152,3 @@ export interface ChangeReport {
   summary: string;
   residualRisk: string[];
 }
-
