@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     repositoryId,
     symbols,
     ledgerEntry,

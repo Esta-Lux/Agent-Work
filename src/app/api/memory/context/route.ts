@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const context = await builder.compileContext(body.repositoryId ?? "demo", body.targetFile, body.symbolName);
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     context
   });
 }

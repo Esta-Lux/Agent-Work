@@ -89,7 +89,7 @@ export class ContextBuilder {
 
     const supabase = getSupabaseServiceClient();
     if (supabase && symbols.length > 0) {
-      await supabase.from("verity_symbols").upsert(
+      await supabase.from("bootrise_symbols").upsert(
         symbols.map((symbol) => ({
           repository_id: symbol.repositoryId,
           symbol_name: symbol.symbolName,
@@ -138,7 +138,7 @@ export async function recordEpistemicMemory(entry: Omit<EpistemicLedgerRecord, "
 
   const supabase = getSupabaseServiceClient();
   if (supabase) {
-    await supabase.from("verity_epistemic_ledger").upsert(
+    await supabase.from("bootrise_epistemic_ledger").upsert(
       {
         repository_id: record.repositoryId,
         symbol_name: record.symbolName,
@@ -172,7 +172,7 @@ async function findLedgerEntry(
   if (!supabase) return undefined;
 
   const { data } = await supabase
-    .from("verity_epistemic_ledger")
+    .from("bootrise_epistemic_ledger")
     .select("repository_id,symbol_name,file_path,architectural_intent,rules,scar_tissue,updated_at")
     .eq("repository_id", repositoryId)
     .eq("symbol_name", symbolName)

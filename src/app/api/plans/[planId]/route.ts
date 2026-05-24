@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: { params: { planId: string
   }
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     record
   });
 }
@@ -33,7 +33,7 @@ export async function PATCH(request: Request, context: { params: { planId: strin
   record.status = body.status;
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     record,
     nextAction: body.status === "approved" ? "Generate diff preview before execution." : "Plan rejected. No edits will run."
   });

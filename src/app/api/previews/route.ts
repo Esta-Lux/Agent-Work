@@ -4,7 +4,7 @@ import { memoryStore } from "@/lib/persistence/memory-store";
 
 export async function GET() {
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     previews: memoryStore.previews
   });
 }
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     preview: buildPreviewProject(record.plan)
   });
 }

@@ -1,8 +1,8 @@
-# VerityOS Product Brief
+# BootRise Product Brief
 
 ## Positioning
 
-VerityOS is an engineering reliability platform for teams that need software systems to evolve safely.
+BootRise is an engineering reliability platform for teams that need software systems to evolve safely.
 
 It is not a prompt-to-app generator. The product exists to understand existing software, plan changes before editing, execute controlled refactors, and verify runtime behavior before declaring success.
 

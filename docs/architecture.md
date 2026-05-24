@@ -1,4 +1,4 @@
-# VerityOS Architecture
+# BootRise Architecture
 
 ## High-Level Flow
 
@@ -83,10 +83,10 @@ Tables:
 - verification_results
 - preview_projects
 - rollback_snapshots
-- verity_symbols
-- verity_epistemic_ledger
-- verity_sandbox_runs
-- verity_dynamic_pulses
+- bootrise_symbols
+- bootrise_epistemic_ledger
+- bootrise_sandbox_runs
+- bootrise_dynamic_pulses
 
 ## Living Ledger APIs
 
@@ -94,6 +94,12 @@ Tables:
 - `POST /api/memory/context` returns exact source plus historical rules for a symbol.
 - `POST /api/memory/blast-radius` traces dependent symbols from the ledger.
 - `POST /api/orchestrator` runs the deterministic state transition loop for a plan.
+- `GET /api/runs` returns the last 100 sandbox runs, pulses, rollbacks, and self-healing attempts.
+- `POST /api/pulses` records runtime/database/network/test events into Dynamic Memory.
+- `POST /api/blueprints` creates a blank-canvas architecture blueprint before code generation.
+- `GET /api/rollbacks` returns rollback snapshots captured before orchestrator writes.
+- `GET /api/self-healing` returns proposed repair attempts.
+- `GET /api/admin/supabase/health` checks whether Supabase persistence is configured and reachable.
 
 ### Recovery
 

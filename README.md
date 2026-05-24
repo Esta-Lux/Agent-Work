@@ -1,10 +1,10 @@
-# VerityOS
+# BootRise
 
 Architecture-aware AI engineering reliability platform.
 
 Repository: `Agent-Work`
 
-VerityOS helps teams safely evolve existing software by combining repo intelligence, structured planning, controlled execution, runtime verification, and change explainability.
+BootRise helps teams safely evolve existing software by combining repo intelligence, structured planning, controlled execution, runtime verification, and change explainability.
 
 The core promise is simple: changes start with understanding and end with evidence.
 
@@ -39,15 +39,20 @@ The core promise is simple: changes start with understanding and end with eviden
   - `POST /api/memory/context`
   - `POST /api/memory/blast-radius`
   - `POST /api/orchestrator`
+  - `GET /api/runs`
+  - `POST /api/pulses`
+  - `POST /api/blueprints`
+  - `GET /api/rollbacks`
+  - `GET /api/self-healing`
 
 ## Product Name
 
-Working name: **VerityOS**
+Product name: **BootRise**
 
 Why it works:
 
-- Verity signals truth, verification, and correctness.
-- OS signals the long-term ambition: an operating layer for engineering work.
+- Boot signals structured project foundations instead of loose prompt output.
+- Rise signals the product's promise: help software grow without collapsing under complexity.
 - The name avoids sounding like another prompt-to-app generator.
 
 ## Run Locally
@@ -148,6 +153,20 @@ Trace blast radius:
 curl -X POST http://localhost:3000/api/memory/blast-radius \
   -H "Content-Type: application/json" \
   -d '{"repositoryId":"demo","symbolName":"useOrganizationBilling"}'
+```
+
+Create a blank-canvas project blueprint:
+
+```bash
+curl -X POST http://localhost:3000/api/blueprints \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Acme Ops","productType":"SaaS dashboard","audience":"operations teams","primaryWorkflow":"manage work orders","authRequired":true,"paymentsRequired":true}'
+```
+
+Read the last 100 operational memory records:
+
+```bash
+curl http://localhost:3000/api/runs
 ```
 
 ## Product Loop

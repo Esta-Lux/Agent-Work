@@ -1,8 +1,8 @@
-# Using VerityOS
+# Using BootRise
 
 ## Website Flow
 
-VerityOS should feel like a clean engineering review room.
+BootRise should feel like a clean engineering review room.
 
 1. Connect a repository.
 2. Ask for a change in normal engineering language.
@@ -78,6 +78,20 @@ Index Living Ledger memory:
 curl -X POST http://localhost:3000/api/memory/index \
   -H "Content-Type: application/json" \
   -d '{"repositoryId":"demo","files":[{"path":"src/lib/billing.ts","content":"export function useOrganizationBilling() { return null; }"}]}'
+```
+
+Create a blank-canvas blueprint:
+
+```bash
+curl -X POST http://localhost:3000/api/blueprints \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Acme Ops","productType":"SaaS dashboard","audience":"operations teams","primaryWorkflow":"manage work orders","authRequired":true}'
+```
+
+Read operational memory:
+
+```bash
+curl http://localhost:3000/api/runs
 ```
 
 ## Clean UX Principles

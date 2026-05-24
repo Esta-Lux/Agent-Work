@@ -28,7 +28,7 @@ export function LivingLedgerPanel() {
             <p className="text-sm font-semibold uppercase text-signal">Architectural Time Travel</p>
             <h2 className="mt-2 text-2xl font-semibold text-ink">The Living Ledger</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-graphite">
-              VerityOS treats software changes like state transitions. It indexes what exists, remembers why it exists,
+              BootRise treats software changes like state transitions. It indexes what exists, remembers why it exists,
               captures what happened during verification, and uses that memory before future edits.
             </p>
           </div>

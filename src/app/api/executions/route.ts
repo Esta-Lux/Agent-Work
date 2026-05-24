@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     result,
     preview,
     nextAction: "Run verification evidence before treating this as release-ready."

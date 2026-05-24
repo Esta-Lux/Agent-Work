@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET() {
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     verification: createVerificationSummary(demoPlan),
     nextAction: "Run commands, attach results, and block execution if required checks fail."
   });
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     verification: createVerificationSummary({
       ...plan,
       validations: run.checks

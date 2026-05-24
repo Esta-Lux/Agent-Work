@@ -12,7 +12,7 @@ export async function GET() {
   const health = createRepoHealthSummary(demoRepo);
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     mode: "demo",
     repo: demoRepo,
     health
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     mode: "uploaded-files",
     repository,
     snapshotId: snapshot.id,

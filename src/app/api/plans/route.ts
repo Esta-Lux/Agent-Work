@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     plan,
     health: createRepoHealthSummary(demoRepo),
     verification: createVerificationSummary(plan),

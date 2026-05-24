@@ -66,9 +66,22 @@ create table rollback_snapshots (
   created_at timestamptz not null default now()
 );
 
+create table project_blueprints (
+  id text primary key,
+  name text not null,
+  product_type text not null,
+  audience text not null,
+  core_entities jsonb not null default '[]'::jsonb,
+  pages jsonb not null default '[]'::jsonb,
+  database_tables jsonb not null default '[]'::jsonb,
+  security_rules jsonb not null default '[]'::jsonb,
+  test_plan jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create extension if not exists vector;
 
-create table verity_symbols (
+create table bootrise_symbols (
   id uuid primary key default gen_random_uuid(),
   repository_id text not null,
   symbol_name text not null,
@@ -79,11 +92,12 @@ create table verity_symbols (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index idx_symbols_dependencies on verity_symbols using gin (export_dependencies);
-create index idx_symbols_lookup on verity_symbols (repository_id, file_path);
-create index idx_symbols_name_lookup on verity_symbols (repository_id, symbol_name);
+create index idx_symbols_dependencies on bootrise_symbols using gin (export_dependencies);
+create index idx_symbols_lookup on bootrise_symbols (repository_id, file_path);
+create index idx_symbols_name_lookup on bootrise_symbols (repository_id, symbol_name);
+create unique index idx_symbols_unique_identity on bootrise_symbols (repository_id, symbol_name, file_path);
 
-create table verity_epistemic_ledger (
+create table bootrise_epistemic_ledger (
   id uuid primary key default gen_random_uuid(),
   repository_id text not null,
   symbol_name text not null,
@@ -95,9 +109,10 @@ create table verity_epistemic_ledger (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index idx_epistemic_symbol_lookup on verity_epistemic_ledger (repository_id, symbol_name);
+create index idx_epistemic_symbol_lookup on bootrise_epistemic_ledger (repository_id, symbol_name);
+create unique index idx_epistemic_unique_identity on bootrise_epistemic_ledger (repository_id, symbol_name, file_path);
 
-create table verity_sandbox_runs (
+create table bootrise_sandbox_runs (
   id uuid primary key default gen_random_uuid(),
   plan_id text not null,
   repository_id text not null,
@@ -107,9 +122,9 @@ create table verity_sandbox_runs (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index idx_sandbox_runs_plan on verity_sandbox_runs (plan_id);
+create index idx_sandbox_runs_plan on bootrise_sandbox_runs (plan_id);
 
-create table verity_dynamic_pulses (
+create table bootrise_dynamic_pulses (
   id uuid primary key default gen_random_uuid(),
   repository_id text not null,
   source text not null,
@@ -119,16 +134,27 @@ create table verity_dynamic_pulses (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index idx_dynamic_pulses_repo_time on verity_dynamic_pulses (repository_id, created_at desc);
+create index idx_dynamic_pulses_repo_time on bootrise_dynamic_pulses (repository_id, created_at desc);
+
+create table bootrise_self_healing_attempts (
+  id text primary key,
+  plan_id text not null,
+  repository_id text not null,
+  failed_run_id text not null,
+  diagnosis text not null,
+  proposed_actions jsonb not null default '[]'::jsonb,
+  status text not null check (status in ('proposed', 'applied', 'abandoned')),
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
 
 -- Recursive blast-radius query template:
 -- with recursive blast_radius as (
 --   select symbol_name, file_path, export_dependencies
---   from verity_symbols
+--   from bootrise_symbols
 --   where repository_id = :repository_id and symbol_name = :symbol_name
 --   union
 --   select s.symbol_name, s.file_path, s.export_dependencies
---   from verity_symbols s
+--   from bootrise_symbols s
 --   inner join blast_radius b on s.export_dependencies @> jsonb_build_array(b.symbol_name)
 --   where s.repository_id = :repository_id
 -- )

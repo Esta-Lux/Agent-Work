@@ -46,7 +46,7 @@ async function traceSupabaseBlastRadius(repositoryId: string, symbolName: string
   if (!supabase) return [];
 
   const { data } = await supabase
-    .from("verity_symbols")
+    .from("bootrise_symbols")
     .select("id,repository_id,symbol_name,symbol_kind,file_path,export_dependencies,ast_node_data,created_at")
     .eq("repository_id", repositoryId);
 
@@ -67,11 +67,11 @@ async function traceSupabaseBlastRadius(repositoryId: string, symbolName: string
 
 export const blastRadiusSql = `with recursive blast_radius as (
   select symbol_name, file_path, export_dependencies
-  from verity_symbols
+  from bootrise_symbols
   where repository_id = :repository_id and symbol_name = :symbol_name
   union
   select s.symbol_name, s.file_path, s.export_dependencies
-  from verity_symbols s
+  from bootrise_symbols s
   inner join blast_radius b on s.export_dependencies @> jsonb_build_array(b.symbol_name)
   where s.repository_id = :repository_id
 )

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { VerityOrchestrator } from "@/lib/engine/orchestrator";
+import { BootRiseOrchestrator } from "@/lib/engine/orchestrator";
 
 export const runtime = "nodejs";
 
@@ -23,11 +23,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const orchestrator = new VerityOrchestrator(body.repositoryId ?? "demo", body.repoPath);
+  const orchestrator = new BootRiseOrchestrator(body.repositoryId ?? "demo", body.repoPath);
   const result = await orchestrator.processChangePipeline(body.planId, body.filePath, body.targetFilePatch);
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     result
   });
 }

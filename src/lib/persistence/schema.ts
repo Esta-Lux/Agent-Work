@@ -104,3 +104,44 @@ export interface DynamicPulseRecord {
   rawPayload: Record<string, unknown>;
   createdAt: string;
 }
+
+export interface RollbackSnapshotRecord {
+  id: string;
+  executionId: string;
+  planId: string;
+  repositoryId: string;
+  changedFiles: Array<{
+    path: string;
+    previousContent: string | null;
+  }>;
+  restoreNotes: string;
+  createdAt: string;
+}
+
+export interface SelfHealingAttemptRecord {
+  id: string;
+  planId: string;
+  repositoryId: string;
+  failedRunId: string;
+  diagnosis: string;
+  proposedActions: string[];
+  status: "proposed" | "applied" | "abandoned";
+  createdAt: string;
+}
+
+export interface ProjectBlueprintRecord {
+  id: string;
+  name: string;
+  productType: string;
+  audience: string;
+  coreEntities: string[];
+  pages: string[];
+  databaseTables: Array<{
+    name: string;
+    purpose: string;
+    columns: string[];
+  }>;
+  securityRules: string[];
+  testPlan: string[];
+  createdAt: string;
+}

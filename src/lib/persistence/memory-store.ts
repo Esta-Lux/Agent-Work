@@ -7,8 +7,11 @@ import type {
   LivingLedgerSymbolRecord,
   PlanRecord,
   PreviewRecord,
+  ProjectBlueprintRecord,
   RepositoryRecord,
+  RollbackSnapshotRecord,
   SandboxRunRecord,
+  SelfHealingAttemptRecord,
   SnapshotRecord,
   VerificationRecord
 } from "@/lib/persistence/schema";
@@ -26,15 +29,18 @@ interface MemoryStore {
   epistemicLedger: EpistemicLedgerRecord[];
   sandboxRuns: SandboxRunRecord[];
   dynamicPulses: DynamicPulseRecord[];
+  rollbackSnapshots: RollbackSnapshotRecord[];
+  selfHealingAttempts: SelfHealingAttemptRecord[];
+  projectBlueprints: ProjectBlueprintRecord[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
-  __verityStore?: MemoryStore;
+  __bootriseStore?: MemoryStore;
 };
 
 export const memoryStore: MemoryStore =
-  globalStore.__verityStore ??
-  (globalStore.__verityStore = {
+  globalStore.__bootriseStore ??
+  (globalStore.__bootriseStore = {
     repositories: [],
     snapshots: [],
     plans: [],
@@ -46,7 +52,10 @@ export const memoryStore: MemoryStore =
     livingLedgerSymbols: [],
     epistemicLedger: [],
     sandboxRuns: [],
-    dynamicPulses: []
+    dynamicPulses: [],
+    rollbackSnapshots: [],
+    selfHealingAttempts: [],
+    projectBlueprints: []
   });
 
 export function upsertRecord<T extends { id: string }>(records: T[], record: T): T {

@@ -3,7 +3,7 @@ import { memoryStore } from "@/lib/persistence/memory-store";
 
 export async function GET() {
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     store: memoryStore,
     livingLedger: {
       symbols: memoryStore.livingLedgerSymbols.length,

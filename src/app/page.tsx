@@ -1,9 +1,11 @@
 import { BuilderWorkspace } from "@/components/builder-workspace";
+import { BlueprintPanel } from "@/components/blueprint-panel";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { HealthLane } from "@/components/health-lane";
 import { LivingLedgerPanel } from "@/components/living-ledger-panel";
 import { PlanPanel } from "@/components/plan-panel";
 import { MetricCard } from "@/components/metric-card";
+import { OperationsLedgerPanel } from "@/components/operations-ledger-panel";
 import { RecommendationList } from "@/components/recommendation-list";
 import { WorkflowStep } from "@/components/workflow-step";
 import { demoPlan, demoRepo, demoRequest } from "@/lib/demo/demo-repo";
@@ -21,7 +23,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-7">
           <nav className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xl font-semibold text-ink">VerityOS</p>
+              <p className="text-xl font-semibold text-ink">BootRise</p>
               <p className="mt-1 text-sm text-steel">Architecture-aware AI engineering reliability</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -41,7 +43,7 @@ export default function Home() {
                 Software changes that start with understanding.
               </h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-graphite">
-                VerityOS maps a repository, plans the blast radius, executes approved changes, and verifies the runtime
+                BootRise maps a repository, plans the blast radius, executes approved changes, and verifies the runtime
                 before a refactor is trusted.
               </p>
             </div>
@@ -71,6 +73,10 @@ export default function Home() {
 
       <LivingLedgerPanel />
 
+      <OperationsLedgerPanel />
+
+      <BlueprintPanel />
+
       <section id="workspace" className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -95,7 +101,7 @@ export default function Home() {
       <section id="workflow" className="mx-auto max-w-7xl px-6 py-10">
         <div className="mb-5">
           <p className="text-sm font-semibold uppercase text-steel">Clean Usage Flow</p>
-          <h2 className="mt-2 text-2xl font-semibold text-ink">Use VerityOS like an engineering review room</h2>
+          <h2 className="mt-2 text-2xl font-semibold text-ink">Use BootRise like an engineering review room</h2>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <WorkflowStep

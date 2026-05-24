@@ -1,4 +1,4 @@
-# VerityOS MVP Roadmap
+# BootRise MVP Roadmap
 
 ## Phase 1: Safe Refactor Loop
 

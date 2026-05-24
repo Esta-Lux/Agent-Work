@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const result = await traceBlastRadius(body?.repositoryId ?? "demo", symbolName);
 
   return NextResponse.json({
-    product: "VerityOS",
+    product: "BootRise",
     result
   });
 }
