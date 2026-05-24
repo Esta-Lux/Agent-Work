@@ -83,6 +83,17 @@ Tables:
 - verification_results
 - preview_projects
 - rollback_snapshots
+- verity_symbols
+- verity_epistemic_ledger
+- verity_sandbox_runs
+- verity_dynamic_pulses
+
+## Living Ledger APIs
+
+- `POST /api/memory/index` builds static memory and records optional architectural intent.
+- `POST /api/memory/context` returns exact source plus historical rules for a symbol.
+- `POST /api/memory/blast-radius` traces dependent symbols from the ledger.
+- `POST /api/orchestrator` runs the deterministic state transition loop for a plan.
 
 ### Recovery
 

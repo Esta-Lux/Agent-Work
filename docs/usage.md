@@ -72,6 +72,14 @@ curl -X POST http://localhost:3000/api/executions \
   -d '{"planId":"plan_123","approved":true}'
 ```
 
+Index Living Ledger memory:
+
+```bash
+curl -X POST http://localhost:3000/api/memory/index \
+  -H "Content-Type: application/json" \
+  -d '{"repositoryId":"demo","files":[{"path":"src/lib/billing.ts","content":"export function useOrganizationBilling() { return null; }"}]}'
+```
+
 ## Clean UX Principles
 
 - Show the plan before code changes.

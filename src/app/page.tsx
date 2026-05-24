@@ -1,6 +1,7 @@
 import { BuilderWorkspace } from "@/components/builder-workspace";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { HealthLane } from "@/components/health-lane";
+import { LivingLedgerPanel } from "@/components/living-ledger-panel";
 import { PlanPanel } from "@/components/plan-panel";
 import { MetricCard } from "@/components/metric-card";
 import { RecommendationList } from "@/components/recommendation-list";
@@ -67,6 +68,8 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-6 py-4">
         <HealthLane health={health} />
       </section>
+
+      <LivingLedgerPanel />
 
       <section id="workspace" className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

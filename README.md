@@ -34,6 +34,11 @@ The core promise is simple: changes start with understanding and end with eviden
 - Dry-run execution and report types.
 - A clean Next.js App Router dashboard showing repo health, planning, risk, validation evidence, and usage flow.
 - SQL persistence schema in `src/lib/persistence/database-schema.sql`.
+- Living Ledger memory APIs:
+  - `POST /api/memory/index`
+  - `POST /api/memory/context`
+  - `POST /api/memory/blast-radius`
+  - `POST /api/orchestrator`
 
 ## Product Name
 
@@ -127,6 +132,22 @@ Execute an approved dry run and generate a website preview:
 curl -X POST http://localhost:3000/api/executions \
   -H "Content-Type: application/json" \
   -d '{"planId":"plan_123","approved":true}'
+```
+
+Index files into the Living Ledger:
+
+```bash
+curl -X POST http://localhost:3000/api/memory/index \
+  -H "Content-Type: application/json" \
+  -d '{"repositoryId":"demo","files":[{"path":"src/lib/billing.ts","content":"export function useOrganizationBilling() { return null; }"}],"intent":{"symbolName":"useOrganizationBilling","filePath":"src/lib/billing.ts","architecturalIntent":"Billing must remain organization-scoped.","rules":["Pass orgId on billing fetches"],"scarTissue":["Stripe webhook validation cannot be bypassed."]}}'
+```
+
+Trace blast radius:
+
+```bash
+curl -X POST http://localhost:3000/api/memory/blast-radius \
+  -H "Content-Type: application/json" \
+  -d '{"repositoryId":"demo","symbolName":"useOrganizationBilling"}'
 ```
 
 ## Product Loop

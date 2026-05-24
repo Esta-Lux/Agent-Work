@@ -66,3 +66,70 @@ create table rollback_snapshots (
   created_at timestamptz not null default now()
 );
 
+create extension if not exists vector;
+
+create table verity_symbols (
+  id uuid primary key default gen_random_uuid(),
+  repository_id text not null,
+  symbol_name text not null,
+  symbol_kind text not null,
+  file_path text not null,
+  export_dependencies jsonb default '[]'::jsonb,
+  ast_node_data jsonb not null,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index idx_symbols_dependencies on verity_symbols using gin (export_dependencies);
+create index idx_symbols_lookup on verity_symbols (repository_id, file_path);
+create index idx_symbols_name_lookup on verity_symbols (repository_id, symbol_name);
+
+create table verity_epistemic_ledger (
+  id uuid primary key default gen_random_uuid(),
+  repository_id text not null,
+  symbol_name text not null,
+  file_path text not null,
+  architectural_intent text not null,
+  rules text[] default '{}'::text[],
+  scar_tissue text[] default '{}'::text[],
+  embedding vector(1536),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index idx_epistemic_symbol_lookup on verity_epistemic_ledger (repository_id, symbol_name);
+
+create table verity_sandbox_runs (
+  id uuid primary key default gen_random_uuid(),
+  plan_id text not null,
+  repository_id text not null,
+  status text not null,
+  terminal_logs text not null,
+  modified_files text[] not null,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index idx_sandbox_runs_plan on verity_sandbox_runs (plan_id);
+
+create table verity_dynamic_pulses (
+  id uuid primary key default gen_random_uuid(),
+  repository_id text not null,
+  source text not null,
+  severity text not null,
+  summary text not null,
+  raw_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index idx_dynamic_pulses_repo_time on verity_dynamic_pulses (repository_id, created_at desc);
+
+-- Recursive blast-radius query template:
+-- with recursive blast_radius as (
+--   select symbol_name, file_path, export_dependencies
+--   from verity_symbols
+--   where repository_id = :repository_id and symbol_name = :symbol_name
+--   union
+--   select s.symbol_name, s.file_path, s.export_dependencies
+--   from verity_symbols s
+--   inner join blast_radius b on s.export_dependencies @> jsonb_build_array(b.symbol_name)
+--   where s.repository_id = :repository_id
+-- )
+-- select * from blast_radius;
