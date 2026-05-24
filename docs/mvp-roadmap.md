@@ -12,6 +12,8 @@ Deliver the complete loop for local repositories:
 6. Run build/type/test checks.
 7. Produce an explainability report.
 
+Current scaffold already includes a dashboard, demo repo intelligence, planning API, repository analysis API, verification summary API, and repo health scoring.
+
 ## Phase 2: Runtime Awareness
 
 Add real application signals:

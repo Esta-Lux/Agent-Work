@@ -1,10 +1,17 @@
+import { EvidencePanel } from "@/components/evidence-panel";
+import { HealthLane } from "@/components/health-lane";
 import { PlanPanel } from "@/components/plan-panel";
 import { MetricCard } from "@/components/metric-card";
+import { RecommendationList } from "@/components/recommendation-list";
 import { WorkflowStep } from "@/components/workflow-step";
 import { demoPlan, demoRepo, demoRequest } from "@/lib/demo/demo-repo";
+import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
+import { createVerificationSummary } from "@/lib/verification/verification-summary";
 
 export default function Home() {
   const sourceCount = demoRepo.files.filter((file) => file.role === "source").length;
+  const health = createRepoHealthSummary(demoRepo);
+  const verification = createVerificationSummary(demoPlan);
 
   return (
     <main className="min-h-screen bg-cloud">
@@ -56,7 +63,11 @@ export default function Home() {
         <MetricCard label="Risk level" value={demoPlan.risk.level} detail="Driven by auth and schema impact." />
       </section>
 
-      <section id="workspace" className="mx-auto max-w-7xl px-6 py-4">
+      <section className="mx-auto max-w-7xl px-6 py-4">
+        <HealthLane health={health} />
+      </section>
+
+      <section id="workspace" className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-semibold uppercase text-steel">Operator Workspace</p>
@@ -65,6 +76,14 @@ export default function Home() {
           <button className="rounded bg-signal px-4 py-2 text-sm font-semibold text-white">Approve Dry Run</button>
         </div>
         <PlanPanel plan={demoPlan} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 py-4">
+        <EvidencePanel verification={verification} />
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 py-4">
+        <RecommendationList items={health.recommendations} />
       </section>
 
       <section id="workflow" className="mx-auto max-w-7xl px-6 py-10">

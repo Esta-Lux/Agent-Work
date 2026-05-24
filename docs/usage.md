@@ -15,6 +15,14 @@ VerityOS should feel like a clean engineering review room.
 
 ## API Flow
 
+Analyze repository files:
+
+```bash
+curl -X POST http://localhost:3000/api/repositories/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"files":[{"path":"src/lib/auth.ts","content":"export function requireUser() { return null; }"}]}'
+```
+
 Create a plan:
 
 ```bash
@@ -34,6 +42,12 @@ Expected response:
 - validation checks
 - rollback strategy
 
+Read verification requirements:
+
+```bash
+curl http://localhost:3000/api/verification
+```
+
 ## Clean UX Principles
 
 - Show the plan before code changes.
@@ -41,6 +55,7 @@ Expected response:
 - Keep validation visible.
 - Keep rollback visible.
 - Make every result explainable.
+- Keep repo health visible before and after execution.
 
 ## Advanced Product Ideas
 
@@ -53,4 +68,4 @@ Expected response:
 - Visual regression gallery.
 - Worker logs by domain.
 - Risk trends over time.
-
+- Health score drift after every change.

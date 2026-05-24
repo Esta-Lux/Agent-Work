@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { demoRepo } from "@/lib/demo/demo-repo";
 import { createInitialChangePlan } from "@/lib/planning/planner";
+import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
+import { createVerificationSummary } from "@/lib/verification/verification-summary";
 
 export async function GET() {
   return NextResponse.json({
@@ -32,7 +34,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     product: "VerityOS",
     plan,
+    health: createRepoHealthSummary(demoRepo),
+    verification: createVerificationSummary(plan),
     nextAction: "Review risk and validation plan before approving execution."
   });
 }
-

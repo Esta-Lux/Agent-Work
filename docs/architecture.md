@@ -58,6 +58,12 @@ Checks the system against reality:
 - UI consistency.
 - Performance signals.
 
+Initial API surfaces:
+
+- `POST /api/repositories/analyze` accepts uploaded file content and returns repo intelligence plus health signals.
+- `POST /api/plans` converts a request into a structured plan with health and verification context.
+- `GET /api/verification` exposes the current validation gate for the demo plan.
+
 ### Recovery
 
 Records rollback snapshots and validation results so failed changes can be reverted or repaired safely.

@@ -24,8 +24,11 @@ The core promise is simple: changes start with understanding and end with eviden
 - Backend route:
   - `GET /api/plans` returns the example API shape
   - `POST /api/plans` creates a plan from a request
+  - `GET /api/repositories/analyze` returns demo repo intelligence and health
+  - `POST /api/repositories/analyze` analyzes uploaded file inputs
+  - `GET /api/verification` returns the current verification gate
 - Dry-run execution and report types.
-- A clean Next.js App Router dashboard showing the first safe-refactor workflow.
+- A clean Next.js App Router dashboard showing repo health, planning, risk, validation evidence, and usage flow.
 
 ## Product Name
 
@@ -66,6 +69,14 @@ npm test
 
 ## Use the API
 
+Analyze repository files:
+
+```bash
+curl -X POST http://localhost:3000/api/repositories/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"files":[{"path":"src/app/page.tsx","content":"export default function Page() { return null; }"}]}'
+```
+
 Create a change plan:
 
 ```bash
@@ -82,6 +93,12 @@ The response includes:
 - execution steps
 - verification checks
 - rollback strategy
+
+Read the verification gate:
+
+```bash
+curl http://localhost:3000/api/verification
+```
 
 ## Product Loop
 
@@ -116,3 +133,4 @@ The strongest next version should include:
 - Diff previews before execution.
 - Validation evidence stored per change.
 - Rollback snapshots for every approved execution.
+- Project health trends across every repository snapshot.
