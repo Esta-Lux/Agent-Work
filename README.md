@@ -2,6 +2,8 @@
 
 Architecture-aware AI engineering reliability platform.
 
+Repository: `Agent-Work`
+
 VerityOS helps teams safely evolve existing software by combining repo intelligence, structured planning, controlled execution, runtime verification, and change explainability.
 
 The core promise is simple: changes start with understanding and end with evidence.
