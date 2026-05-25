@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createGitSync } from "@/lib/infrastructure/control-plane";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
-import { createExportBundle, type ProjectBrief, type WorkspaceFixReport } from "@/lib/workspace/workspace-agent";
+import { createExportBundle } from "@/lib/workspace/workspace-export";
+import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { ChangePlan } from "@/lib/types/core";
 
 export const runtime = "nodejs";

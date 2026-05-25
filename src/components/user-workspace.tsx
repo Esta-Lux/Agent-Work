@@ -8,7 +8,7 @@ import {
   type ProjectBrief,
   type ThinkingStep,
   type WorkspaceFixReport
-} from "@/lib/workspace/workspace-agent";
+} from "@/lib/workspace/workspace-types";
 
 interface ChatMessage {
   role: "user" | "assistant";

@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 import { createOpenAIChatResponse, hasOpenAIKey } from "@/lib/ai/openai-client";
 import { extractGithubRepoUrl, inspectGithubRepo, isGithubReviewIntent } from "@/lib/workspace/github-inspector";
-import {
-  createWorkspaceChatResponse,
-  type ProjectBrief,
-  type WorkspaceChatContext,
-  type WorkspaceFixReport
-} from "@/lib/workspace/workspace-agent";
+import { createWorkspaceChatResponse } from "@/lib/workspace/workspace-chat";
+import type { ProjectBrief, WorkspaceChatContext, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export const runtime = "nodejs";
 

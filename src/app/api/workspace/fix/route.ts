@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
-import { executeFixWorkflow } from "@/lib/workspace/workspace-agent";
+import { executeFixWorkflow } from "@/lib/workspace/workspace-fix.server";
 
 export const runtime = "nodejs";
 
