@@ -2,9 +2,11 @@ import { BuilderWorkspace } from "@/components/builder-workspace";
 import { BlueprintPanel } from "@/components/blueprint-panel";
 import { EvidencePanel } from "@/components/evidence-panel";
 import { HealthLane } from "@/components/health-lane";
+import { InfrastructureControlPanel } from "@/components/infrastructure-control-panel";
 import { LivingLedgerPanel } from "@/components/living-ledger-panel";
 import { PlanPanel } from "@/components/plan-panel";
 import { MetricCard } from "@/components/metric-card";
+import { MissionControlDashboard } from "@/components/mission-control-dashboard";
 import { OperationsLedgerPanel } from "@/components/operations-ledger-panel";
 import { RecommendationList } from "@/components/recommendation-list";
 import { WorkflowStep } from "@/components/workflow-step";
@@ -76,6 +78,10 @@ export default function Home() {
       <OperationsLedgerPanel />
 
       <BlueprintPanel />
+
+      <MissionControlDashboard />
+
+      <InfrastructureControlPanel />
 
       <section id="workspace" className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

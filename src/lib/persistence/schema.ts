@@ -145,3 +145,77 @@ export interface ProjectBlueprintRecord {
   testPlan: string[];
   createdAt: string;
 }
+
+export interface AdminTelemetryRecord {
+  id: string;
+  userId: string;
+  projectId: string;
+  sessionId: string;
+  planningDurationMs: number;
+  executionDurationMs: number;
+  verificationDurationMs: number;
+  selfHealingAttemptsCount: number;
+  finalOutcome: "COMMITTED" | "ABANDONED" | "HARD_CRASH";
+  stallingErrorLogs: string | null;
+  tokenComputeCost: number;
+  createdAt: string;
+}
+
+export interface GitSyncRecord {
+  id: string;
+  repositoryId: string;
+  provider: "github";
+  remoteUrl: string;
+  defaultBranch: string;
+  status: "connected" | "syncing" | "ready" | "failed";
+  lastSyncAt: string | null;
+  pullRequestUrl: string | null;
+  createdAt: string;
+}
+
+export interface PreviewSessionRecord {
+  id: string;
+  repositoryId: string;
+  mode: "webcontainer" | "remote-stream";
+  framework: string;
+  previewUrl: string | null;
+  status: "booting" | "ready" | "failed" | "stopped";
+  lastHeartbeatAt: string;
+  createdAt: string;
+}
+
+export interface SandboxPoolRecord {
+  id: string;
+  provider: "local-docker" | "e2b" | "fly-machines" | "firecracker";
+  region: string;
+  status: "online" | "degraded" | "offline";
+  activeSandboxes: number;
+  queuedJobs: number;
+  maxSandboxes: number;
+  averageBootMs: number;
+  updatedAt: string;
+}
+
+export interface VectorSyncJobRecord {
+  id: string;
+  repositoryId: string;
+  trigger: "manual" | "github-webhook" | "scheduled";
+  status: "queued" | "indexing" | "embedded" | "failed";
+  filesIndexed: number;
+  symbolsIndexed: number;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface RemoteStreamRecord {
+  id: string;
+  repositoryId: string;
+  runtime: "web" | "android" | "python" | "docker-compose" | "native-linux";
+  transport: "webcontainer" | "novnc" | "guacamole" | "webrtc";
+  status: "provisioning" | "streaming" | "failed" | "stopped";
+  streamUrl: string | null;
+  exposedPorts: number[];
+  createdAt: string;
+  updatedAt: string;
+}

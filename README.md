@@ -44,6 +44,28 @@ The core promise is simple: changes start with understanding and end with eviden
   - `POST /api/blueprints`
   - `GET /api/rollbacks`
   - `GET /api/self-healing`
+  - `GET /api/admin/telemetry`
+  - `POST /api/admin/telemetry`
+  - `GET /api/infrastructure/status`
+  - `POST /api/infrastructure/git-sync`
+  - `POST /api/infrastructure/preview-sessions`
+  - `POST /api/infrastructure/sandbox-pool`
+  - `POST /api/infrastructure/vector-sync`
+  - `POST /api/infrastructure/streams`
+- Mission Control dashboard:
+  - interactive blast-radius radar
+  - schema and data-flow visualizer
+  - live sandbox terminal and preview lane
+  - self-healing monitor
+  - component hierarchy diff matrix
+  - Living Ledger timeline slider
+  - executive telemetry command center
+- Infrastructure control plane:
+  - Git sync network records
+  - live preview session records
+  - sandbox fleet telemetry
+  - vector-memory indexing jobs
+  - remote stream contracts for WebContainer, noVNC, Guacamole, and WebRTC adapters
 
 ## Product Name
 
@@ -169,6 +191,32 @@ Read the last 100 operational memory records:
 curl http://localhost:3000/api/runs
 ```
 
+Record admin telemetry for a completed execution:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"00000000-0000-0000-0000-000000000001","projectId":"demo","sessionId":"00000000-0000-0000-0000-000000000002","planningDurationMs":4200,"executionDurationMs":9800,"verificationDurationMs":12800,"selfHealingAttemptsCount":1,"finalOutcome":"COMMITTED","tokenComputeCost":0.1832}'
+```
+
+Read the infrastructure control plane:
+
+```bash
+curl http://localhost:3000/api/infrastructure/status
+```
+
+Create control-plane records for the next provider integrations:
+
+```bash
+curl -X POST http://localhost:3000/api/infrastructure/git-sync \
+  -H "Content-Type: application/json" \
+  -d '{"repositoryId":"demo","remoteUrl":"https://github.com/Esta-Lux/Agent-Work.git","defaultBranch":"main"}'
+
+curl -X POST http://localhost:3000/api/infrastructure/streams \
+  -H "Content-Type: application/json" \
+  -d '{"repositoryId":"demo","runtime":"android","transport":"novnc","exposedPorts":[3000,8080]}'
+```
+
 ## Product Loop
 
 ```mermaid
@@ -189,6 +237,8 @@ flowchart TD
 4. Add an approval-gated execution worker.
 5. Run real verification checks and store results.
 6. Add browser-based route and visual smoke checks.
+7. Connect Mission Control panels to streaming execution events.
+8. Add GitHub OAuth, PR creation, and sandbox fleet telemetry.
 
 ## Advanced Direction
 

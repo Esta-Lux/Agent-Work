@@ -1,18 +1,24 @@
 import type {
+  AdminTelemetryRecord,
   ArchitectureMemoryRecord,
   DynamicPulseRecord,
   EpistemicLedgerRecord,
   DiffRecord,
   ExecutionRecord,
+  GitSyncRecord,
   LivingLedgerSymbolRecord,
   PlanRecord,
   PreviewRecord,
+  PreviewSessionRecord,
   ProjectBlueprintRecord,
+  RemoteStreamRecord,
   RepositoryRecord,
   RollbackSnapshotRecord,
+  SandboxPoolRecord,
   SandboxRunRecord,
   SelfHealingAttemptRecord,
   SnapshotRecord,
+  VectorSyncJobRecord,
   VerificationRecord
 } from "@/lib/persistence/schema";
 
@@ -32,6 +38,12 @@ interface MemoryStore {
   rollbackSnapshots: RollbackSnapshotRecord[];
   selfHealingAttempts: SelfHealingAttemptRecord[];
   projectBlueprints: ProjectBlueprintRecord[];
+  adminTelemetry: AdminTelemetryRecord[];
+  gitSyncs: GitSyncRecord[];
+  previewSessions: PreviewSessionRecord[];
+  sandboxPools: SandboxPoolRecord[];
+  vectorSyncJobs: VectorSyncJobRecord[];
+  remoteStreams: RemoteStreamRecord[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -55,7 +67,13 @@ export const memoryStore: MemoryStore =
     dynamicPulses: [],
     rollbackSnapshots: [],
     selfHealingAttempts: [],
-    projectBlueprints: []
+    projectBlueprints: [],
+    adminTelemetry: [],
+    gitSyncs: [],
+    previewSessions: [],
+    sandboxPools: [],
+    vectorSyncJobs: [],
+    remoteStreams: []
   });
 
 export function upsertRecord<T extends { id: string }>(records: T[], record: T): T {
