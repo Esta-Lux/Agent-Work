@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createOpenAIChangePlan, getOpenAIModel, hasOpenAIKey } from "@/lib/ai/openai-client";
 import { demoRepo } from "@/lib/demo/demo-repo";
+import { buildRepoIntelligenceSnapshot, type SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { createInitialChangePlan } from "@/lib/planning/planner";
 import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
@@ -19,8 +20,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { request?: string } | null;
+  const body = (await request.json().catch(() => null)) as { request?: string; files?: SourceFileInput[] } | null;
   const userRequest = body?.request?.trim();
+  const repo =
+    body?.files && Array.isArray(body.files) && body.files.length > 0
+      ? buildRepoIntelligenceSnapshot(body.files)
+      : demoRepo;
 
   if (!userRequest) {
     return NextResponse.json(
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const fallbackPlan = createInitialChangePlan(userRequest, demoRepo);
+  const fallbackPlan = createInitialChangePlan(userRequest, repo);
   let plan = fallbackPlan;
   let plannerSource: "openai" | "deterministic-fallback" = "deterministic-fallback";
   let plannerMessage = hasOpenAIKey()
@@ -40,7 +45,7 @@ export async function POST(request: Request) {
 
   if (hasOpenAIKey()) {
     try {
-      const aiPlan = await createOpenAIChangePlan(userRequest, demoRepo, fallbackPlan);
+      const aiPlan = await createOpenAIChangePlan(userRequest, repo, fallbackPlan);
       plan = aiPlan.plan;
       plannerSource = "openai";
       plannerMessage = `Plan generated with OpenAI ${aiPlan.model}.`;
@@ -72,7 +77,8 @@ export async function POST(request: Request) {
     model: plannerSource === "openai" ? getOpenAIModel() : null,
     plannerMessage,
     plan,
-    health: createRepoHealthSummary(demoRepo),
+    health: createRepoHealthSummary(repo),
+    repoMode: repo === demoRepo ? "demo" : "uploaded-files",
     verification: createVerificationSummary(plan),
     nextAction: "Review risk and validation plan before approving execution."
   });

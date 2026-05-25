@@ -44,6 +44,9 @@ The core promise is simple: changes start with understanding and end with eviden
   - `POST /api/blueprints`
   - `GET /api/rollbacks`
   - `GET /api/self-healing`
+  - `POST /api/workspace/chat` user agent (discovery, feature advice, build guidance)
+  - `POST /api/workspace/fix` analyze code, plan fix, blast radius, and report
+  - `POST /api/workspace/export` download bundle or GitHub push preparation
   - `GET /api/admin/telemetry`
   - `POST /api/admin/telemetry`
   - `GET /api/admin/deep-tests`
@@ -102,15 +105,24 @@ npm run build
 npm test
 ```
 
-## Use the Website
+## Two surfaces
 
-1. Open the dashboard.
-2. Review the current change request.
-3. Inspect repo intelligence metrics.
-4. Read the risk and blast-radius analysis.
-5. Confirm the execution plan.
-6. Run or approve the validation plan.
-7. Use the report as the evidence trail for the change.
+| Surface | URL | Purpose |
+| --- | --- | --- |
+| **User workspace** | `/` | Product brief, agent chat, code intake, fix/report, download or GitHub export |
+| **Admin** | `/admin` | Operator readiness, provider health, internal ops chat |
+
+## Use the user workspace
+
+1. Open `/` and fill in the product brief (discovery questions guide scope).
+2. Paste repository files as JSON and describe the fix or feature in chat.
+3. Run **Fix and report** to see what was fixed, what may break, and how.
+4. Export a **download bundle** or **prepare GitHub push** when ready.
+
+## Use admin
+
+1. Open `/admin` for readiness score, OpenAI/Supabase status, and operator chat.
+2. Use API links for unit economics and deep QA when needed.
 
 ## Use the API
 
