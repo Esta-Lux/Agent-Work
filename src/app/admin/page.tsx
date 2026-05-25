@@ -1,4 +1,5 @@
 import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
+import { BuilderOSConsole } from "@/components/builder-os-console";
 import { DeepTestPanel } from "@/components/deep-test-panel";
 import { InfrastructureControlPanel } from "@/components/infrastructure-control-panel";
 import { MissionControlDashboard } from "@/components/mission-control-dashboard";
@@ -28,12 +29,23 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <AdminAIChatbox />
-      <DeepTestPanel />
-      <MissionControlDashboard />
-      <UnitEconomicsPanel />
-      <InfrastructureControlPanel />
-      <ProductionReadinessPanel />
+      <BuilderOSConsole />
+
+      <section className="mx-auto max-w-7xl px-6 py-4">
+        <details className="rounded border border-line bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold uppercase text-steel">
+            Supporting command center panels
+          </summary>
+          <div className="mt-4 space-y-4">
+            <AdminAIChatbox />
+            <DeepTestPanel />
+            <MissionControlDashboard />
+            <UnitEconomicsPanel />
+            <InfrastructureControlPanel />
+            <ProductionReadinessPanel />
+          </div>
+        </details>
+      </section>
     </main>
   );
 }

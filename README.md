@@ -52,6 +52,7 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/ai/health`
   - `POST /api/ai/admin-chat`
   - `POST /api/ai/planner`
+  - `POST /api/builder/run`
   - `GET /api/infrastructure/status`
   - `POST /api/infrastructure/git-sync`
   - `POST /api/infrastructure/preview-sessions`
@@ -263,6 +264,14 @@ Read the deep QA report:
 
 ```bash
 curl http://localhost:3000/api/admin/deep-tests
+```
+
+Run the controlled app builder:
+
+```bash
+curl -X POST http://localhost:3000/api/builder/run \
+  -H "Content-Type: application/json" \
+  -d '{"idea":"Build a landing page for a mechanic shop with online booking","appType":"booking website","targetUsers":"local customers","brandStyle":"clean industrial","authNeeded":false,"paymentsNeeded":true,"databaseNeeded":true,"adminPanelNeeded":true,"deploymentTarget":"vercel"}'
 ```
 
 ## Product Loop
