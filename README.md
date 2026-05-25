@@ -49,6 +49,7 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/admin/readiness`
   - `GET /api/admin/unit-economics`
   - `GET /api/ai/health`
+  - `POST /api/ai/admin-chat`
   - `POST /api/ai/planner`
   - `GET /api/infrastructure/status`
   - `POST /api/infrastructure/git-sync`
@@ -225,6 +226,14 @@ Check the OpenAI backend connection:
 
 ```bash
 curl http://localhost:3000/api/ai/health
+```
+
+Use the admin AI build console:
+
+```bash
+curl -X POST http://localhost:3000/api/ai/admin-chat \
+  -H "Content-Type: application/json" \
+  -d '{"model":"bootrise","message":"Create a user-facing website plan for BootRise pricing and trial conversion."}'
 ```
 
 Create an OpenAI-backed plan when `OPENAI_API_KEY` is configured:

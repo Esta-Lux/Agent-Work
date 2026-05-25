@@ -1,3 +1,4 @@
+import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
 import { InfrastructureControlPanel } from "@/components/infrastructure-control-panel";
 import { MissionControlDashboard } from "@/components/mission-control-dashboard";
 import { ProductionReadinessPanel } from "@/components/production-readiness-panel";
@@ -26,6 +27,7 @@ export default function AdminPage() {
         </div>
       </section>
 
+      <AdminAIChatbox />
       <MissionControlDashboard />
       <UnitEconomicsPanel />
       <InfrastructureControlPanel />

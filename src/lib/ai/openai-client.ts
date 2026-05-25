@@ -16,6 +16,11 @@ export interface OpenAIHealthResult {
   latencyMs?: number;
 }
 
+export interface OpenAIChatResult {
+  model: string;
+  text: string;
+}
+
 interface PlannerJson {
   interpretedGoal?: string;
   businessImpact?: string;
@@ -82,6 +87,29 @@ export async function createOpenAIChangePlan(
     plan: mergePlannerJson(request, fallbackPlan, parsed),
     model: getOpenAIModel(),
     rawText
+  };
+}
+
+export async function createOpenAIChatResponse({
+  message,
+  history
+}: {
+  message: string;
+  history: Array<{ role: "user" | "assistant"; content: string }>;
+}): Promise<OpenAIChatResult> {
+  const prompt = `You are BootRise's admin build partner.
+Help the admin design, scope, and improve the user-facing BootRise website.
+Be concise, practical, and product-oriented. Prefer actionable sections and concrete next steps.
+
+Conversation:
+${history.map((item) => `${item.role.toUpperCase()}: ${item.content}`).join("\n")}
+USER: ${message}
+
+Return a helpful admin-facing response.`;
+
+  return {
+    model: getOpenAIModel(),
+    text: await callOpenAIText({ prompt, maxOutputTokens: 900 })
   };
 }
 
