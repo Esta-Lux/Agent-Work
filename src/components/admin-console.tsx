@@ -3,16 +3,31 @@
 import { useEffect, useState } from "react";
 import { StatusPill } from "@/components/status-pill";
 
+interface ReadinessItem {
+  area: string;
+  status: string;
+  summary: string;
+  nextStep: string;
+}
+
 interface ReadinessReport {
   productionReady: boolean;
   score: number;
-  items: Array<{ area: string; status: string; summary: string; nextStep: string }>;
+  items: ReadinessItem[];
+}
+
+interface ReadinessApiResponse {
+  report?: ReadinessReport;
 }
 
 interface AiHealth {
   connected: boolean;
   model?: string;
   message?: string;
+}
+
+interface SupabaseHealth {
+  connected?: boolean;
 }
 
 export function AdminConsole() {
@@ -22,6 +37,7 @@ export function AdminConsole() {
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadOverview();
@@ -29,18 +45,27 @@ export function AdminConsole() {
 
   async function loadOverview() {
     setStatus("Loading");
+    setLoadError(null);
     try {
       const [readinessRes, aiRes, supabaseRes] = await Promise.all([
         fetch("/api/admin/readiness"),
         fetch("/api/ai/health"),
         fetch("/api/admin/supabase/health")
       ]);
-      setReadiness((await readinessRes.json()) as ReadinessReport);
+
+      if (!readinessRes.ok) throw new Error("Readiness API failed.");
+
+      const readinessJson = (await readinessRes.json()) as ReadinessApiResponse;
+      const report = readinessJson.report;
+      if (!report?.items) throw new Error("Readiness response missing report.items.");
+
+      setReadiness(report);
       setAiHealth((await aiRes.json()) as AiHealth);
-      const supabase = (await supabaseRes.json()) as { ok?: boolean };
-      setSupabaseOk(Boolean(supabase.ok));
+      const supabase = (await supabaseRes.json()) as SupabaseHealth;
+      setSupabaseOk(Boolean(supabase.connected));
       setStatus("Ready");
-    } catch {
+    } catch (caught) {
+      setLoadError(caught instanceof Error ? caught.message : "Failed to load admin overview.");
       setStatus("Degraded");
     }
   }
@@ -64,6 +89,8 @@ export function AdminConsole() {
     }
   }
 
+  const items = readiness?.items ?? [];
+
   return (
     <section className="mx-auto max-w-7xl px-6 py-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -74,6 +101,10 @@ export function AdminConsole() {
         <StatusPill label={status} />
       </div>
 
+      {loadError ? (
+        <div className="mb-4 rounded border border-critical/25 bg-critical/10 p-3 text-sm text-critical">{loadError}</div>
+      ) : null}
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Production ready" value={readiness?.productionReady ? "Yes" : "No"} />
         <StatCard label="Readiness score" value={readiness ? `${readiness.score}%` : "—"} />
@@ -81,11 +112,11 @@ export function AdminConsole() {
         <StatCard label="Supabase" value={supabaseOk === null ? "—" : supabaseOk ? "OK" : "Off"} />
       </div>
 
-      {readiness ? (
+      {items.length > 0 ? (
         <div className="mb-6 rounded border border-line bg-white p-4">
           <p className="text-sm font-semibold text-ink">Launch blockers</p>
           <ul className="mt-3 space-y-2">
-            {readiness.items.map((item) => (
+            {items.map((item) => (
               <li key={item.area} className="rounded border border-line bg-cloud p-3 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-ink">{item.area}</span>
@@ -127,17 +158,17 @@ export function AdminConsole() {
           <p className="font-semibold text-ink">Quick checks</p>
           <ul className="mt-3 list-inside list-disc space-y-2 text-xs leading-5">
             <li>
-              <a className="text-signal underline" href="/api/admin/readiness">
+              <a className="text-signal underline" href="/api/admin/readiness" target="_blank" rel="noreferrer">
                 /api/admin/readiness
               </a>
             </li>
             <li>
-              <a className="text-signal underline" href="/api/admin/unit-economics">
+              <a className="text-signal underline" href="/api/admin/unit-economics" target="_blank" rel="noreferrer">
                 /api/admin/unit-economics
               </a>
             </li>
             <li>
-              <a className="text-signal underline" href="/api/ai/health">
+              <a className="text-signal underline" href="/api/ai/health" target="_blank" rel="noreferrer">
                 /api/ai/health
               </a>
             </li>

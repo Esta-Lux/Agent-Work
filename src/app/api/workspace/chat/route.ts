@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createOpenAIChatResponse, hasOpenAIKey } from "@/lib/ai/openai-client";
+import { extractGithubRepoUrl, inspectGithubRepo, isGithubReviewIntent } from "@/lib/workspace/github-inspector";
 import {
   createWorkspaceChatResponse,
   type ProjectBrief,
@@ -14,6 +15,7 @@ interface WorkspaceChatRequest {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   projectBrief?: Partial<ProjectBrief>;
   hasCode?: boolean;
+  loadedFilePaths?: string[];
   lastReport?: WorkspaceFixReport | null;
   useOpenAI?: boolean;
 }
@@ -29,15 +31,22 @@ export async function POST(request: Request) {
   const context: WorkspaceChatContext = {
     projectBrief: body?.projectBrief as ProjectBrief | undefined,
     hasCode: body?.hasCode,
+    loadedFilePaths: body?.loadedFilePaths,
     lastReport: body?.lastReport ?? null
   };
 
-  const deterministic = createWorkspaceChatResponse(message, context);
+  let githubReview;
+  const githubUrl = extractGithubRepoUrl(message);
+  if (githubUrl && isGithubReviewIntent(message)) {
+    githubReview = await inspectGithubRepo(githubUrl);
+  }
 
-  if (body?.useOpenAI && hasOpenAIKey()) {
+  const deterministic = createWorkspaceChatResponse(message, context, { githubReview });
+
+  if (body?.useOpenAI && hasOpenAIKey() && !deterministic.triggerFix) {
     try {
       const result = await createOpenAIChatResponse({
-        message: `[User workspace — startup bootstrap]\nBrief: ${JSON.stringify(context.projectBrief ?? {})}\n\n${message}`,
+        message: `[BootRise user workspace — be specific about files and blast radius]\nBrief: ${JSON.stringify(context.projectBrief ?? {})}\nFiles: ${(context.loadedFilePaths ?? []).join(", ")}\n\n${message}`,
         history: body.history ?? []
       });
 

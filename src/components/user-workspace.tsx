@@ -2,22 +2,40 @@
 
 import { useMemo, useState } from "react";
 import { StatusPill } from "@/components/status-pill";
-import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-agent";
+import {
+  FIX_PIPELINE_STEPS,
+  type FileActivity,
+  type ProjectBrief,
+  type ThinkingStep,
+  type WorkspaceFixReport
+} from "@/lib/workspace/workspace-agent";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  thinkingSteps?: ThinkingStep[];
+  fileActivity?: FileActivity[];
+}
+
+interface ChatApiResponse {
+  reply?: string;
+  thinkingSteps?: ThinkingStep[];
+  fileActivity?: FileActivity[];
+  triggerFix?: boolean;
+  error?: string;
 }
 
 const SAMPLE_FILES = JSON.stringify(
   [
     {
       path: "src/lib/auth/session.ts",
-      content: "export function getSession() { return null; }\nexport function requireSession() { throw new Error('missing'); }"
+      content:
+        "export function getSession() { return null; }\nexport function requireSession() { throw new Error('missing'); }"
     },
     {
       path: "src/app/api/profile/route.ts",
-      content: "import { getSession } from '@/lib/auth/session';\nexport async function GET() { const s = getSession(); return Response.json({ ok: !!s }); }"
+      content:
+        "import { getSession } from '@/lib/auth/session';\nexport async function GET() { const s = getSession(); return Response.json({ ok: !!s }); }"
     }
   ],
   null,
@@ -35,17 +53,27 @@ const DEFAULT_BRIEF: ProjectBrief = {
   longBuild: false
 };
 
+const WELCOME: ChatMessage = {
+  role: "assistant",
+  content: [
+    "I am your BootRise builder agent. I can:",
+    "- Answer what I do and guide discovery for long builds",
+    "- Analyze pasted code and run Fix and report (plan, blast radius, diff, verification)",
+    "- Review public GitHub repos when you paste a link and ask for a review",
+    "- Advise on features (helpful vs risky for your users)",
+    "- Export a bundle or prepare GitHub push steps",
+    "",
+    "Paste code on the right, then ask a question or click Fix and report."
+  ].join("\n")
+};
+
 export function UserWorkspace() {
   const [brief, setBrief] = useState<ProjectBrief>(DEFAULT_BRIEF);
   const [filesInput, setFilesInput] = useState(SAMPLE_FILES);
-  const [fixRequest, setFixRequest] = useState("Fix session handling so profile API does not throw when unauthenticated");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Welcome to BootRise. Tell me what you are building, paste your code, and I will plan fixes, show blast radius, and help you export to GitHub or a download bundle."
-    }
-  ]);
+  const [fixRequest, setFixRequest] = useState(
+    "Fix session handling so profile API does not throw when unauthenticated"
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
   const [chatInput, setChatInput] = useState("");
   const [report, setReport] = useState<WorkspaceFixReport | null>(null);
   const [repositoryId, setRepositoryId] = useState<string | null>(null);
@@ -53,61 +81,85 @@ export function UserWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [githubUrl, setGithubUrl] = useState("");
   const [useOpenAI, setUseOpenAI] = useState(true);
+  const [liveThinking, setLiveThinking] = useState<ThinkingStep[]>([]);
+  const [liveFileActivity, setLiveFileActivity] = useState<FileActivity[]>([]);
 
-  const hasCode = useMemo(() => {
+  const loadedFilePaths = useMemo(() => {
     try {
-      const parsed = JSON.parse(filesInput) as unknown[];
-      return Array.isArray(parsed) && parsed.length > 0;
+      const parsed = JSON.parse(filesInput) as Array<{ path: string }>;
+      return Array.isArray(parsed) ? parsed.map((f) => f.path).filter(Boolean) : [];
     } catch {
-      return false;
+      return [];
     }
   }, [filesInput]);
 
+  const hasCode = loadedFilePaths.length > 0;
   const briefReady = brief.productName.trim().length > 0 && brief.primaryWorkflow.trim().length > 0;
 
   function parseFiles() {
     return JSON.parse(filesInput) as Array<{ path: string; content: string }>;
   }
 
-  async function sendChat(message: string) {
-    setError(null);
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: message }];
-    setMessages(nextMessages);
-    setStatus("Thinking");
-
-    try {
-      const response = await fetch("/api/workspace/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          history: nextMessages.slice(-8),
-          projectBrief: briefReady ? brief : undefined,
-          hasCode,
-          lastReport: report,
-          useOpenAI
-        })
-      });
-      const data = (await response.json()) as { reply?: string; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Chat failed.");
-      setMessages([...nextMessages, { role: "assistant", content: data.reply ?? "No response." }]);
-      setStatus("Ready");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Chat failed.");
-      setStatus("Blocked");
-    }
+  function formatFixReportMessage(fixReport: WorkspaceFixReport): string {
+    return [
+      `Fix report: ${fixReport.plan.intent.interpretedGoal}`,
+      `Risk: ${fixReport.plan.risk.level}`,
+      "",
+      "Fixed:",
+      ...fixReport.fixed.map((f) => `- ${f.path}: ${f.summary}`),
+      "",
+      "May break:",
+      ...(fixReport.potentiallyBroken.length
+        ? fixReport.potentiallyBroken.map((b) => `- ${b}`)
+        : ["- None flagged"]),
+      "",
+      "How:",
+      ...fixReport.howFixed.map((h) => `- ${h}`),
+      "",
+      "Next:",
+      ...fixReport.guidanceForBuilder.map((g) => `- ${g}`)
+    ].join("\n");
   }
 
-  async function runFixReport() {
+  async function animateFixPipeline() {
+    const steps = FIX_PIPELINE_STEPS.map((s) => ({ ...s }));
+    setLiveThinking(steps);
+    setLiveFileActivity(
+      loadedFilePaths.map((path) => ({ path, status: "queued" as const, detail: "Waiting for pipeline" }))
+    );
+
+    for (let i = 0; i < steps.length; i++) {
+      steps[i] = { ...steps[i], status: "active" };
+      setLiveThinking([...steps]);
+      if (i > 0) steps[i - 1] = { ...steps[i - 1], status: "done" };
+      if (i >= 1 && i <= 3) {
+        setLiveFileActivity(
+          loadedFilePaths.map((path) => ({
+            path,
+            status: i === 3 ? "at-risk" : "analyzing",
+            detail: i === 3 ? "Blast radius trace" : "Symbol graph"
+          }))
+        );
+      }
+      await new Promise((r) => setTimeout(r, 280));
+    }
+
+    steps[steps.length - 1] = { ...steps[steps.length - 1], status: "done" };
+    setLiveThinking([...steps]);
+  }
+
+  async function runFixReport(requestOverride?: string) {
     setError(null);
-    setStatus("Analyzing and fixing");
+    setStatus("Fix pipeline");
+    const request = requestOverride ?? fixRequest;
 
     try {
+      await animateFixPipeline();
       const files = parseFiles();
       const response = await fetch("/api/workspace/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request: fixRequest, files })
+        body: JSON.stringify({ request, files })
       });
       const data = (await response.json()) as {
         report: WorkspaceFixReport;
@@ -115,24 +167,93 @@ export function UserWorkspace() {
         error?: string;
       };
       if (!response.ok) throw new Error(data.error ?? "Fix workflow failed.");
+
       setReport(data.report);
       setRepositoryId(data.repositoryId);
+      setLiveFileActivity(
+        loadedFilePaths.map((path) => {
+          const fixed = data.report.fixed.find((f) => f.path === path);
+          const atRisk = data.report.potentiallyBroken.some((b) => b.includes(path));
+          return {
+            path,
+            status: fixed ? "fixed" : atRisk ? "at-risk" : "planned",
+            detail: fixed?.summary ?? (atRisk ? "Dependent area" : "Reviewed")
+          };
+        })
+      );
       setStatus("Report ready");
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content: [
-            `Fix report for: ${data.report.plan.intent.interpretedGoal}`,
-            `Fixed: ${data.report.fixed.map((f) => f.path).join(", ") || "none"}`,
-            `May break: ${data.report.potentiallyBroken.slice(0, 5).join(", ") || "none flagged"}`,
-            ...data.report.guidanceForBuilder.map((g) => `- ${g}`)
-          ].join("\n")
+          content: formatFixReportMessage(data.report),
+          thinkingSteps: FIX_PIPELINE_STEPS.map((s) => ({ ...s, status: "done" as const })),
+          fileActivity: loadedFilePaths.map((path) => {
+            const fixed = data.report.fixed.find((f) => f.path === path);
+            return {
+              path,
+              status: fixed ? ("fixed" as const) : ("planned" as const),
+              detail: fixed?.summary ?? "No direct edit"
+            };
+          })
         }
       ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Fix workflow failed.");
       setStatus("Blocked");
+    } finally {
+      setLiveThinking([]);
+    }
+  }
+
+  async function sendChat(message: string) {
+    setError(null);
+    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: message }];
+    setMessages(nextMessages);
+    setStatus("Thinking");
+    setLiveThinking([
+      { id: "t1", label: "Parse message", status: "active" },
+      { id: "t2", label: "Load file context", status: "pending" },
+      { id: "t3", label: "Respond", status: "pending" }
+    ]);
+
+    try {
+      const response = await fetch("/api/workspace/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          history: nextMessages.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+          projectBrief: briefReady ? brief : undefined,
+          hasCode,
+          loadedFilePaths,
+          lastReport: report,
+          useOpenAI
+        })
+      });
+      const data = (await response.json()) as ChatApiResponse;
+      if (!response.ok) throw new Error(data.error ?? "Chat failed.");
+
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: data.reply ?? "No response.",
+        thinkingSteps: data.thinkingSteps,
+        fileActivity: data.fileActivity
+      };
+
+      setMessages([...nextMessages, assistantMessage]);
+      setLiveThinking([]);
+      setLiveFileActivity(data.fileActivity ?? []);
+      setStatus("Ready");
+
+      if (data.triggerFix && hasCode) {
+        setFixRequest(message);
+        await runFixReport(message);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Chat failed.");
+      setStatus("Blocked");
+      setLiveThinking([]);
     }
   }
 
@@ -141,7 +262,7 @@ export function UserWorkspace() {
     setStatus(mode === "download" ? "Preparing download" : "Preparing GitHub export");
 
     try {
-      if (!briefReady) throw new Error("Complete the product brief before exporting.");
+      if (!briefReady) throw new Error("Complete the product brief (name + workflow) before exporting.");
       const files = parseFiles();
       const response = await fetch("/api/workspace/export", {
         method: "POST",
@@ -174,14 +295,20 @@ export function UserWorkspace() {
         URL.revokeObjectURL(url);
         setMessages((current) => [
           ...current,
-          { role: "assistant", content: `Downloaded ${data.downloadName}. Upload it anywhere or extract into a new repo.` }
+          {
+            role: "assistant",
+            content: `Downloaded ${data.downloadName}. Extract and push to GitHub or deploy from your machine.`
+          }
         ]);
       }
 
       if (mode === "github" && data.pushSteps) {
         setMessages((current) => [
           ...current,
-          { role: "assistant", content: ["GitHub export prepared:", ...data.pushSteps!.map((s, i) => `${i + 1}. ${s}`)].join("\n") }
+          {
+            role: "assistant",
+            content: ["GitHub push steps:", ...(data.pushSteps ?? []).map((s, i) => `${i + 1}. ${s}`)].join("\n")
+          }
         ]);
       }
 
@@ -191,6 +318,8 @@ export function UserWorkspace() {
       setStatus("Blocked");
     }
   }
+
+  const showLivePanel = liveThinking.length > 0 || liveFileActivity.length > 0;
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-6">
@@ -214,6 +343,14 @@ export function UserWorkspace() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-h-[640px] flex-col rounded border border-line bg-white">
+          {showLivePanel ? (
+            <div className="border-b border-line bg-cloud p-3">
+              <p className="text-xs font-semibold uppercase text-steel">Working</p>
+              <ThinkingPanel steps={liveThinking} />
+              {liveFileActivity.length > 0 ? <FileActivityPanel items={liveFileActivity} compact /> : null}
+            </div>
+          ) : null}
+
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.map((message, index) => (
               <div
@@ -223,18 +360,25 @@ export function UserWorkspace() {
                 }`}
               >
                 <p className="mb-1 text-xs font-semibold uppercase text-steel">{message.role}</p>
-                <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
+                {message.thinkingSteps && message.thinkingSteps.length > 0 ? (
+                  <ThinkingPanel steps={message.thinkingSteps} />
+                ) : null}
+                {message.fileActivity && message.fileActivity.length > 0 ? (
+                  <FileActivityPanel items={message.fileActivity} compact />
+                ) : null}
+                <pre className="mt-2 whitespace-pre-wrap font-sans">{message.content}</pre>
               </div>
             ))}
           </div>
+
           <div className="border-t border-line p-4">
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className="rounded border border-line px-3 py-1.5 text-xs font-semibold text-graphite"
-                onClick={() => sendChat("What should I build first for my MVP?")}
+                onClick={() => sendChat("What can you do?")}
               >
-                MVP scope
+                What can you do?
               </button>
               <button
                 type="button"
@@ -246,7 +390,7 @@ export function UserWorkspace() {
               <button
                 type="button"
                 className="rounded border border-line px-3 py-1.5 text-xs font-semibold text-graphite"
-                onClick={() => sendChat("How do I export to GitHub?")}
+                onClick={() => sendChat("How do I export a download bundle?")}
               >
                 Export help
               </button>
@@ -254,7 +398,7 @@ export function UserWorkspace() {
             <div className="mt-3 flex gap-2">
               <input
                 className="flex-1 rounded border border-line bg-cloud px-3 py-2 text-sm text-ink"
-                placeholder="Ask BootRise about your build, fixes, or features..."
+                placeholder="Ask BootRise about your build, fixes, or paste a GitHub URL to review..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -286,7 +430,6 @@ export function UserWorkspace() {
         <div className="space-y-4">
           <div className="rounded border border-line bg-white p-4">
             <p className="text-sm font-semibold text-ink">Product brief</p>
-            <p className="mt-1 text-xs text-steel">BootRise uses this from day one through deployment.</p>
             <div className="mt-3 space-y-2">
               <input
                 className="w-full rounded border border-line bg-cloud px-3 py-2 text-sm"
@@ -306,19 +449,11 @@ export function UserWorkspace() {
                 value={brief.primaryWorkflow}
                 onChange={(e) => setBrief({ ...brief, primaryWorkflow: e.target.value })}
               />
-              <label className="flex items-center gap-2 text-xs text-graphite">
-                <input
-                  type="checkbox"
-                  checked={brief.longBuild}
-                  onChange={(e) => setBrief({ ...brief, longBuild: e.target.checked })}
-                />
-                Complex / long-running build
-              </label>
             </div>
           </div>
 
           <div className="rounded border border-line bg-white p-4">
-            <p className="text-sm font-semibold text-ink">Code intake</p>
+            <p className="text-sm font-semibold text-ink">Code intake ({loadedFilePaths.length} files)</p>
             <textarea
               className="mt-2 min-h-32 w-full resize-y rounded border border-line bg-cloud p-2 text-xs leading-5 text-graphite"
               value={filesInput}
@@ -333,7 +468,7 @@ export function UserWorkspace() {
             <button
               type="button"
               className="mt-3 w-full rounded bg-signal px-4 py-2 text-sm font-semibold text-white"
-              onClick={runFixReport}
+              onClick={() => runFixReport()}
             >
               Fix and report
             </button>
@@ -342,13 +477,18 @@ export function UserWorkspace() {
           {report ? (
             <div className="rounded border border-line bg-white p-4 text-sm">
               <p className="font-semibold text-ink">Last report</p>
-              <p className="mt-2 text-graphite">Fixed: {report.fixed.length} file(s)</p>
-              <p className="text-graphite">Watch: {report.potentiallyBroken.length} dependent area(s)</p>
-              <ul className="mt-2 list-inside list-disc text-xs text-steel">
-                {report.howFixed.slice(0, 3).map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+              <FileActivityPanel
+                items={loadedFilePaths.map((path) => {
+                  const fixed = report.fixed.find((f) => f.path === path);
+                  const atRisk = report.potentiallyBroken.some((b) => b.includes(path));
+                  return {
+                    path,
+                    status: fixed ? "fixed" : atRisk ? "at-risk" : "planned",
+                    detail: fixed?.summary ?? (atRisk ? "Watch dependency" : "Reviewed")
+                  };
+                })}
+                compact
+              />
             </div>
           ) : null}
 
@@ -363,7 +503,7 @@ export function UserWorkspace() {
             </button>
             <input
               className="mt-2 w-full rounded border border-line bg-cloud px-3 py-2 text-xs"
-              placeholder="https://github.com/org/repo.git"
+              placeholder="https://github.com/org/repo"
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
             />
@@ -378,5 +518,36 @@ export function UserWorkspace() {
         </div>
       </div>
     </section>
+  );
+}
+
+function ThinkingPanel({ steps }: { steps: ThinkingStep[] }) {
+  if (steps.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-1">
+      {steps.map((step) => (
+        <li key={step.id} className="flex items-start gap-2 text-xs text-graphite">
+          <span className="mt-0.5 font-mono text-steel">{step.status === "done" ? "✓" : step.status === "active" ? "…" : "○"}</span>
+          <span>
+            <span className="font-semibold text-ink">{step.label}</span>
+            {step.detail ? <span className="text-steel"> — {step.detail}</span> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function FileActivityPanel({ items, compact }: { items: FileActivity[]; compact?: boolean }) {
+  return (
+    <ul className={`space-y-1 ${compact ? "mt-2" : "mt-3"}`}>
+      {items.map((item) => (
+        <li key={item.path} className="rounded border border-line bg-cloud px-2 py-1.5 text-xs">
+          <span className="font-semibold text-ink">{item.path}</span>
+          <span className="text-steel"> · {item.status}</span>
+          <p className="text-graphite">{item.detail}</p>
+        </li>
+      ))}
+    </ul>
   );
 }
