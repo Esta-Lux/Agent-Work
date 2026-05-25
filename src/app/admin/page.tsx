@@ -1,6 +1,7 @@
 import { InfrastructureControlPanel } from "@/components/infrastructure-control-panel";
 import { MissionControlDashboard } from "@/components/mission-control-dashboard";
 import { ProductionReadinessPanel } from "@/components/production-readiness-panel";
+import { UnitEconomicsPanel } from "@/components/unit-economics-panel";
 
 export default function AdminPage() {
   return (
@@ -26,6 +27,7 @@ export default function AdminPage() {
       </section>
 
       <MissionControlDashboard />
+      <UnitEconomicsPanel />
       <InfrastructureControlPanel />
       <ProductionReadinessPanel />
     </main>

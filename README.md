@@ -47,6 +47,7 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/admin/telemetry`
   - `POST /api/admin/telemetry`
   - `GET /api/admin/readiness`
+  - `GET /api/admin/unit-economics`
   - `GET /api/ai/health`
   - `POST /api/ai/planner`
   - `GET /api/infrastructure/status`
@@ -240,6 +241,12 @@ Read the production readiness report:
 
 ```bash
 curl http://localhost:3000/api/admin/readiness
+```
+
+Read pricing and cost scenarios:
+
+```bash
+curl http://localhost:3000/api/admin/unit-economics
 ```
 
 ## Product Loop
