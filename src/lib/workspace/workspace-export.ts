@@ -7,11 +7,13 @@ export function createExportBundle(input: {
   files: SourceFileInput[];
   plan?: ChangePlan;
   report?: WorkspaceFixReport;
+  preferredProvider?: "bootrise" | "openai";
 }) {
   return {
     format: "bootrise-bundle-v1" as const,
     exportedAt: new Date().toISOString(),
     product: "BootRise",
+    aiProvider: input.preferredProvider ?? "bootrise",
     projectBrief: input.projectBrief,
     files: input.files,
     plan: input.plan ?? null,

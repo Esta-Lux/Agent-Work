@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createBootRiseChatResponse, createUserFacingWebsitePlan } from "@/lib/ai/bootrise-chat";
-import { createOpenAIChatResponse, getOpenAIModel, hasOpenAIKey } from "@/lib/ai/openai-client";
+import { createProviderChatResponse, isProviderConfigured } from "@/lib/ai/llm-router";
+import { resolveAdminProvider } from "@/lib/ai/providers";
+import { getOpenAIModel } from "@/lib/ai/openai-client";
+import { getNvidiaModel } from "@/lib/ai/nvidia-client";
 
 export const runtime = "nodejs";
 
@@ -13,54 +16,61 @@ interface AdminChatRequest {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as AdminChatRequest | null;
   const message = body?.message?.trim();
-  const selectedModel = body?.model ?? "bootrise";
+  const provider = resolveAdminProvider(body?.model);
   const history = body?.history ?? [];
 
   if (!message) {
     return NextResponse.json({ error: "A non-empty message is required." }, { status: 400 });
   }
 
-  if (selectedModel === "openai" && hasOpenAIKey()) {
+  const fallback = createBootRiseChatResponse(message);
+
+  if (isProviderConfigured(provider)) {
     try {
-      const result = await createOpenAIChatResponse({ message, history });
+      const result = await createProviderChatResponse({
+        provider,
+        message,
+        history,
+        system:
+          "You are BootRise admin operator assistant. Answer with readiness, cost, infra, and launch blockers. Be concise and actionable."
+      });
+
       return NextResponse.json({
         product: "BootRise",
         model: result.model,
-        provider: "openai",
+        provider: result.provider,
         connected: true,
         reply: result.text,
         websitePlan: createUserFacingWebsitePlan(message),
-        operatorPlan: createBootRiseChatResponse(message).operatorPlan
+        operatorPlan: fallback.operatorPlan
       });
     } catch (error) {
-      const fallback = createBootRiseChatResponse(message);
       return NextResponse.json({
         product: "BootRise",
-        model: fallback.model,
+        model: provider === "openai" ? getOpenAIModel() : getNvidiaModel(),
         provider: "bootrise",
         connected: false,
         reply: fallback.text,
         actions: fallback.actions,
         operatorPlan: fallback.operatorPlan,
         websitePlan: createUserFacingWebsitePlan(message),
-        message: error instanceof Error ? error.message : "OpenAI chat failed; BootRise fallback responded."
+        message: error instanceof Error ? error.message : "LLM chat failed; deterministic fallback responded."
       });
     }
   }
 
-  const fallback = createBootRiseChatResponse(message);
   return NextResponse.json({
     product: "BootRise",
-    model: selectedModel === "openai" ? getOpenAIModel() : fallback.model,
+    model: provider === "openai" ? getOpenAIModel() : fallback.model,
     provider: "bootrise",
-    connected: selectedModel !== "openai",
+    connected: false,
     reply: fallback.text,
     actions: fallback.actions,
     operatorPlan: fallback.operatorPlan,
     websitePlan: createUserFacingWebsitePlan(message),
     message:
-      selectedModel === "openai"
+      provider === "openai"
         ? "OPENAI_API_KEY is not configured; BootRise deterministic engine responded."
-        : "BootRise deterministic engine responded."
+        : "NVIDIA_API_KEY is not configured; BootRise deterministic engine responded."
   });
 }

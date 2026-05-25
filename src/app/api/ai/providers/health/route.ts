@@ -8,9 +8,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const providers = await checkAllProviderHealth();
-  const bootrise = providers.find((p) => p.provider === "bootrise");
-  const openai = providers.find((p) => p.provider === "openai");
-
   return NextResponse.json({
     product: "BootRise",
     providers,
@@ -21,10 +18,6 @@ export async function GET() {
     models: {
       bootrise: getNvidiaModel(),
       openai: getOpenAIModel()
-    },
-    connected: Boolean(bootrise?.connected || openai?.connected),
-    provider: bootrise?.connected ? "BootRise / NVIDIA" : openai?.connected ? "OpenAI" : "None",
-    model: bootrise?.connected ? bootrise.model : openai?.model ?? getOpenAIModel(),
-    message: bootrise?.message ?? openai?.message ?? "No LLM keys configured."
+    }
   });
 }

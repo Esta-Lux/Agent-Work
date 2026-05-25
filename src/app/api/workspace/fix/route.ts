@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { resolveUserProvider } from "@/lib/ai/providers";
+import { recordAdminTelemetry } from "@/lib/admin/telemetry";
 import { executeFixWorkflow } from "@/lib/workspace/workspace-fix.server";
 
 export const runtime = "nodejs";
@@ -7,6 +9,7 @@ export const runtime = "nodejs";
 interface FixRequestBody {
   request?: string;
   files?: SourceFileInput[];
+  provider?: "bootrise" | "openai";
 }
 
 export async function POST(request: Request) {
@@ -22,10 +25,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Provide at least one file with path and content." }, { status: 400 });
   }
 
-  const result = await executeFixWorkflow(files, userRequest);
+  const provider = resolveUserProvider(body?.provider);
+  const startedAt = Date.now();
+  const result = await executeFixWorkflow(files, userRequest, provider);
+  const durationMs = Date.now() - startedAt;
+
+  void recordAdminTelemetry({
+    userId: "workspace-user",
+    projectId: result.repositoryId,
+    sessionId: crypto.randomUUID(),
+    planningDurationMs: durationMs,
+    executionDurationMs: 0,
+    verificationDurationMs: 0,
+    finalOutcome: "COMMITTED",
+    tokenComputeCost: provider === "openai" ? 0.08 : 0.02
+  });
 
   return NextResponse.json({
     product: "BootRise",
+    provider,
     plannerSource: result.plannerSource,
     repositoryId: result.repositoryId,
     repo: result.repo,

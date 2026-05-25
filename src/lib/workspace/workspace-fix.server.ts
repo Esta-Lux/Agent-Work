@@ -1,4 +1,5 @@
-import { createOpenAIChangePlan, hasOpenAIKey } from "@/lib/ai/openai-client";
+import { createProviderChangePlan } from "@/lib/ai/llm-router";
+import type { LlmProviderId } from "@/lib/ai/providers";
 import { createDiffPreview } from "@/lib/execution/diff-preview";
 import { createDryRunExecutionResult } from "@/lib/execution/executor";
 import { buildRepoIntelligenceSnapshot, type SourceFileInput } from "@/lib/intelligence/repo-intelligence";
@@ -9,13 +10,15 @@ import { createChangeReport } from "@/lib/reporting/change-report";
 import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
 import { upsertRecord, memoryStore } from "@/lib/persistence/memory-store";
 import type { ChangePlan, RepoIntelligenceSnapshot } from "@/lib/types/core";
+import { buildPlainEnglishFromReport } from "@/lib/workspace/plain-english";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import { runVerificationChecks } from "@/lib/verification/verification-runner";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
 
 export async function executeFixWorkflow(
   files: SourceFileInput[],
-  request: string
+  request: string,
+  provider: LlmProviderId = "bootrise"
 ): Promise<{
   repositoryId: string;
   repo: RepoIntelligenceSnapshot;
@@ -45,14 +48,12 @@ export async function executeFixWorkflow(
   let plan = fallbackPlan;
   let plannerSource = "deterministic";
 
-  if (hasOpenAIKey()) {
-    try {
-      const ai = await createOpenAIChangePlan(request, repo, fallbackPlan);
-      plan = ai.plan;
-      plannerSource = `openai:${ai.model}`;
-    } catch {
-      plannerSource = "deterministic-fallback";
-    }
+  try {
+    const ai = await createProviderChangePlan(provider, request, repo, fallbackPlan);
+    plan = ai.plan;
+    plannerSource = `${ai.provider}:${ai.model}`;
+  } catch {
+    plannerSource = "deterministic-fallback";
   }
 
   upsertRecord(memoryStore.plans, {
@@ -93,6 +94,7 @@ export async function executeFixWorkflow(
     residualRisk: changeReport.residualRisk,
     guidanceForBuilder: buildGuidance(request, plan, potentiallyBroken)
   };
+  report.plainEnglishSummary = buildPlainEnglishFromReport(report);
 
   return {
     repositoryId,

@@ -16,6 +16,7 @@ interface ExportRequestBody {
   repositoryId?: string;
   remoteUrl?: string;
   branch?: string;
+  preferredProvider?: "bootrise" | "openai";
 }
 
 export async function POST(request: Request) {
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
     projectBrief: body.projectBrief,
     files: body.files,
     plan: body.plan,
-    report: body.report
+    report: body.report,
+    preferredProvider: body.preferredProvider
   });
 
   if (body.mode === "github") {

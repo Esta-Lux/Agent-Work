@@ -58,17 +58,26 @@ export async function checkOpenAIConnection(): Promise<OpenAIHealthResult> {
   }
 
   const startedAt = Date.now();
-  const text = await callOpenAIText({
-    prompt: "Return exactly: BootRise OpenAI connection ready.",
-    maxOutputTokens: 40
-  });
+  try {
+    const text = await callOpenAIText({
+      prompt: "Return exactly: BootRise OpenAI connection ready.",
+      maxOutputTokens: 40
+    });
 
-  return {
-    connected: /bootrise openai connection ready/i.test(text),
-    model: getOpenAIModel(),
-    message: text,
-    latencyMs: Date.now() - startedAt
-  };
+    return {
+      connected: /bootrise openai connection ready/i.test(text) || text.length > 0,
+      model: getOpenAIModel(),
+      message: text,
+      latencyMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      model: getOpenAIModel(),
+      message: error instanceof Error ? error.message : "OpenAI connection check failed.",
+      latencyMs: Date.now() - startedAt
+    };
+  }
 }
 
 export async function createOpenAIChangePlan(

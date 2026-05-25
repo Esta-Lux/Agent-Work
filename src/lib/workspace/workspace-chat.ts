@@ -1,4 +1,5 @@
-import type { GithubRepoInsight } from "@/lib/workspace/github-inspector";
+import { formatGithubReviewReply, type GithubRepoInsight } from "@/lib/workspace/github-inspector";
+import { isProductCodeReviewQuestion } from "@/lib/workspace/workspace-code-context";
 import {
   getDiscoveryQuestions,
   isBriefReady,
@@ -44,23 +45,8 @@ export function createWorkspaceChatResponse(
   if (options?.githubReview) {
     const g = options.githubReview;
     phase = "planning";
-    reply = [
-      `GitHub review: ${g.owner}/${g.repo}`,
-      g.description ? `Description: ${g.description}` : "",
-      `Default branch: ${g.defaultBranch}${g.isPrivate ? " (private)" : ""}`,
-      g.stackHints.length ? `Stack signals: ${g.stackHints.join(", ")}` : "",
-      g.topLevelEntries.length ? `Top-level: ${g.topLevelEntries.join(", ")}` : "",
-      "",
-      "BootRise notes:",
-      ...g.bootriseNotes.map((note) => `- ${note}`),
-      "",
-      context.hasCode
-        ? "You already have files pasted — run Fix and report on the module you want changed."
-        : "Paste the files you want to change (e.g. auth, API routes) into Code intake, then run Fix and report."
-    ]
-      .filter(Boolean)
-      .join("\n");
-    suggestedActions.push("Paste key files", "Run Fix and report");
+    reply = formatGithubReviewReply(g);
+    suggestedActions.push("Connect repo & import files", "Run Fix and report", "Save project");
     if (g.fetchError) {
       thinkingSteps.push({ id: "github", label: "GitHub metadata", status: "done", detail: g.fetchError });
     } else {
@@ -83,6 +69,14 @@ export function createWorkspaceChatResponse(
       "Export does not replace a fix report — run Fix and report first if you need change evidence."
     ].join("\n");
     suggestedActions.push("Download project bundle", "Prepare GitHub push");
+    return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
+  }
+
+  if (isProductCodeReviewQuestion(message) && context.hasCode) {
+    phase = "review";
+    reply = "Analyzing your question against loaded source files…";
+    suggestedActions.push("Import full repo if navigation files are missing", "Run Fix and report on one specific change");
+    thinkingSteps.push({ id: "review", label: "Code review", status: "active", detail: "Waiting for NVIDIA/OpenAI" });
     return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
   }
 
@@ -139,7 +133,7 @@ export function createWorkspaceChatResponse(
     return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
   }
 
-  if (context.lastReport) {
+  if (context.lastReport && !isProductCodeReviewQuestion(message)) {
     phase = "review";
     const r = context.lastReport;
     reply = [

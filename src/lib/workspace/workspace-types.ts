@@ -36,6 +36,7 @@ export interface WorkspaceFixReport {
   verificationSummary: ReturnType<typeof createVerificationSummary>;
   residualRisk: string[];
   guidanceForBuilder: string[];
+  plainEnglishSummary?: string;
 }
 
 export interface WorkspaceChatContext {
@@ -43,6 +44,8 @@ export interface WorkspaceChatContext {
   hasCode?: boolean;
   loadedFilePaths?: string[];
   lastReport?: WorkspaceFixReport | null;
+  githubUrl?: string | null;
+  githubBranch?: string | null;
 }
 
 export interface ThinkingStep {
@@ -67,6 +70,7 @@ export interface WorkspaceChatResult {
   thinkingSteps: ThinkingStep[];
   fileActivity: FileActivity[];
   triggerFix?: boolean;
+  plainEnglishSummary?: string;
 }
 
 export const FIX_PIPELINE_STEPS: ThinkingStep[] = [
