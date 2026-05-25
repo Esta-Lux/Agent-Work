@@ -22,6 +22,22 @@ interface BuilderResponse {
   error?: string;
 }
 
+interface BuilderExecutionResult {
+  id: string;
+  workspacePath: string;
+  changedFiles: string[];
+  logs: Array<{ stage: string; status: string; message: string }>;
+  verification: Array<{ name: string; status: string; evidence: string }>;
+  repairAttempts: Array<{ attempt: number; status: string; evidence: string }>;
+  preview: { mode: string; url: string | null; instructions: string[] };
+  githubPr: { status: string; reason: string };
+}
+
+interface BuilderExecuteResponse {
+  result?: BuilderExecutionResult;
+  error?: string;
+}
+
 const initialForm: BuilderForm = {
   idea: "Build a landing page for a mechanic shop with online booking",
   appType: "booking website",
@@ -49,9 +65,11 @@ export function BuilderOSConsole() {
   const [form, setForm] = useState<BuilderForm>(initialForm);
   const [run, setRun] = useState<BuilderRun | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [execution, setExecution] = useState<BuilderExecutionResult | null>(null);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
 
   const activeFile = useMemo(() => run?.files.find((file) => file.path === selectedFile) ?? run?.files[0], [run, selectedFile]);
 
@@ -69,6 +87,7 @@ export function BuilderOSConsole() {
       const data = (await response.json()) as BuilderResponse;
       if (!response.ok) throw new Error(data.error ?? "Builder run failed.");
       setRun(data.run);
+      setExecution(null);
       setSelectedFile(data.run.files[0]?.path ?? null);
       setStatus("Blueprint and files ready for review");
     } catch (caught) {
@@ -76,6 +95,33 @@ export function BuilderOSConsole() {
       setStatus("Blocked");
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  async function executeProjectWorkspace() {
+    if (!run) return;
+    setIsExecuting(true);
+    setError(null);
+    setStatus("Writing approved project workspace");
+
+    try {
+      const response = await fetch("/api/builder/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run, approved: true })
+      });
+      const data = (await response.json()) as BuilderExecuteResponse;
+      if (!response.ok && !data.result) throw new Error(data.error ?? "Workspace execution failed.");
+      if (data.result) {
+        setExecution(data.result);
+        const failed = data.result.verification.some((check) => check.status === "fail");
+        setStatus(failed ? "Workspace written with verification issues" : "Workspace written and statically verified");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Workspace execution failed.");
+      setStatus("Blocked");
+    } finally {
+      setIsExecuting(false);
     }
   }
 
@@ -143,6 +189,15 @@ export function BuilderOSConsole() {
           >
             {isRunning ? "Generating" : "Generate Blueprint + Repo"}
           </button>
+
+          <button
+            className="mt-2 w-full rounded border border-ink bg-white px-4 py-3 text-sm font-semibold text-ink disabled:border-line disabled:text-steel"
+            disabled={!run || isExecuting}
+            onClick={() => void executeProjectWorkspace()}
+            type="button"
+          >
+            {isExecuting ? "Writing Workspace" : "Build Project Workspace"}
+          </button>
         </div>
 
         <div className="space-y-4">
@@ -191,6 +246,21 @@ export function BuilderOSConsole() {
                     ))}
                   </div>
                 </Panel>
+
+                <Panel title="Cost Controls + Model Router">
+                  <div className="space-y-2">
+                    {run.modelRouter.map((item) => (
+                      <div className="rounded bg-cloud p-3" key={item.task}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-ink">{item.task}</p>
+                          <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-graphite">{item.tier}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-steel">{item.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <List title="Token guardrails" items={run.costControls} />
+                </Panel>
               </div>
 
               <div className="space-y-4">
@@ -223,6 +293,12 @@ export function BuilderOSConsole() {
                   </div>
                 </Panel>
 
+                <Panel title="Patch Preview">
+                  <pre className="max-h-72 overflow-auto rounded bg-[#0d1418] p-3 text-xs leading-5 text-[#e8eef2]">
+                    {run.unifiedDiff}
+                  </pre>
+                </Panel>
+
                 <Panel title="QA + Quality Score">
                   <div className="grid gap-3 md:grid-cols-5">
                     {Object.entries(run.qualityScore).map(([key, value]) => (
@@ -241,6 +317,50 @@ export function BuilderOSConsole() {
                     ))}
                   </div>
                 </Panel>
+
+                {execution ? (
+                  <Panel title="Workspace Execution">
+                    <Mini label="Workspace" value={execution.workspacePath} />
+                    <Mini label="GitHub PR Gate" value={execution.githubPr.status} />
+                    <p className="mt-2 text-sm leading-6 text-steel">{execution.githubPr.reason}</p>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-steel">Verification</p>
+                        <div className="mt-2 space-y-2">
+                          {execution.verification.map((check) => (
+                            <div className="rounded bg-cloud p-3" key={check.name}>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-ink">{check.name}</p>
+                                <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-graphite">{check.status}</span>
+                              </div>
+                              <p className="mt-1 text-sm text-steel">{check.evidence}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-steel">Execution Log</p>
+                        <div className="mt-2 space-y-2">
+                          {execution.logs.slice(0, 10).map((log, index) => (
+                            <div className="rounded bg-cloud p-3" key={`${log.stage}-${index}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-ink">{log.stage}</p>
+                                <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-graphite">{log.status}</span>
+                              </div>
+                              <p className="mt-1 text-sm text-steel">{log.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <List title="Preview instructions" items={execution.preview.instructions} />
+                    <List title="Changed files" items={execution.changedFiles.slice(0, 16)} />
+                    <List title="Repair loop" items={execution.repairAttempts.map((attempt) => `Attempt ${attempt.attempt}: ${attempt.evidence}`)} />
+                  </Panel>
+                ) : null}
               </div>
             </div>
           ) : (

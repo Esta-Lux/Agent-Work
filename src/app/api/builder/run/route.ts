@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAppBuilder, type BuilderIntake } from "@/lib/builder/app-builder";
+import { getTemplateMarketplace, runAppBuilder, type BuilderIntake } from "@/lib/builder/app-builder";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Partial<BuilderIntake> | null;
@@ -22,6 +22,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     product: "BootRise",
-    run: runAppBuilder(intake)
+    run: runAppBuilder(intake),
+    templateMarketplace: getTemplateMarketplace()
   });
 }

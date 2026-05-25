@@ -52,6 +52,7 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/ai/health`
   - `POST /api/ai/admin-chat`
   - `POST /api/ai/planner`
+  - `POST /api/builder/execute`
   - `POST /api/builder/run`
   - `GET /api/infrastructure/status`
   - `POST /api/infrastructure/git-sync`
@@ -273,6 +274,17 @@ curl -X POST http://localhost:3000/api/builder/run \
   -H "Content-Type: application/json" \
   -d '{"idea":"Build a landing page for a mechanic shop with online booking","appType":"booking website","targetUsers":"local customers","brandStyle":"clean industrial","authNeeded":false,"paymentsNeeded":true,"databaseNeeded":true,"adminPanelNeeded":true,"deploymentTarget":"vercel"}'
 ```
+
+Write an approved generated project into a bounded BootRise workspace:
+
+```bash
+# Use the run object returned by /api/builder/run.
+curl -X POST http://localhost:3000/api/builder/execute \
+  -H "Content-Type: application/json" \
+  -d '{"approved":true,"run":{...}}'
+```
+
+Generated workspaces are written under `.bootrise/builds/` and are ignored by Git.
 
 ## Product Loop
 
