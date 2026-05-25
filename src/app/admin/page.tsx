@@ -1,4 +1,5 @@
 import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
+import { DeepTestPanel } from "@/components/deep-test-panel";
 import { InfrastructureControlPanel } from "@/components/infrastructure-control-panel";
 import { MissionControlDashboard } from "@/components/mission-control-dashboard";
 import { ProductionReadinessPanel } from "@/components/production-readiness-panel";
@@ -28,6 +29,7 @@ export default function AdminPage() {
       </section>
 
       <AdminAIChatbox />
+      <DeepTestPanel />
       <MissionControlDashboard />
       <UnitEconomicsPanel />
       <InfrastructureControlPanel />

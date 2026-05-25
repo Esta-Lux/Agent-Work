@@ -46,6 +46,7 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/self-healing`
   - `GET /api/admin/telemetry`
   - `POST /api/admin/telemetry`
+  - `GET /api/admin/deep-tests`
   - `GET /api/admin/readiness`
   - `GET /api/admin/unit-economics`
   - `GET /api/ai/health`
@@ -256,6 +257,12 @@ Read pricing and cost scenarios:
 
 ```bash
 curl http://localhost:3000/api/admin/unit-economics
+```
+
+Read the deep QA report:
+
+```bash
+curl http://localhost:3000/api/admin/deep-tests
 ```
 
 ## Product Loop

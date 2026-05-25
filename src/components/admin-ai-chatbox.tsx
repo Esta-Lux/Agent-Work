@@ -19,12 +19,26 @@ interface WebsitePlan {
   risks: string[];
 }
 
+interface OperatorPlan {
+  mission: string;
+  operatingMode: string;
+  phases: Array<{
+    name: string;
+    objective: string;
+    outputs: string[];
+  }>;
+  acceptanceChecks: string[];
+  blockers: string[];
+  immediateNextActions: string[];
+}
+
 interface AdminChatResponse {
   reply: string;
   model: string;
   provider: string;
   connected: boolean;
   websitePlan: WebsitePlan;
+  operatorPlan: OperatorPlan;
   message?: string;
   error?: string;
 }
@@ -48,6 +62,7 @@ export function AdminAIChatbox() {
     }
   ]);
   const [plan, setPlan] = useState<WebsitePlan | null>(null);
+  const [operatorPlan, setOperatorPlan] = useState<OperatorPlan | null>(null);
   const [status, setStatus] = useState("Ready");
   const [isSending, setIsSending] = useState(false);
 
@@ -94,6 +109,7 @@ export function AdminAIChatbox() {
         }
       ]);
       setPlan(data.websitePlan);
+      setOperatorPlan(data.operatorPlan);
       setStatus(data.connected ? `Responded with ${data.provider}` : data.message ?? "BootRise fallback responded");
     } catch (error) {
       setMessages((current) => [
@@ -122,6 +138,7 @@ export function AdminAIChatbox() {
       }
     ]);
     setPlan(null);
+    setOperatorPlan(null);
     setInput(promptStarters[0]);
     setStatus("Ready");
   }
@@ -220,9 +237,46 @@ export function AdminAIChatbox() {
           </div>
         </div>
 
-        <aside className="rounded border border-line bg-white p-4">
-          <p className="text-sm font-semibold uppercase text-steel">Generated Website Plan</p>
-          {plan ? (
+        <aside className="space-y-4">
+          <div className="rounded border border-line bg-white p-4">
+            <p className="text-sm font-semibold uppercase text-steel">Operator Contract</p>
+            {operatorPlan ? (
+              <div className="mt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xl font-semibold text-ink">{operatorPlan.operatingMode}</h3>
+                  <span className="rounded bg-ink px-2 py-1 text-xs font-semibold text-white">active</span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-graphite">{operatorPlan.mission}</p>
+                <div className="mt-4 space-y-3">
+                  {operatorPlan.phases.map((phase) => (
+                    <div className="rounded border border-line bg-cloud p-3" key={phase.name}>
+                      <p className="text-sm font-semibold text-ink">{phase.name}</p>
+                      <p className="mt-1 text-sm leading-6 text-steel">{phase.objective}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {phase.outputs.map((output) => (
+                          <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-graphite" key={output}>
+                            {output}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <CheckList title="Acceptance" items={operatorPlan.acceptanceChecks} />
+                  <CheckList title="Blockers" items={operatorPlan.blockers} />
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 rounded border border-dashed border-line bg-cloud p-5 text-sm leading-6 text-steel">
+                Send a message to generate an operator contract with phases, blockers, and acceptance checks.
+              </div>
+            )}
+          </div>
+
+          <div className="rounded border border-line bg-white p-4">
+            <p className="text-sm font-semibold uppercase text-steel">Generated Website Plan</p>
+            {plan ? (
             <div className="mt-3">
               <h3 className="text-xl font-semibold text-ink">{plan.name}</h3>
               <div className="mt-4 space-y-2">
@@ -249,10 +303,24 @@ export function AdminAIChatbox() {
             <div className="mt-3 rounded border border-dashed border-line bg-cloud p-5 text-sm leading-6 text-steel">
               Send a message or click Create Website Plan to generate a structured site plan here.
             </div>
-          )}
+            )}
+          </div>
         </aside>
       </div>
     </section>
+  );
+}
+
+function CheckList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded bg-cloud p-3">
+      <p className="text-xs font-semibold uppercase text-steel">{title}</p>
+      <ul className="mt-2 space-y-2 text-sm leading-6 text-graphite">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

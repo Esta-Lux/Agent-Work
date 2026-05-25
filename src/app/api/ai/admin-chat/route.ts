@@ -29,7 +29,8 @@ export async function POST(request: Request) {
         provider: "openai",
         connected: true,
         reply: result.text,
-        websitePlan: createUserFacingWebsitePlan(message)
+        websitePlan: createUserFacingWebsitePlan(message),
+        operatorPlan: createBootRiseChatResponse(message).operatorPlan
       });
     } catch (error) {
       const fallback = createBootRiseChatResponse(message);
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
         connected: false,
         reply: fallback.text,
         actions: fallback.actions,
+        operatorPlan: fallback.operatorPlan,
         websitePlan: createUserFacingWebsitePlan(message),
         message: error instanceof Error ? error.message : "OpenAI chat failed; BootRise fallback responded."
       });
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
     connected: selectedModel !== "openai",
     reply: fallback.text,
     actions: fallback.actions,
+    operatorPlan: fallback.operatorPlan,
     websitePlan: createUserFacingWebsitePlan(message),
     message:
       selectedModel === "openai"
