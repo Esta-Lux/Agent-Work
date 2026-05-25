@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 
@@ -87,11 +87,7 @@ export function AdminConsole() {
   const [status, setStatus] = useState("Loading");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadOverview();
-  }, []);
-
-  async function loadOverview() {
+  const loadOverview = useCallback(async () => {
     setStatus("Loading");
     setLoadError(null);
     try {
@@ -124,7 +120,11 @@ export function AdminConsole() {
       setLoadError(caught instanceof Error ? caught.message : "Failed to load admin overview.");
       setStatus("Degraded");
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
 
   async function sendAdminMessage() {
     if (!message.trim()) return;

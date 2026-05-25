@@ -135,7 +135,7 @@ async function runPrimaryCodeReview(input: {
     `Relevant source files (${relevant.length} of ${input.files.length} loaded):`,
     contextBlock || "(no excerpts — ask user to re-import)",
     "",
-    "Answer the user question directly. Include a Plain English section for non-engineers."
+    "Answer the user question directly. Use clear language throughout. Do not include a heading named Plain English."
   ].join("\n");
 
   const result = await createProviderChatResponse({
@@ -145,7 +145,8 @@ async function runPrimaryCodeReview(input: {
     system
   });
 
-  const plainMatch = result.text.match(/##\s*Plain English\s*([\s\S]*?)(?=##\s*Suggested|$)/i);
+  const normalizedText = normalizeAgentReply(result.text);
+  const plainMatch = normalizedText.match(/##\s*Summary\s*([\s\S]*?)(?=##\s*Suggested|$)/i);
   const plainEnglishSummary = plainMatch?.[1]?.trim() ?? null;
 
   const fileActivity = relevant.map((f) => ({
@@ -157,7 +158,7 @@ async function runPrimaryCodeReview(input: {
   return {
     model: result.model,
     result: {
-      reply: result.text,
+      reply: normalizedText,
       plainEnglishSummary: plainEnglishSummary ?? undefined,
       phase: "review" as const,
       discoveryQuestions: [],
@@ -185,4 +186,22 @@ async function runPrimaryCodeReview(input: {
       fileActivity
     }
   };
+}
+
+function normalizeAgentReply(reply: string): string {
+  const withoutPlainEnglishHeading = reply.replace(/^#+\s*Plain English\s*$/gim, "").replace(/^In plain English\s*$/gim, "");
+  const sections = withoutPlainEnglishHeading
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  return sections
+    .filter((part) => {
+      const key = part.toLowerCase().replace(/\W+/g, " ").trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join("\n\n")
+    .trim();
 }

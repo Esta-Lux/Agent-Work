@@ -112,10 +112,9 @@ export function buildCodeReviewSystemPrompt(productName?: string): string {
     "Structure your reply:",
     "## Answer",
     "(direct response)",
-    "## Plain English",
-    "(3-6 bullets for a non-technical founder: what SnapRoad is, what you noticed, what to improve)",
     "## Suggested next steps",
     "(2-4 concrete actions in the real repo)",
+    "Use clear language throughout. Do not add a separate Plain English section.",
     "Do not repeat an unrelated previous fix report."
   ]
     .filter(Boolean)

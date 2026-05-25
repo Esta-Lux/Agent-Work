@@ -32,7 +32,8 @@ export function createWorkspaceChatResponse(
       status: "done",
       detail: `${context.loadedFilePaths?.length ?? 0} file(s) in workspace`
     },
-    { id: "respond", label: "Compose guidance", status: "done" }
+    { id: "model", label: "Select response path", status: "done", detail: "Use loaded files first; call NVIDIA/OpenAI only when useful" },
+    { id: "respond", label: "Publish answer", status: "done" }
   ];
 
   if (isCapabilitiesQuestion(normalized)) {
@@ -69,6 +70,21 @@ export function createWorkspaceChatResponse(
       "Export does not replace a fix report — run Fix and report first if you need change evidence."
     ].join("\n");
     suggestedActions.push("Download project bundle", "Prepare GitHub push");
+    return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
+  }
+
+  if (isProjectOverviewQuestion(normalized) && context.hasCode) {
+    phase = "review";
+    const paths = context.loadedFilePaths ?? [];
+    reply = [
+      inferProjectOverview(paths, message),
+      "",
+      "Files used as evidence:",
+      ...paths.slice(0, 12).map((path) => `- ${path}`),
+      "",
+      "Next: ask about one screen or flow, then run Fix and report when you want a change plan."
+    ].join("\n");
+    suggestedActions.push("Review specific screen", "Run Fix and report", "Open file tree");
     return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
   }
 
@@ -201,6 +217,35 @@ function wantsFixRun(normalized: string): boolean {
   );
 }
 
+function isProjectOverviewQuestion(normalized: string): boolean {
+  return (
+    normalized.startsWith("what is ") ||
+    normalized.includes("what is this project") ||
+    normalized.includes("explain this repo") ||
+    normalized.includes("what does this app do")
+  );
+}
+
+function inferProjectOverview(paths: string[], message: string): string {
+  const text = paths.join(" ").toLowerCase();
+  const requestedName = message.replace(/\?/g, "").replace(/^what is\s+/i, "").trim();
+  const appName = requestedName || "this project";
+
+  if (/snaproad|mapbox|route|navigation|location|mobile|react native|expo/i.test(text)) {
+    return `${appName} looks like a navigation or route-planning product. The loaded files point to a mobile app with Mapbox/navigation pieces, API or package configuration, and project documentation. I would treat the map screen, turn-card UI, route APIs, auth/session handling, and location permissions as the highest-risk areas before changing it.`;
+  }
+
+  if (/stripe|billing|payment|subscription/i.test(text)) {
+    return `${appName} looks like a product with billing or subscription flows. Payment routes, webhooks, and account state should be reviewed before changing user-facing screens.`;
+  }
+
+  if (/admin|dashboard|analytics|report/i.test(text)) {
+    return `${appName} looks like an admin or dashboard application. The key risks are data loading, permissions, table state, and responsive layout.`;
+  }
+
+  return `${appName} is loaded into BootRise, but I only have file paths in this chat context. The file tree still gives enough signal to choose likely areas, and Fix and report can inspect pasted file contents for a real blast-radius report.`;
+}
+
 function summarizeIntent(message: string): string {
   const trimmed = message.trim().slice(0, 80);
   return trimmed.length > 0 ? trimmed : "General workspace question";
@@ -208,13 +253,12 @@ function summarizeIntent(message: string): string {
 
 function buildCapabilitiesReply(context: WorkspaceChatContext): string {
   return [
-    "BootRise helps you bootstrap a startup codebase end-to-end:",
+    "BootRise helps you understand and change a codebase with visible evidence:",
     "",
-    "1. Discovery — product brief and guided questions so scope stays clear on long builds.",
-    "2. Code intake — paste files; I map symbols and dependencies.",
-    "3. Fix and report — plan → blast radius → diff → what was fixed / what may break / how.",
-    "4. Feature advice — whether additions help or hurt your users before you build them.",
-    "5. Export — download a bundle or prepare a GitHub push.",
+    "1. Connect or paste files, then browse the project structure.",
+    "2. Ask a question and watch which files are being read.",
+    "3. Run Fix and report to get plan, blast radius, diff, verification, and next action.",
+    "4. Export a bundle or prepare GitHub push steps after review.",
     "",
     context.hasCode
       ? `You have ${context.loadedFilePaths?.length ?? 0} file(s) loaded. Ask for a fix or click Fix and report.`
