@@ -46,6 +46,9 @@ The core promise is simple: changes start with understanding and end with eviden
   - `GET /api/self-healing`
   - `GET /api/admin/telemetry`
   - `POST /api/admin/telemetry`
+  - `GET /api/admin/readiness`
+  - `GET /api/ai/health`
+  - `POST /api/ai/planner`
   - `GET /api/infrastructure/status`
   - `POST /api/infrastructure/git-sync`
   - `POST /api/infrastructure/preview-sessions`
@@ -215,6 +218,28 @@ curl -X POST http://localhost:3000/api/infrastructure/git-sync \
 curl -X POST http://localhost:3000/api/infrastructure/streams \
   -H "Content-Type: application/json" \
   -d '{"repositoryId":"demo","runtime":"android","transport":"novnc","exposedPorts":[3000,8080]}'
+```
+
+Check the OpenAI backend connection:
+
+```bash
+curl http://localhost:3000/api/ai/health
+```
+
+Create an OpenAI-backed plan when `OPENAI_API_KEY` is configured:
+
+```bash
+curl -X POST http://localhost:3000/api/ai/planner \
+  -H "Content-Type: application/json" \
+  -d '{"request":"Add organization permissions safely"}'
+```
+
+`POST /api/plans` also uses the OpenAI planner automatically when `OPENAI_API_KEY` is available. If the provider is unavailable, BootRise returns the deterministic planning path so the product workflow keeps running.
+
+Read the production readiness report:
+
+```bash
+curl http://localhost:3000/api/admin/readiness
 ```
 
 ## Product Loop

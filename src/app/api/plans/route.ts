@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createOpenAIChangePlan, getOpenAIModel, hasOpenAIKey } from "@/lib/ai/openai-client";
 import { demoRepo } from "@/lib/demo/demo-repo";
 import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { createInitialChangePlan } from "@/lib/planning/planner";
@@ -30,7 +31,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const plan = createInitialChangePlan(userRequest, demoRepo);
+  const fallbackPlan = createInitialChangePlan(userRequest, demoRepo);
+  let plan = fallbackPlan;
+  let plannerSource: "openai" | "deterministic-fallback" = "deterministic-fallback";
+  let plannerMessage = hasOpenAIKey()
+    ? "OpenAI planner was unavailable; deterministic planner produced the plan."
+    : "OPENAI_API_KEY is not configured; deterministic planner produced the plan.";
+
+  if (hasOpenAIKey()) {
+    try {
+      const aiPlan = await createOpenAIChangePlan(userRequest, demoRepo, fallbackPlan);
+      plan = aiPlan.plan;
+      plannerSource = "openai";
+      plannerMessage = `Plan generated with OpenAI ${aiPlan.model}.`;
+    } catch (error) {
+      plannerMessage = error instanceof Error ? error.message : plannerMessage;
+    }
+  }
+
   const now = new Date().toISOString();
 
   upsertRecord(memoryStore.plans, {
@@ -50,6 +68,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     product: "BootRise",
+    plannerSource,
+    model: plannerSource === "openai" ? getOpenAIModel() : null,
+    plannerMessage,
     plan,
     health: createRepoHealthSummary(demoRepo),
     verification: createVerificationSummary(plan),

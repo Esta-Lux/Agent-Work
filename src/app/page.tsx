@@ -35,6 +35,9 @@ export default function Home() {
               <a className="rounded bg-ink px-4 py-2 text-sm font-semibold text-white" href="#workspace">
                 Open Workspace
               </a>
+              <a className="rounded border border-line px-4 py-2 text-sm font-semibold text-graphite" href="/admin">
+                Admin
+              </a>
             </div>
           </nav>
 
