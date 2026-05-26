@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { getDevPreviewSession } from "@/lib/workspace/preview-dev-runner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const sessionId = new URL(request.url).searchParams.get("sessionId")?.trim();
+  return withWorkspaceAuth(request, async (_ctx, req) => {
+  const sessionId = new URL(req.url).searchParams.get("sessionId")?.trim();
   if (!sessionId) {
     return NextResponse.json({ error: "sessionId is required." }, { status: 400 });
   }
@@ -18,5 +20,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     product: "BootRise",
     session
+  });
   });
 }

@@ -26,14 +26,17 @@ import { createWorkspacePreviewSession, getPreviewSessionRoot } from "@/lib/work
 import type { ProposedPatch, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import { runVerificationChecks } from "@/lib/verification/verification-runner";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
-import { runControlGate, assertApproveAllowed, clearControlTaskSession } from "@/lib/control/control-gate";
+import { assertApproveAllowed, clearControlTaskSession, runControlGate } from "@/lib/control/control-gate";
+import { evaluateContextGate } from "@/lib/control/context-gate";
+import { runControlLayerBeforePatch } from "@/lib/control/control-orchestrator";
 import { recordControlEvent } from "@/lib/control/control-telemetry";
 import type { ControlLayerSummary } from "@/lib/control/types";
 
 export async function createPendingFixPlan(
   files: SourceFileInput[],
   request: string,
-  provider: LlmProviderId = "bootrise"
+  provider: LlmProviderId = "bootrise",
+  options?: { orgId?: string; projectId?: string; userId?: string }
 ): Promise<{
   repositoryId: string;
   repo: RepoIntelligenceSnapshot;
@@ -61,37 +64,101 @@ export async function createPendingFixPlan(
   const blast = await traceBlastRadius(repositoryId, rootSymbol);
 
   const scaffoldPlan = createInitialChangePlan(request, repo);
+  const contextGate = evaluateContextGate({ request, files, targetFiles: scaffoldPlan.impact.files });
+  const projectId = options?.projectId ?? repositoryId;
+  const orgId = options?.orgId ?? "org_default";
+  const userId = options?.userId ?? "workspace-user";
+
+  if (contextGate.status === "blocked") {
+    const pendingFixId = createPendingFixId();
+    const controlLayer = await runControlLayerBeforePatch({
+      orgId,
+      userId,
+      projectId,
+      repositoryId,
+      request,
+      files,
+      plan: scaffoldPlan,
+      patches: []
+    });
+    savePendingFix(
+      {
+        id: pendingFixId,
+        repositoryId,
+        request,
+        plan: scaffoldPlan,
+        patches: [],
+        filesSnapshot: files,
+        provider,
+        plannerSource: "control-gate-blocked",
+        status: "pending_approval",
+        createdAt: now,
+        controlLayer
+      },
+      { orgId, projectId }
+    );
+    const report = await buildReportFromPatches({
+      repositoryId,
+      plan: scaffoldPlan,
+      patches: [],
+      blast,
+      request,
+      patchSource: "blocked",
+      pendingFixId,
+      approvalStatus: "pending_approval",
+      controlLayer
+    });
+    return {
+      repositoryId,
+      repo,
+      health: createRepoHealthSummary(repo),
+      report,
+      plannerSource: "control-gate-blocked",
+      pendingFixId
+    };
+  }
+
   const ai = await createProviderChangePlan(provider, request, repo, scaffoldPlan);
   const plan = ai.plan;
   const plannerSource = ai.provider === "openai" ? `chatgpt:${ai.model}` : `bootrise:${ai.model}`;
 
-  const { patches, source: patchSource } = await generateRealPatches({ provider, request, files, plan });
+  let patches: ProposedPatch[] = [];
+  let patchSource = "none";
+  if (contextGate.status === "proceed_with_assumptions") {
+    const generated = await generateRealPatches({ provider, request, files, plan });
+    patches = generated.patches;
+    patchSource = generated.source;
+  }
+
   const pendingFixId = createPendingFixId();
-  const controlLayer = await runControlGate({
-    request,
-    plan,
-    files,
-    patches,
+  const controlLayer = await runControlLayerBeforePatch({
+    orgId,
+    userId,
+    projectId,
     repositoryId,
-    blastRadius: [
-      ...plan.impact.blastRadius,
-      ...blast.impactedSymbols.map((s) => `${s.filePath} (${s.symbolName})`)
-    ]
+    request,
+    files,
+    plan,
+    patches,
+    assumptionsApproved: contextGate.status === "proceed_with_assumptions"
   });
 
-  savePendingFix({
-    id: pendingFixId,
-    repositoryId,
-    request,
-    plan,
-    patches,
-    filesSnapshot: files,
-    provider,
-    plannerSource,
-    status: "pending_approval",
-    createdAt: now,
-    controlLayer
-  });
+  savePendingFix(
+    {
+      id: pendingFixId,
+      repositoryId,
+      request,
+      plan,
+      patches,
+      filesSnapshot: files,
+      provider,
+      plannerSource,
+      status: "pending_approval",
+      createdAt: now,
+      controlLayer
+    },
+    { orgId: options?.orgId, projectId: options?.projectId }
+  );
 
   upsertRecord(memoryStore.plans, {
     id: plan.id,
@@ -129,7 +196,7 @@ export async function createPendingFixPlan(
 
 export async function approvePendingFix(
   pendingFixId: string,
-  options?: { sandboxPassed?: boolean }
+  options?: { sandboxPassed?: boolean; orgId?: string }
 ): Promise<{
   files: SourceFileInput[];
   report: WorkspaceFixReport;
@@ -138,7 +205,7 @@ export async function approvePendingFix(
   devPreviewStatus: string;
   devPreviewLog: string[];
 }> {
-  const pending = await getPendingFix(pendingFixId);
+  const pending = await getPendingFix(pendingFixId, options?.orgId);
   if (!pending) throw new Error("Pending fix not found. Run Fix and report again.");
   if (pending.status === "rejected") throw new Error("This plan was rejected. Create a new fix request.");
   if (pending.status === "approved") throw new Error("This plan was already approved.");
@@ -245,8 +312,8 @@ export async function approvePendingFix(
   };
 }
 
-export async function rejectPendingFix(pendingFixId: string): Promise<void> {
-  const pending = await getPendingFix(pendingFixId);
+export async function rejectPendingFix(pendingFixId: string, orgId?: string): Promise<void> {
+  const pending = await getPendingFix(pendingFixId, orgId);
   if (!pending) throw new Error("Pending fix not found.");
   void recordControlEvent({
     action: "fix_rejected",

@@ -4,14 +4,15 @@ import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { recordAudit } from "@/lib/admin/audit-log";
 import { recordAdminTelemetry } from "@/lib/admin/telemetry";
 import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
-import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { runWorkspaceSandboxVerify } from "@/lib/workspace/workspace-sandbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as {
+  return withWorkspaceAuth(request, async (ctx, req) => {
+  const body = (await req.json().catch(() => null)) as {
     files?: SourceFileInput[];
     repositoryId?: string;
   } | null;
@@ -30,8 +31,8 @@ export async function POST(request: Request) {
   }
 
   const repositoryId = body.repositoryId ?? `repo_${Date.now()}`;
-  const orgId = resolveOrgId(request);
-  const userId = resolveActorId(request);
+  const orgId = ctx.orgId;
+  const userId = ctx.user.id;
   let route;
   try {
     route = await assertModelRouteAllowed({
@@ -53,10 +54,10 @@ export async function POST(request: Request) {
   const startedAt = Date.now();
   const result = await runWorkspaceSandboxVerify(body.files, repositoryId);
   void recordModelUsage(route, { orgId, userId, projectId: repositoryId }, result.status === "passed" ? "succeeded" : "failed", result.status);
-  void recordAudit({ actor: "workspace-user", action: "sandbox_verify", detail: result.status });
+  void recordAudit({ actor: userId, action: "sandbox_verify", detail: result.status });
 
   void recordAdminTelemetry({
-    userId: "workspace-user",
+    userId,
     projectId: repositoryId,
     sessionId: result.sessionId,
     planningDurationMs: 0,
@@ -67,4 +68,5 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ product: "BootRise", ...result });
+  });
 }

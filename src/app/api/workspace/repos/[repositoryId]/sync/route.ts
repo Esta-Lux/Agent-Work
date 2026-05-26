@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { importGithubFiles } from "@/lib/workspace/github-repo-service";
 import {
   getRepoManifest,
@@ -16,12 +17,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: Request, context: { params: { repositoryId: string } }) {
+  return withWorkspaceAuth(request, async (_ctx, req) => {
   const repositoryId = context.params.repositoryId?.trim();
   if (!repositoryId) {
     return NextResponse.json({ error: "repositoryId is required." }, { status: 400 });
   }
 
-  const body = (await request.json().catch(() => null)) as {
+  const body = (await req.json().catch(() => null)) as {
     remoteUrl?: string;
     branch?: string;
     mode?: "key" | "full";
@@ -103,4 +105,5 @@ export async function POST(request: Request, context: { params: { repositoryId: 
     const message = error instanceof Error ? error.message : "Repo sync failed.";
     return NextResponse.json({ error: message }, { status: 502 });
   }
+  });
 }

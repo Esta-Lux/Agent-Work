@@ -1,24 +1,27 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
+import { withAdminAuth } from "@/lib/auth/with-admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const dir = join(process.cwd(), "supabase", "migrations");
-  const files = readdirSync(dir)
-    .filter((name) => name.endsWith(".sql"))
-    .sort();
+export async function GET(request: Request) {
+  return withAdminAuth(request, async () => {
+    const dir = join(process.cwd(), "supabase", "migrations");
+    const files = readdirSync(dir)
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
 
-  const parts = files.map((name) => {
-    const sql = readFileSync(join(dir, name), "utf8");
-    return `-- ═══ ${name} ═══\n${sql}`;
-  });
+    const parts = files.map((name) => {
+      const sql = readFileSync(join(dir, name), "utf8");
+      return `-- ═══ ${name} ═══\n${sql}`;
+    });
 
-  return NextResponse.json({
-    product: "BootRise",
-    files,
-    sql: parts.join("\n\n")
+    return NextResponse.json({
+      product: "BootRise",
+      files,
+      sql: parts.join("\n\n")
+    });
   });
 }

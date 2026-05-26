@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { createExportBundle } from "@/lib/workspace/workspace-export";
@@ -25,7 +26,8 @@ interface ExportRequestBody {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as ExportRequestBody | null;
+  return withWorkspaceAuth(request, async (_ctx, req) => {
+  const body = (await req.json().catch(() => null)) as ExportRequestBody | null;
 
   if (!body?.files || body.files.length === 0) {
     return NextResponse.json({ error: "Provide files to export." }, { status: 400 });
@@ -139,5 +141,6 @@ export async function POST(request: Request) {
     bundle,
     downloadName,
     downloadPayload: JSON.stringify(bundle, null, 2)
+  });
   });
 }

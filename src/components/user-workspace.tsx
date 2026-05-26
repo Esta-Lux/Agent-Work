@@ -14,6 +14,9 @@ import type { ChatControlSummary } from "@/lib/control/types";
 import { ProjectDashboard } from "@/components/project-dashboard";
 import { WebPreviewPanel } from "@/components/web-preview-panel";
 import { WorkspaceLivingLedger } from "@/components/workspace-living-ledger";
+import { ProjectBrainPanel } from "@/components/project-brain-panel";
+import { SecurityPanel } from "@/components/security-panel";
+import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
 import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
 import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { WorkspaceChatMessage } from "@/components/workspace-chat-message";
@@ -73,6 +76,10 @@ const DEFAULT_BRIEF: ProjectBrief = {
   longBuild: false
 };
 
+function workspaceFetch(input: string, init?: RequestInit) {
+  return fetch(input, { credentials: "include", ...init });
+}
+
 const WELCOME: ChatMessage = {
   role: "assistant",
   content: [
@@ -130,7 +137,6 @@ export function UserWorkspace() {
   const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
   const [previewFramework, setPreviewFramework] = useState<string | null>(null);
   const [lastChatControl, setLastChatControl] = useState<ChatControlSummary | null>(null);
-  const orgId = process.env.NEXT_PUBLIC_BOOTRISE_ORG_ID?.trim() || "org_default";
 
   const parsedFiles = useMemo(() => {
     try {
@@ -163,8 +169,8 @@ export function UserWorkspace() {
     void (async () => {
       try {
         const [projectsRes, healthRes] = await Promise.all([
-          fetch("/api/workspace/projects"),
-          fetch("/api/ai/providers/health")
+          workspaceFetch("/api/workspace/projects"),
+          workspaceFetch("/api/ai/providers/health")
         ]);
         const projectsJson = (await projectsRes.json()) as {
           projects?: Array<{ id: string; name: string; updatedAt: string }>;
@@ -203,7 +209,7 @@ export function UserWorkspace() {
       return;
     }
     try {
-      const res = await fetch("/api/workspace/analyze", {
+      const res = await workspaceFetch("/api/workspace/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files })
@@ -222,12 +228,9 @@ export function UserWorkspace() {
   ) {
     const id = projectId ?? `proj_${repositoryId ?? "session"}`;
     try {
-      await fetch("/api/workspace/ledger", {
+      await workspaceFetch("/api/workspace/ledger", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-bootrise-org-id": orgId
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: id, kind, title, narrative })
       });
     } catch {
@@ -265,7 +268,7 @@ export function UserWorkspace() {
     setStatus("Saving project");
     try {
       const files = parseFiles();
-      const response = await fetch("/api/workspace/projects", {
+      const response = await workspaceFetch("/api/workspace/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -310,7 +313,7 @@ export function UserWorkspace() {
     setError(null);
     setStatus("Loading project");
     try {
-      const response = await fetch(`/api/workspace/projects?id=${encodeURIComponent(id)}`);
+      const response = await workspaceFetch(`/api/workspace/projects?id=${encodeURIComponent(id)}`);
       const data = (await response.json()) as {
         project?: {
           id: string;
@@ -351,7 +354,7 @@ export function UserWorkspace() {
     setBusy(true);
     setStatus("Loading branches");
     try {
-      const res = await fetch(`/api/workspace/github/branches?url=${encodeURIComponent(githubUrl.trim())}`);
+      const res = await workspaceFetch(`/api/workspace/github/branches?url=${encodeURIComponent(githubUrl.trim())}`);
       const data = (await res.json()) as { branches?: Array<{ name: string }>; defaultBranch?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Branch load failed");
       const names = (data.branches ?? []).map((b) => b.name);
@@ -384,7 +387,7 @@ export function UserWorkspace() {
 
     try {
       setLiveThinking((s) => s.map((step, i) => ({ ...step, status: i === 0 ? "done" : i === 1 ? "active" : step.status })));
-      const res = await fetch("/api/workspace/github/import", {
+      const res = await workspaceFetch("/api/workspace/github/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -470,7 +473,7 @@ export function UserWorkspace() {
     setError(null);
     setStatus("Applying approved patches");
     try {
-      const res = await fetch("/api/workspace/fix/approve", {
+      const res = await workspaceFetch("/api/workspace/fix/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pendingFixId: id, sandboxPassed })
@@ -521,7 +524,7 @@ export function UserWorkspace() {
     if (!id) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/workspace/fix/reject", {
+      const res = await workspaceFetch("/api/workspace/fix/reject", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pendingFixId: id })
@@ -558,7 +561,7 @@ export function UserWorkspace() {
     setBusy(true);
     setStatus("Pushing to GitHub");
     try {
-      const res = await fetch("/api/workspace/github/push", {
+      const res = await workspaceFetch("/api/workspace/github/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -617,7 +620,7 @@ export function UserWorkspace() {
     setStatus("Sandbox verify");
     try {
       const files = parsedFiles;
-      const res = await fetch("/api/workspace/sandbox/verify", {
+      const res = await workspaceFetch("/api/workspace/sandbox/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files, repositoryId: repositoryId ?? undefined })
@@ -806,7 +809,7 @@ export function UserWorkspace() {
     try {
       await animateFixPipeline();
       const files = parseFiles();
-      const response = await fetch("/api/workspace/fix", {
+      const response = await workspaceFetch("/api/workspace/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ request, files, provider, mode: modelMode, projectId: projectId ?? repositoryId ?? undefined })
@@ -904,7 +907,7 @@ export function UserWorkspace() {
               : step
         )
       );
-      const response = await fetch("/api/workspace/chat", {
+      const response = await workspaceFetch("/api/workspace/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -987,7 +990,7 @@ export function UserWorkspace() {
     try {
       if (!briefReady) throw new Error("Complete the product brief (name + workflow) before exporting.");
       const files = parseFiles();
-      const response = await fetch("/api/workspace/export", {
+      const response = await workspaceFetch("/api/workspace/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1250,6 +1253,9 @@ export function UserWorkspace() {
               { id: "connect", label: "Connect", badge: githubUrl ? "●" : undefined },
               { id: "files", label: "Files", badge: String(loadedFilePaths.length) },
               { id: "architecture", label: "Architecture" },
+              { id: "brain", label: "Brain" },
+              { id: "control", label: "Control" },
+              { id: "security", label: "Security" },
               { id: "fix", label: "Fix", badge: report ? "✓" : undefined },
               { id: "verify", label: "Verify" },
               { id: "ledger", label: "Ledger" },
@@ -1422,6 +1428,24 @@ export function UserWorkspace() {
               </Panel>
             ) : null}
 
+            {contextTab === "brain" ? <ProjectBrainPanel projectId={projectId} /> : null}
+
+            {contextTab === "control" ? (
+              <Panel title="Control layer">
+                {report?.controlLayer ? (
+                  <ControlLayerPanel control={report.controlLayer} />
+                ) : (
+                  <p className="text-sm text-steel">Run Fix to see Context Gate, Scope Contract, and Patch Guard results.</p>
+                )}
+              </Panel>
+            ) : null}
+
+            {contextTab === "security" ? (
+              <Panel title="Security & deployment">
+                <SecurityPanel filesJson={filesInput} />
+              </Panel>
+            ) : null}
+
             {contextTab === "ledger" ? (
               <Panel title="Living Ledger">
                 <p className="mb-3 text-sm leading-6 text-graphite">
@@ -1475,6 +1499,15 @@ export function UserWorkspace() {
                 <WebContainerPreview
                   files={parsedFiles}
                   active={report?.approvalStatus === "approved"}
+                  onRuntimeError={(message, likelyFiles) => {
+                    const pid = projectId ?? (repositoryId ? `proj_${repositoryId}` : null);
+                    if (!pid) return;
+                    void workspaceFetch("/api/workspace/runtime/events", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ projectId: pid, message, likelyFiles })
+                    });
+                  }}
                 />
                 <DeviceStreamPanel
                   repositoryId={repositoryId}
@@ -1489,6 +1522,8 @@ export function UserWorkspace() {
                   framework={previewFramework ?? undefined}
                   changedFiles={report?.patches?.map((p) => p.path)}
                 />
+                <p className="mt-4 text-xs font-semibold uppercase text-steel">Runtime monitor</p>
+                <RuntimeMonitorPanel projectId={projectId} />
                 <p className="mt-4 text-sm leading-6 text-graphite">
                   Sandbox checks structure and can run npm scripts when a full import includes lockfiles.
                 </p>

@@ -6,18 +6,24 @@ import { buildSymbolGraph } from "@/lib/intelligence/symbol-graph";
 import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { importGithubFiles } from "@/lib/workspace/github-repo-service";
 import { getRepoManifest, syncRepoFiles } from "@/lib/workspace/repo-store";
-import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
+import { createOrGetProjectBrain } from "@/lib/project-brain/project-brain-store";
+import { indexProjectFiles } from "@/lib/project-brain/file-indexer";
+import { buildModuleIndex } from "@/lib/project-brain/module-indexer";
+import { addArchitectureMemory } from "@/lib/project-brain/memory-updater";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as {
+  return withWorkspaceAuth(request, async (ctx, req) => {
+  const body = (await req.json().catch(() => null)) as {
     remoteUrl?: string;
     branch?: string;
     paths?: string[];
     repositoryId?: string;
+    projectId?: string;
     mode?: "key" | "full";
   } | null;
 
@@ -36,8 +42,8 @@ export async function POST(request: Request) {
     });
 
     const repositoryId = body?.repositoryId ?? `repo_${Date.now()}`;
-    const orgId = resolveOrgId(request);
-    const userId = resolveActorId(request);
+    const orgId = ctx.orgId;
+    const userId = ctx.user.id;
     const usageRoute = await assertModelRouteAllowed({
       requestedProvider: "bootrise",
       requestedMode: "fast",
@@ -76,6 +82,27 @@ export async function POST(request: Request) {
       defaultBranch: result.branch
     });
 
+    const brainProjectId = body?.projectId?.trim() ?? repositoryId;
+    await createOrGetProjectBrain({
+      orgId,
+      projectId: brainProjectId,
+      name: remoteUrl.split("/").filter(Boolean).pop() ?? brainProjectId
+    });
+    const fileIndex = await indexProjectFiles({
+      orgId,
+      projectId: brainProjectId,
+      repositoryId,
+      files: result.files
+    });
+    const modules = await buildModuleIndex({ orgId, projectId: brainProjectId, files: result.files });
+    await addArchitectureMemory({
+      orgId,
+      projectId: brainProjectId,
+      title: "Repository import",
+      content: `Imported ${result.files.length} files from ${remoteUrl} on branch ${result.branch}. ${modules.length} modules detected.`,
+      relatedPaths: sync.written.slice(0, 20)
+    });
+
     return NextResponse.json({
       product: "BootRise",
       repositoryId,
@@ -98,6 +125,12 @@ export async function POST(request: Request) {
         symbols: graph.symbols.length,
         indexedFiles: graph.indexedFiles
       },
+      projectBrain: {
+        projectId: brainProjectId,
+        filesIndexed: fileIndex.indexed,
+        filesSkipped: fileIndex.skipped,
+        modules: modules.length
+      },
       nextAction:
         sync.unchanged.length > 0 && sync.written.length === 0
           ? "Repo unchanged on disk — load from GET /api/workspace/repos/{repositoryId}/files"
@@ -108,4 +141,5 @@ export async function POST(request: Request) {
     const status = /rate limit/i.test(message) ? 429 : 502;
     return NextResponse.json({ error: message }, { status });
   }
+  });
 }

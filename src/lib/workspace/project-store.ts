@@ -2,7 +2,6 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 
 import { join, resolve } from "node:path";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { BOOTRISE_CORE_TABLES } from "@/lib/db/supabase-health";
-import { DEFAULT_ORG_ID } from "@/lib/tenancy/org-context";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 
@@ -14,8 +13,15 @@ export interface WorkspaceProject {
   lastReport: WorkspaceFixReport | null;
   preferredProvider: "bootrise" | "openai";
   githubUrl: string | null;
+  orgId?: string;
+  userId?: string;
   updatedAt: string;
   createdAt: string;
+}
+
+export interface ProjectScope {
+  orgId: string;
+  userId: string;
 }
 
 export type ProjectStorageMode = "supabase" | "local" | "hybrid";
@@ -23,12 +29,16 @@ export type ProjectStorageMode = "supabase" | "local" | "hybrid";
 const WORKSPACE_TABLE = BOOTRISE_CORE_TABLES[0];
 const storeRoot = resolve(process.cwd(), ".bootrise", "projects");
 
-function ensureStore() {
-  mkdirSync(storeRoot, { recursive: true });
+function orgStoreRoot(orgId: string) {
+  return join(storeRoot, orgId);
 }
 
-function projectPath(id: string) {
-  return join(storeRoot, `${id}.json`);
+function ensureOrgStore(orgId: string) {
+  mkdirSync(orgStoreRoot(orgId), { recursive: true });
+}
+
+function projectPath(orgId: string, id: string) {
+  return join(orgStoreRoot(orgId), `${id}.json`);
 }
 
 function rowToProject(row: {
@@ -39,6 +49,8 @@ function rowToProject(row: {
   last_report: WorkspaceFixReport | null;
   preferred_provider: "bootrise" | "openai";
   github_url: string | null;
+  org_id?: string | null;
+  user_id?: string | null;
   created_at: string;
   updated_at: string;
 }): WorkspaceProject {
@@ -50,16 +62,20 @@ function rowToProject(row: {
     lastReport: row.last_report,
     preferredProvider: row.preferred_provider,
     githubUrl: row.github_url,
+    orgId: row.org_id ?? undefined,
+    userId: row.user_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
-function projectToRow(project: WorkspaceProject) {
+function projectToRow(project: WorkspaceProject, scope: ProjectScope) {
   return {
     id: project.id,
     name: project.name,
-    org_id: DEFAULT_ORG_ID,
+    org_id: scope.orgId,
+    user_id: scope.userId,
+    created_by: scope.userId,
     brief: project.brief,
     files: project.files,
     last_report: project.lastReport,
@@ -71,15 +87,15 @@ function projectToRow(project: WorkspaceProject) {
   };
 }
 
-function listLocalProjects(): WorkspaceProject[] {
-  ensureStore();
-  if (!existsSync(storeRoot)) return [];
+function listLocalProjects(orgId: string): WorkspaceProject[] {
+  const root = orgStoreRoot(orgId);
+  if (!existsSync(root)) return [];
 
-  return readdirSync(storeRoot)
+  return readdirSync(root)
     .filter((name) => name.endsWith(".json"))
     .map((name) => {
       try {
-        return JSON.parse(readFileSync(join(storeRoot, name), "utf8")) as WorkspaceProject;
+        return JSON.parse(readFileSync(join(root, name), "utf8")) as WorkspaceProject;
       } catch {
         return null;
       }
@@ -88,9 +104,8 @@ function listLocalProjects(): WorkspaceProject[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-function getLocalProject(id: string): WorkspaceProject | null {
-  ensureStore();
-  const path = projectPath(id);
+function getLocalProject(orgId: string, id: string): WorkspaceProject | null {
+  const path = projectPath(orgId, id);
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf8")) as WorkspaceProject;
@@ -99,9 +114,9 @@ function getLocalProject(id: string): WorkspaceProject | null {
   }
 }
 
-function saveLocalProject(project: WorkspaceProject) {
-  ensureStore();
-  writeFileSync(projectPath(project.id), JSON.stringify(project, null, 2), "utf8");
+function saveLocalProject(orgId: string, project: WorkspaceProject) {
+  ensureOrgStore(orgId);
+  writeFileSync(projectPath(orgId, project.id), JSON.stringify({ ...project, orgId }, null, 2), "utf8");
 }
 
 async function supabaseTableReady(): Promise<boolean> {
@@ -111,13 +126,14 @@ async function supabaseTableReady(): Promise<boolean> {
   return !error;
 }
 
-async function listSupabaseProjects(): Promise<WorkspaceProject[]> {
+async function listSupabaseProjects(orgId: string): Promise<WorkspaceProject[]> {
   const supabase = getSupabaseServiceClient();
   if (!supabase) return [];
 
   const { data, error } = await supabase
     .from(WORKSPACE_TABLE)
     .select("*")
+    .eq("org_id", orgId)
     .order("updated_at", { ascending: false })
     .limit(100);
 
@@ -125,41 +141,47 @@ async function listSupabaseProjects(): Promise<WorkspaceProject[]> {
   return data.map((row) => rowToProject(row as Parameters<typeof rowToProject>[0]));
 }
 
-async function getSupabaseProject(id: string): Promise<WorkspaceProject | null> {
+async function getSupabaseProject(orgId: string, id: string): Promise<WorkspaceProject | null> {
   const supabase = getSupabaseServiceClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.from(WORKSPACE_TABLE).select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase
+    .from(WORKSPACE_TABLE)
+    .select("*")
+    .eq("id", id)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
   if (error || !data) return null;
   return rowToProject(data as Parameters<typeof rowToProject>[0]);
 }
 
-async function persistToSupabase(project: WorkspaceProject): Promise<boolean> {
+async function persistToSupabase(project: WorkspaceProject, scope: ProjectScope): Promise<boolean> {
   const supabase = getSupabaseServiceClient();
   if (!supabase) return false;
 
-  const { error } = await supabase.from(WORKSPACE_TABLE).upsert(projectToRow(project), { onConflict: "id" });
+  const { error } = await supabase.from(WORKSPACE_TABLE).upsert(projectToRow(project, scope), { onConflict: "id" });
   return !error;
 }
 
-export async function getProjectStorageMode(): Promise<ProjectStorageMode> {
+export async function getProjectStorageMode(orgId: string): Promise<ProjectStorageMode> {
   const cloudReady = await supabaseTableReady();
   if (!cloudReady) return "local";
-  const cloud = await listSupabaseProjects();
-  const local = listLocalProjects();
+  const cloud = await listSupabaseProjects(orgId);
+  const local = listLocalProjects(orgId);
   if (cloud.length > 0 && local.length > 0) return "hybrid";
   return cloud.length > 0 ? "supabase" : local.length > 0 ? "local" : "supabase";
 }
 
-export async function listProjects(): Promise<{ projects: WorkspaceProject[]; storage: ProjectStorageMode }> {
+export async function listProjects(scope: ProjectScope): Promise<{ projects: WorkspaceProject[]; storage: ProjectStorageMode }> {
   const cloudReady = await supabaseTableReady();
-  const local = listLocalProjects();
+  const local = listLocalProjects(scope.orgId);
 
   if (!cloudReady) {
     return { projects: local, storage: "local" };
   }
 
-  const cloud = await listSupabaseProjects();
+  const cloud = await listSupabaseProjects(scope.orgId);
   const merged = new Map<string, WorkspaceProject>();
   for (const project of cloud) merged.set(project.id, project);
   for (const project of local) {
@@ -173,18 +195,24 @@ export async function listProjects(): Promise<{ projects: WorkspaceProject[]; st
   return { projects, storage };
 }
 
-export async function getProject(id: string): Promise<WorkspaceProject | null> {
+export async function getProject(id: string, scope: ProjectScope): Promise<WorkspaceProject | null> {
   if (await supabaseTableReady()) {
-    const cloud = await getSupabaseProject(id);
-    if (cloud) return cloud;
+    const cloud = await getSupabaseProject(scope.orgId, id);
+    if (cloud) {
+      if (cloud.orgId && cloud.orgId !== scope.orgId) return null;
+      return cloud;
+    }
   }
-  return getLocalProject(id);
+  const local = getLocalProject(scope.orgId, id);
+  if (local?.orgId && local.orgId !== scope.orgId) return null;
+  return local;
 }
 
 export async function saveProject(
-  input: Partial<WorkspaceProject> & { name: string; brief: ProjectBrief }
+  input: Partial<WorkspaceProject> & { name: string; brief: ProjectBrief },
+  scope: ProjectScope
 ): Promise<{ project: WorkspaceProject; storage: ProjectStorageMode; cloudSaved: boolean }> {
-  const existing = input.id ? await getProject(input.id) : null;
+  const existing = input.id ? await getProject(input.id, scope) : null;
   const now = new Date().toISOString();
   const project: WorkspaceProject = {
     id: existing?.id ?? `proj_${Date.now()}`,
@@ -194,15 +222,33 @@ export async function saveProject(
     lastReport: input.lastReport !== undefined ? input.lastReport : existing?.lastReport ?? null,
     preferredProvider: input.preferredProvider ?? existing?.preferredProvider ?? "bootrise",
     githubUrl: input.githubUrl !== undefined ? input.githubUrl : existing?.githubUrl ?? null,
+    orgId: scope.orgId,
+    userId: scope.userId,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   };
 
-  saveLocalProject(project);
-  const cloudSaved = await persistToSupabase(project);
-  const storage = await getProjectStorageMode();
+  saveLocalProject(scope.orgId, project);
+  const cloudSaved = await persistToSupabase(project, scope);
+  const storage = await getProjectStorageMode(scope.orgId);
 
   return { project, storage, cloudSaved };
+}
+
+/** Admin-only: list projects across all orgs (service role). */
+export async function listAllProjectsAdmin(): Promise<WorkspaceProject[]> {
+  const supabase = getSupabaseServiceClient();
+  if (supabase && (await supabaseTableReady())) {
+    const { data } = await supabase
+      .from(WORKSPACE_TABLE)
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+    if (data?.length) {
+      return data.map((row) => rowToProject(row as Parameters<typeof rowToProject>[0]));
+    }
+  }
+  return [];
 }
 
 export function parseUploadedFiles(raw: string): SourceFileInput[] {

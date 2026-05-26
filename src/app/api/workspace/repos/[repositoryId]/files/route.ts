@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import {
   getRepoManifest,
   listRepoSnapshots,
@@ -9,7 +10,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, context: { params: { repositoryId: string } }) {
+export async function GET(request: Request, context: { params: { repositoryId: string } }) {
+  return withWorkspaceAuth(request, async () => {
   const repositoryId = context.params.repositoryId?.trim();
   if (!repositoryId) {
     return NextResponse.json({ error: "repositoryId is required." }, { status: 400 });
@@ -33,5 +35,6 @@ export async function GET(_request: Request, context: { params: { repositoryId: 
       path: file.path,
       sizeBytes: file.sizeBytes ?? file.content.length
     }))
+  });
   });
 }

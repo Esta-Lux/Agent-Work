@@ -5,7 +5,7 @@ import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { createProviderChatResponse, isProviderConfigured } from "@/lib/ai/llm-router";
 import { resolveUserProvider } from "@/lib/ai/providers";
 import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
-import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import {
   extractGithubRepoUrl,
   inspectGithubRepo,
@@ -58,7 +58,8 @@ interface WorkspaceChatRequest {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as WorkspaceChatRequest | null;
+  return withWorkspaceAuth(request, async (ctx, req) => {
+  const body = (await req.json().catch(() => null)) as WorkspaceChatRequest | null;
   const message = body?.message?.trim();
   const requestedProvider = resolveUserProvider(body?.provider);
   const persona: BootrisePersonaId = body?.persona ?? "architect";
@@ -67,8 +68,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A non-empty message is required." }, { status: 400 });
   }
 
-  const orgId = resolveOrgId(request);
-  const userId = resolveActorId(request);
+  const orgId = ctx.orgId;
+  const userId = ctx.user.id;
   const projectIdForUsage = body?.projectId?.trim() ?? body?.repositoryId?.trim() ?? "workspace-chat";
   let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
   try {
@@ -255,6 +256,7 @@ export async function POST(request: Request) {
     modelRoute,
     chatControl,
     ...merged
+  });
   });
 }
 

@@ -26,6 +26,7 @@ export async function runControlGate(input: {
   patches: ProposedPatch[];
   repositoryId?: string;
   projectId?: string;
+  orgId?: string;
   blastRadius?: string[];
 }): Promise<ControlLayerSummary> {
   const scopeContract = buildScopeContract({
@@ -42,7 +43,8 @@ export async function runControlGate(input: {
 
   const contextPlan = await buildContextPlan(input.request, input.files, {
     projectId: input.projectId,
-    repositoryId: input.repositoryId
+    repositoryId: input.repositoryId,
+    orgId: input.orgId
   });
   const repositoryMap = buildRepositoryMap(input.files);
   const patchGuard = runPatchGuard({

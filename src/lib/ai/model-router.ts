@@ -12,6 +12,7 @@ import type {
 import { resolveUserProvider } from "@/lib/ai/providers";
 import { evaluateQuota, estimateCredits, resolveQuotaPolicy, type BillableTaskType } from "@/lib/usage/quota";
 import { getCurrentMonthUsage, listUsageEvents, recordUsageEvent } from "@/lib/usage/usage-store";
+import { assertCreditsAvailable, chargeCredits } from "@/lib/usage/credit-store";
 
 export interface RouteModelInput {
   requestedProvider?: string | null;
@@ -83,6 +84,7 @@ export async function routeModel(input: RouteModelInput): Promise<ModelRouteDeci
 }
 
 export async function assertModelRouteAllowed(input: RouteModelInput): Promise<ModelRouteDecision> {
+  await assertCreditsAvailable(input.orgId, String(input.taskType));
   const decision = await routeModel(input);
   if (!decision.allowed) {
     await recordModelUsage(decision, input, "blocked", decision.blockReason);
@@ -104,6 +106,9 @@ export async function recordModelUsage(
     risk: decision.risk,
     premium: decision.premium
   });
+  if (status === "succeeded") {
+    void chargeCredits({ orgId: input.orgId, userId: input.userId, action: String(decision.taskType) });
+  }
   return recordUsageEvent({
     orgId: input.orgId,
     userId: input.userId,

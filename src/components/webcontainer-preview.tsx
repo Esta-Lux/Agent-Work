@@ -12,10 +12,12 @@ type PreviewFile = { path: string; content: string };
 
 export function WebContainerPreview({
   files,
-  active
+  active,
+  onRuntimeError
 }: {
   files: PreviewFile[];
   active: boolean;
+  onRuntimeError?: (message: string, likelyFiles?: string[]) => void;
 }) {
   const [status, setStatus] = useState<"idle" | "booting" | "installing" | "starting" | "ready" | "failed" | "unsupported">(
     "idle"
@@ -34,6 +36,7 @@ export function WebContainerPreview({
     let cancelled = false;
 
     async function boot() {
+      const subset = selectWebContainerFiles(files);
       try {
         setStatus("booting");
         appendLog("Booting in-browser WebContainer (no host Node required)…");
@@ -48,8 +51,6 @@ export function WebContainerPreview({
         const instance = await WebContainer.boot();
         if (cancelled) return;
         containerRef.current = instance;
-
-        const subset = selectWebContainerFiles(files);
         appendLog(`Mounting ${subset.length} files into WebContainer…`);
         await instance.mount(buildWebContainerFileTree(subset) as import("@webcontainer/api").FileSystemTree);
 
@@ -92,7 +93,9 @@ export function WebContainerPreview({
       } catch (error) {
         if (cancelled) return;
         setStatus("failed");
-        appendLog(error instanceof Error ? error.message : "WebContainer failed");
+        const msg = error instanceof Error ? error.message : "WebContainer failed";
+        appendLog(msg);
+        onRuntimeError?.(msg, subset?.map((f) => f.path).slice(0, 5));
       }
     }
 
@@ -107,7 +110,7 @@ export function WebContainerPreview({
       }
       containerRef.current = null;
     };
-  }, [active, files, appendLog]);
+  }, [active, files, appendLog, onRuntimeError]);
 
   if (!active) {
     return (

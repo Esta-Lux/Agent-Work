@@ -4,7 +4,7 @@ import { createProviderChatResponse, isProviderConfigured } from "@/lib/ai/llm-r
 import { resolveAdminProvider } from "@/lib/ai/providers";
 import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
-import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
+import { withAdminAuth } from "@/lib/auth/with-admin-auth";
 import { getOpenAIModel } from "@/lib/ai/openai-client";
 import { getNvidiaModel } from "@/lib/ai/nvidia-client";
 
@@ -18,7 +18,8 @@ interface AdminChatRequest {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as AdminChatRequest | null;
+  return withAdminAuth(request, async (user, req) => {
+  const body = (await req.json().catch(() => null)) as AdminChatRequest | null;
   const message = body?.message?.trim();
   const provider = resolveAdminProvider(body?.model);
   const history = body?.history ?? [];
@@ -36,8 +37,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const orgId = resolveOrgId(request);
-  const userId = resolveActorId(request);
+  const orgId = process.env.BOOTRISE_DEFAULT_ORG_ID?.trim() || "org_default";
+  const userId = user.id;
   let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
   try {
     modelRoute = await assertModelRouteAllowed({
@@ -113,5 +114,6 @@ export async function POST(request: Request) {
       provider === "openai"
         ? "OPENAI_API_KEY is not configured; BootRise deterministic engine responded."
         : "NVIDIA_API_KEY is not configured; BootRise deterministic engine responded."
+  });
   });
 }

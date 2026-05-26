@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { listGithubBranches } from "@/lib/workspace/github-repo-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
+  return withWorkspaceAuth(request, async (_ctx, req) => {
+  const url = new URL(req.url);
   const remoteUrl = url.searchParams.get("url")?.trim();
   if (!remoteUrl) {
     return NextResponse.json({ error: "url query param is required." }, { status: 400 });
@@ -20,4 +22,5 @@ export async function GET(request: Request) {
       { status: 502 }
     );
   }
+  });
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { readPreviewFile } from "@/lib/workspace/workspace-preview";
 
 export const runtime = "nodejs";
@@ -14,9 +15,10 @@ const MIME: Record<string, string> = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: { sessionId: string; path?: string[] } }
 ) {
+  return withWorkspaceAuth(request, async () => {
   const sessionId = context.params.sessionId;
   const segments = context.params.path ?? [];
   const relativePath = segments.length ? segments.join("/") : "index.html";
@@ -39,4 +41,5 @@ export async function GET(
   }
 
   return new NextResponse(content, { headers: { "Content-Type": type } });
+  });
 }

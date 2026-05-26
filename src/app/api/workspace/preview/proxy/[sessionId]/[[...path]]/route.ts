@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { getDevPreviewSession } from "@/lib/workspace/preview-dev-runner";
 import { readPreviewFile } from "@/lib/workspace/workspace-preview";
 
@@ -20,19 +21,20 @@ export async function GET(
   request: Request,
   context: { params: { sessionId: string; path?: string[] } }
 ) {
+  return withWorkspaceAuth(request, async (_ctx, req) => {
   const sessionId = context.params.sessionId;
   const segments = context.params.path ?? [];
   const relativePath = segments.length ? segments.join("/") : "";
   const dev = getDevPreviewSession(sessionId);
 
   if (dev?.status === "ready" && dev.port) {
-    const incoming = new URL(request.url);
+    const incoming = new URL(req.url);
     const targetPath = relativePath || "";
     const target = `http://127.0.0.1:${dev.port}/${targetPath}${incoming.search}`;
 
     try {
       const upstream = await fetch(target, {
-        headers: { Accept: request.headers.get("accept") ?? "*/*" },
+        headers: { Accept: req.headers.get("accept") ?? "*/*" },
         signal: AbortSignal.timeout(15_000)
       });
 
@@ -71,5 +73,6 @@ export async function GET(
       "Content-Type": type,
       "Cache-Control": "no-store"
     }
+  });
   });
 }

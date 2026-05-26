@@ -14,7 +14,7 @@ const CHARS_PER_TOKEN = 4;
 export async function buildContextPlan(
   request: string,
   files: SourceFileInput[],
-  options?: { projectId?: string; repositoryId?: string }
+  options?: { projectId?: string; repositoryId?: string; orgId?: string }
 ): Promise<ContextPlan> {
   const config = getReviewConfig();
   const useMulti = shouldUseMultiPassReview(files.length, request, config);
@@ -42,6 +42,27 @@ export async function buildContextPlan(
     files,
     projectId: options?.projectId ?? options?.repositoryId
   });
+
+  if (options?.orgId && options?.projectId) {
+    try {
+      const { retrieveProjectBrainContext } = await import("@/lib/project-brain/memory-retriever");
+      const brain = await retrieveProjectBrainContext({
+        orgId: options.orgId,
+        projectId: options.projectId,
+        request: { taskText: request, maxItems: 8 }
+      });
+      if (brain.rules.length) {
+        const brainBlock = `## Project Brain rules\n${brain.rules.join("\n")}`;
+        rules.combinedBlock = `${brainBlock}\n\n${rules.combinedBlock}`.trim();
+        rules.charEstimate += brainBlock.length;
+      }
+      for (const path of brain.fileHints.map((f) => f.path)) {
+        deepPaths.add(path);
+      }
+    } catch {
+      /* brain optional */
+    }
+  }
 
   const excluded: ContextFileEntry[] = [];
   const deepRead: ContextFileEntry[] = [];

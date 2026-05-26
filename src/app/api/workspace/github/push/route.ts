@@ -3,7 +3,7 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { recordAudit } from "@/lib/admin/audit-log";
 import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
-import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { pushFilesToGithub } from "@/lib/workspace/github-push";
 import { buildPullRequestBody, createDraftPullRequest } from "@/lib/workspace/github-pr";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as {
+  return withWorkspaceAuth(request, async (ctx, req) => {
+  const body = (await req.json().catch(() => null)) as {
     remoteUrl?: string;
     branch?: string;
     files?: SourceFileInput[];
@@ -32,8 +33,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "files are required." }, { status: 400 });
   }
 
-  const orgId = resolveOrgId(request);
-  const userId = resolveActorId(request);
+  const orgId = ctx.orgId;
+  const userId = ctx.user.id;
   const projectId = body.report?.repositoryId ?? "github-push";
   const changedFileCount = body.onlyPaths?.length ?? body.files.length;
   let pushRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>> | null = null;
@@ -111,4 +112,5 @@ export async function POST(request: Request) {
       { status: 502 }
     );
   }
+  });
 }

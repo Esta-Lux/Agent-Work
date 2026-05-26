@@ -97,6 +97,18 @@ npm install
 npm run dev
 ```
 
+### Dev sign-in (no password)
+
+For local testing without Supabase, add to `.env.local`:
+
+```env
+BOOTRISE_DEV_AUTH_BYPASS=1
+NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS=1
+BOOTRISE_DEV_USER_EMAIL=dev@bootrise.local
+```
+
+Restart the dev server, then open `/` — you are signed in as **dev@bootrise.local**. There is no shared test password. For magic link or GitHub OAuth, configure Supabase (see [docs/DEV.md](docs/DEV.md)).
+
 Useful checks:
 
 ```bash

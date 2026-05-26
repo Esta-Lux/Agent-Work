@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { buildRepoIntelligenceSnapshot, type SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { buildArchitectureMap } from "@/lib/workspace/architecture-map";
 
@@ -6,7 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as {
+  return withWorkspaceAuth(request, async (_ctx, req) => {
+  const body = (await req.json().catch(() => null)) as {
     files?: SourceFileInput[];
     repositoryId?: string;
     blastRootSymbol?: string;
@@ -28,5 +30,6 @@ export async function POST(request: Request) {
     phase: 3,
     repo,
     map
+  });
   });
 }

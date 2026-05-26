@@ -13,6 +13,7 @@
     "test": "node --import ./tests/ts-alias-loader.mjs --test"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.84.0",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",

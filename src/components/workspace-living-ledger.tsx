@@ -12,9 +12,8 @@ export function WorkspaceLivingLedger({ projectId }: { projectId: string | null 
       return;
     }
 
-    const orgHeader = process.env.NEXT_PUBLIC_BOOTRISE_ORG_ID?.trim() || "org_default";
     void fetch(`/api/workspace/ledger?projectId=${encodeURIComponent(projectId)}`, {
-      headers: { "x-bootrise-org-id": orgHeader }
+      credentials: "include"
     })
       .then(async (res) => {
         const data = (await res.json()) as { events?: LedgerEvent[] };
@@ -41,17 +40,15 @@ export function WorkspaceLivingLedger({ projectId }: { projectId: string | null 
   }
 
   return (
-    <ol className="relative space-y-4 border-l border-line pl-4">
+    <ul className="space-y-3">
       {events.map((event) => (
-        <li key={event.id} className="relative">
-          <span className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-signal" />
-          <p className="text-[10px] font-semibold uppercase text-steel">
-            {event.kind.replace(/_/g, " ")} · {new Date(event.createdAt).toLocaleString()}
-          </p>
-          <p className="text-sm font-semibold text-ink">{event.title}</p>
-          <p className="mt-1 text-sm leading-6 text-graphite">{event.narrative}</p>
+        <li key={event.id} className="rounded-lg border border-line bg-cloud/50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-signal">{event.kind}</p>
+          <p className="mt-1 font-medium text-ink">{event.title}</p>
+          <p className="mt-1 text-sm text-steel">{event.narrative}</p>
+          <p className="mt-2 text-xs text-steel">{new Date(event.createdAt).toLocaleString()}</p>
         </li>
       ))}
-    </ol>
+    </ul>
   );
 }
