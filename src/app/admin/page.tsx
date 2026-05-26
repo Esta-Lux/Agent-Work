@@ -1,6 +1,9 @@
+import { requireAdmin } from "@/lib/auth/admin-auth";
 import { AdminConsole } from "@/components/admin-console";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  await requireAdmin();
+
   return (
     <main className="min-h-screen bg-cloud">
       <section className="border-b border-line bg-white">

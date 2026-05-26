@@ -26,6 +26,7 @@ export async function persistCloudPendingFix(orgId: string, record: PendingFixRe
     files_snapshot: record.filesSnapshot,
     provider: record.provider,
     planner_source: record.plannerSource,
+    control_layer: record.controlLayer ?? null,
     created_at: record.createdAt,
     resolved_at: record.resolvedAt ?? null
   });
@@ -56,6 +57,7 @@ export async function loadCloudPendingFix(orgId: string, id: string): Promise<Pe
     provider: data.provider as PendingFixRecord["provider"],
     plannerSource: (data.planner_source as string) ?? "cloud",
     status: data.status as PendingFixRecord["status"],
+    controlLayer: (data.control_layer as PendingFixRecord["controlLayer"]) ?? undefined,
     createdAt: data.created_at as string,
     resolvedAt: (data.resolved_at as string) ?? undefined
   };

@@ -7,6 +7,7 @@ export type WorkspaceHandler = (ctx: UserOrgContext, request: Request) => Promis
 export async function withWorkspaceAuth(request: Request, handler: WorkspaceHandler): Promise<Response> {
   try {
     const url = new URL(request.url);
+    // orgId query param and x-bootrise-org-id are hints only — never trusted without membership check.
     const orgHint = url.searchParams.get("orgId") ?? request.headers.get("x-bootrise-org-id");
     const ctx = await resolveUserOrgContext(orgHint);
     return await handler(ctx, request);

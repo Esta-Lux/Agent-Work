@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ProjectMemoryCard } from "@/components/project-memory-card";
+import { ProjectRulesPanel } from "@/components/project-rules-panel";
+import { ProjectDecisionsPanel } from "@/components/project-decisions-panel";
 import type { FileIndexEntry, ModuleIndexEntry, ProjectBrainSummary, ProjectMemoryItem } from "@/lib/project-brain/types";
 import { Panel } from "@/components/workspace-ui";
 
@@ -56,15 +58,17 @@ export function ProjectBrainPanel({ projectId }: { projectId: string | null }) {
 
   return (
     <div className="space-y-4 p-4">
-      <Panel title="What BootRise knows">
+      <Panel title="Project Brain growth">
         {loading ? (
           <p className="text-sm text-steel">Loading Project Brain…</p>
         ) : summary ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Stat label="Memory items" value={String(summary.memoryCount)} />
-            <Stat label="Stale" value={String(summary.staleCount)} warn={summary.staleCount > 0} />
-            <Stat label="Modules" value={String(summary.moduleCount)} />
-            <Stat label="Indexed files" value={String(summary.fileCount)} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Stat label="Files indexed" value={String(summary.fileCount)} />
+            <Stat label="Modules mapped" value={String(summary.moduleCount)} />
+            <Stat label="Rules learned" value={String(memoryItems.filter((m) => m.type === "rule").length)} />
+            <Stat label="Decisions" value={String(memoryItems.filter((m) => m.type === "decision").length)} />
+            <Stat label="Risk areas" value={String(riskyFiles.length)} warn={riskyFiles.length > 0} />
+            <Stat label="Stale memories" value={String(summary.staleCount)} warn={summary.staleCount > 0} />
             <Stat label="Avg confidence" value={`${(summary.avgConfidence * 100).toFixed(0)}%`} />
           </div>
         ) : (
@@ -95,6 +99,9 @@ export function ProjectBrainPanel({ projectId }: { projectId: string | null }) {
           ))}
         </ul>
       </Panel>
+
+      <ProjectRulesPanel items={memoryItems} />
+      <ProjectDecisionsPanel items={memoryItems} />
 
       <Panel title="Risky files">
         {riskyFiles.length === 0 ? (

@@ -17,6 +17,9 @@ import { WorkspaceLivingLedger } from "@/components/workspace-living-ledger";
 import { ProjectBrainPanel } from "@/components/project-brain-panel";
 import { SecurityPanel } from "@/components/security-panel";
 import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
+import { WorkspaceCommandCenter } from "@/components/workspace-command-center";
+import { BlockedStateCard } from "@/components/blocked-state-card";
+import { AgentCouncilPanel } from "@/components/agent-council-panel";
 import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
 import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { WorkspaceChatMessage } from "@/components/workspace-chat-message";
@@ -137,6 +140,9 @@ export function UserWorkspace() {
   const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
   const [previewFramework, setPreviewFramework] = useState<string | null>(null);
   const [lastChatControl, setLastChatControl] = useState<ChatControlSummary | null>(null);
+  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
+  const [securityBlockers, setSecurityBlockers] = useState(0);
+  const [brainStats, setBrainStats] = useState<{ files: number; modules: number; stale: number } | null>(null);
 
   const parsedFiles = useMemo(() => {
     try {
@@ -168,9 +174,10 @@ export function UserWorkspace() {
   useEffect(() => {
     void (async () => {
       try {
-        const [projectsRes, healthRes] = await Promise.all([
+        const [projectsRes, healthRes, creditsRes] = await Promise.all([
           workspaceFetch("/api/workspace/projects"),
-          workspaceFetch("/api/ai/providers/health")
+          workspaceFetch("/api/ai/providers/health"),
+          workspaceFetch("/api/workspace/credits")
         ]);
         const projectsJson = (await projectsRes.json()) as {
           projects?: Array<{ id: string; name: string; updatedAt: string }>;
@@ -185,11 +192,32 @@ export function UserWorkspace() {
           bootrise: Boolean(healthJson.configured?.bootrise),
           openai: Boolean(healthJson.configured?.openai)
         });
+        const creditsJson = (await creditsRes.json()) as { balance?: { remaining?: number } };
+        setCreditsRemaining(creditsJson.balance?.remaining ?? null);
       } catch {
         /* non-blocking */
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!projectId) {
+      setBrainStats(null);
+      return;
+    }
+    void workspaceFetch(`/api/workspace/brain?projectId=${encodeURIComponent(projectId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.summary) {
+          setBrainStats({
+            files: d.summary.fileCount ?? 0,
+            modules: d.summary.moduleCount ?? 0,
+            stale: d.summary.staleCount ?? 0
+          });
+        }
+      })
+      .catch(() => setBrainStats(null));
+  }, [projectId]);
 
   const loadedFilePaths = useMemo(() => parsedFiles.map((f) => f.path).filter(Boolean), [parsedFiles]);
   const hasCode = loadedFilePaths.length > 0;
@@ -558,20 +586,22 @@ export function UserWorkspace() {
       setError("Approve a plan before pushing to GitHub.");
       return;
     }
+    const fixId = pendingFixId ?? report?.pendingFixId;
+    if (!fixId) {
+      setError("No approved pending fix — run Fix and approve before opening a draft PR.");
+      return;
+    }
     setBusy(true);
-    setStatus("Pushing to GitHub");
+    setStatus("Opening draft PR");
     try {
-      const res = await workspaceFetch("/api/workspace/github/push", {
+      const res = await workspaceFetch("/api/workspace/github/pr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          pendingFixId: fixId,
           remoteUrl: githubUrl.trim(),
           branch: githubBranch,
-          files: parseFiles(),
-          onlyPaths: report.patches?.map((p) => p.path),
-          commitMessage: `BootRise: ${fixRequest.slice(0, 72)}`,
-          report,
-          createDraftPr: true
+          projectId: projectId ?? repositoryId ?? undefined
         })
       });
       const data = (await res.json()) as {
@@ -1067,30 +1097,27 @@ export function UserWorkspace() {
 
   return (
     <section className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
-      <div className="mb-5 rounded-2xl border border-line bg-gradient-to-br from-white via-white to-signal/5 p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-signal">AI product workspace</p>
-            <h2 className="mt-1 text-xl font-semibold text-ink">Build, review, fix, and verify in one flow</h2>
-            <p className="mt-1 max-w-2xl text-sm text-graphite">
-              Import your repo, chat with Architect / Developer / DevOps personas, approve patches, preview, and export.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <EngineToggle
-              provider={provider}
-              onChange={setProvider}
-              mode={modelMode}
-              onModeChange={setModelMode}
-              bootriseOk={providerHealth.bootrise}
-              openaiOk={providerHealth.openai}
-            />
-            <StatusPill label={projectStorage === "supabase" ? "Cloud saved" : "Local"} tone="neutral" />
-            <StatusPill label={status} tone={error ? "failed" : isWorking ? "neutral" : "neutral"} />
-          </div>
-        </div>
-        <div className="mt-4">
-          <PersonaSelector value={persona} onChange={setPersona} />
+      <WorkspaceCommandCenter
+        projectName={projectName}
+        report={report}
+        creditsRemaining={creditsRemaining}
+        modelMode={provider === "openai" ? "Premium" : `BootRise ${modelMode}`}
+        securityBlockers={securityBlockers}
+        brainSummary={brainStats}
+      />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <PersonaSelector value={persona} onChange={setPersona} />
+        <div className="flex flex-wrap items-center gap-2">
+          <EngineToggle
+            provider={provider}
+            onChange={setProvider}
+            mode={modelMode}
+            onModeChange={setModelMode}
+            bootriseOk={providerHealth.bootrise}
+            openaiOk={providerHealth.openai}
+          />
+          <StatusPill label={projectStorage === "supabase" ? "Cloud saved" : "Local"} tone="neutral" />
+          <StatusPill label={status} tone={error ? "failed" : isWorking ? "neutral" : "neutral"} />
         </div>
       </div>
 
@@ -1250,6 +1277,7 @@ export function UserWorkspace() {
             active={contextTab}
             onChange={setContextTab}
             tabs={[
+              { id: "overview", label: "Overview" },
               { id: "connect", label: "Connect", badge: githubUrl ? "●" : undefined },
               { id: "files", label: "Files", badge: String(loadedFilePaths.length) },
               { id: "architecture", label: "Architecture" },
@@ -1259,7 +1287,7 @@ export function UserWorkspace() {
               { id: "fix", label: "Fix", badge: report ? "✓" : undefined },
               { id: "verify", label: "Verify" },
               { id: "ledger", label: "Ledger" },
-              { id: "export", label: "Export", badge: exportDone ? "✓" : undefined }
+              { id: "export", label: "PR / Export", badge: exportDone ? "✓" : undefined }
             ]}
           />
           <div className="flex-1 overflow-y-auto">
@@ -1418,6 +1446,32 @@ export function UserWorkspace() {
               </Panel>
             ) : null}
 
+            {contextTab === "overview" ? (
+              <Panel title="Overview">
+                <p className="text-sm text-graphite">
+                  Use the command center above for at-a-glance status. Import a repo in Connect, run Fix for control
+                  gates, verify in Verify, then open a server-trusted draft PR from Export.
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {[
+                    { tab: "connect", label: "Connect GitHub" },
+                    { tab: "fix", label: "Run fix pipeline" },
+                    { tab: "security", label: "Security scan" },
+                    { tab: "export", label: "PR / Export" }
+                  ].map((item) => (
+                    <button
+                      key={item.tab}
+                      type="button"
+                      className={secondaryBtn}
+                      onClick={() => setContextTab(item.tab)}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+
             {contextTab === "architecture" ? (
               <Panel title="Architecture map & blast radius">
                 <ArchitectureMapPanel
@@ -1431,18 +1485,39 @@ export function UserWorkspace() {
             {contextTab === "brain" ? <ProjectBrainPanel projectId={projectId} /> : null}
 
             {contextTab === "control" ? (
-              <Panel title="Control layer">
-                {report?.controlLayer ? (
-                  <ControlLayerPanel control={report.controlLayer} />
-                ) : (
-                  <p className="text-sm text-steel">Run Fix to see Context Gate, Scope Contract, and Patch Guard results.</p>
-                )}
-              </Panel>
+              <div className="space-y-4 p-4">
+                <Panel title="Agent council">
+                  <AgentCouncilPanel control={report?.controlLayer} />
+                </Panel>
+                {report?.controlLayer && !report.controlLayer.canApprove ? (
+                  <BlockedStateCard
+                    title={
+                      report.controlLayer.contextGate.status === "needs_clarification"
+                        ? "Blocked by Context Gate"
+                        : "Patch blocked"
+                    }
+                    reason={report.controlLayer.stopReason ?? "Control layer blocked approval."}
+                    needs={report.controlLayer.contextGate.questions.map((q) => q.question)}
+                  />
+                ) : null}
+                <Panel title="Control layer">
+                  {report?.controlLayer ? (
+                    <ControlLayerPanel control={report.controlLayer} />
+                  ) : (
+                    <p className="text-sm text-steel">Run Fix to see Context Gate, Scope Contract, and Patch Guard results.</p>
+                  )}
+                </Panel>
+              </div>
             ) : null}
 
             {contextTab === "security" ? (
               <Panel title="Security & deployment">
-                <SecurityPanel filesJson={filesInput} />
+                <SecurityPanel
+                  filesJson={filesInput}
+                  projectId={projectId ?? undefined}
+                  creditsRemaining={creditsRemaining}
+                  onScanComplete={(critical) => setSecurityBlockers(critical)}
+                />
               </Panel>
             ) : null}
 

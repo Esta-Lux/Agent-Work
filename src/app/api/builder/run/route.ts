@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getTemplateMarketplace, runAppBuilder, type BuilderIntake } from "@/lib/builder/app-builder";
+import { requireUserForLegacyRoute } from "@/lib/auth/require-user-route";
 
 export async function POST(request: Request) {
+  const denied = await requireUserForLegacyRoute();
+  if (denied) return denied;
+
   const body = (await request.json().catch(() => null)) as Partial<BuilderIntake> | null;
 
   if (!body?.idea?.trim()) {

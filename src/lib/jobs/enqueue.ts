@@ -6,6 +6,7 @@ import { runSecurityScan } from "@/lib/security/security-scan";
 import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { chargeCredits } from "@/lib/usage/credit-store";
+import { estimateCreditsForAction } from "@/lib/usage/credit-pricing";
 
 export async function enqueueJob(input: {
   type: JobType;
@@ -53,15 +54,36 @@ async function runJobAsync(
         files
       });
       await buildModuleIndex({ orgId: input.orgId, projectId: input.projectId, files });
-      void chargeCredits({ orgId: input.orgId, userId: input.userId, action: "large_repo_scan" });
+      const indexAction = "large_repo_scan";
+      void chargeCredits({
+        orgId: input.orgId,
+        userId: input.userId,
+        action: indexAction,
+        credits: estimateCreditsForAction(indexAction),
+        metadata: { taskType: indexAction, projectId: input.projectId }
+      });
     }
     if (input.type === "security.scan") {
       runSecurityScan(files);
-      void chargeCredits({ orgId: input.orgId, userId: input.userId, action: "basic_security_scan" });
+      const scanAction = "basic_security_scan";
+      void chargeCredits({
+        orgId: input.orgId,
+        userId: input.userId,
+        action: scanAction,
+        credits: estimateCreditsForAction(scanAction),
+        metadata: { taskType: scanAction, projectId: input.projectId }
+      });
     }
     if (input.type === "deployment.readiness") {
       evaluateDeploymentReadiness(files);
-      void chargeCredits({ orgId: input.orgId, userId: input.userId, action: "deployment_readiness" });
+      const deployAction = "deployment_readiness";
+      void chargeCredits({
+        orgId: input.orgId,
+        userId: input.userId,
+        action: deployAction,
+        credits: estimateCreditsForAction(deployAction),
+        metadata: { taskType: deployAction, projectId: input.projectId }
+      });
     }
     updateJobStatus(jobId, "completed");
   } catch (error) {

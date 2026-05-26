@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ContextBuilder, recordEpistemicMemory } from "@/lib/memory/context-builder";
 import { traceBlastRadius } from "@/lib/memory/blast-radius";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { requireUserForLegacyRoute } from "@/lib/auth/require-user-route";
 
 interface MemoryIndexRequest {
   repositoryId?: string;
@@ -16,6 +17,9 @@ interface MemoryIndexRequest {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireUserForLegacyRoute();
+  if (denied) return denied;
+
   const body = (await request.json().catch(() => null)) as MemoryIndexRequest | null;
   const repositoryId = body?.repositoryId?.trim() || "demo";
   const files = body?.files;

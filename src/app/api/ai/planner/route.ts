@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { createOpenAIChangePlan, getOpenAIModel, hasOpenAIKey } from "@/lib/ai/openai-client";
 import { demoRepo } from "@/lib/demo/demo-repo";
 import { createInitialChangePlan } from "@/lib/planning/planner";
+import { requireUserForLegacyRoute } from "@/lib/auth/require-user-route";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const denied = await requireUserForLegacyRoute();
+  if (denied) return denied;
+
   const body = (await request.json().catch(() => null)) as { request?: string } | null;
   const userRequest = body?.request?.trim();
 

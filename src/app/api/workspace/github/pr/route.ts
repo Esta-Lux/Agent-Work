@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { assertCreditsAvailable, chargeCredits } from "@/lib/usage/credit-store";
+import { estimateCreditsForAction } from "@/lib/usage/credit-pricing";
 import { getPendingFix } from "@/lib/workspace/pending-fix-store";
+import { applyPatchesToFiles } from "@/lib/workspace/apply-patches";
 import { pushFilesToGithub } from "@/lib/workspace/github-push";
 import { createDraftPullRequest } from "@/lib/workspace/github-pr";
-import { buildBootRisePrBody } from "@/lib/github/pr-body-builder";
+import { buildBootRisePrBodyFromPendingFix } from "@/lib/github/pr-body-builder";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { appendLedgerEvent } from "@/lib/workspace/living-ledger-timeline";
-import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
-import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,13 +20,11 @@ export async function POST(request: Request) {
       pendingFixId?: string;
       remoteUrl?: string;
       branch?: string;
-      files?: SourceFileInput[];
       projectId?: string;
-      report?: WorkspaceFixReport;
     } | null;
 
-    if (!body?.pendingFixId?.trim() || !body.remoteUrl?.trim() || !body.files?.length) {
-      return NextResponse.json({ error: "pendingFixId, remoteUrl, and files are required." }, { status: 400 });
+    if (!body?.pendingFixId?.trim() || !body.remoteUrl?.trim()) {
+      return NextResponse.json({ error: "pendingFixId and remoteUrl are required." }, { status: 400 });
     }
 
     const pending = await getPendingFix(body.pendingFixId.trim(), ctx.orgId);
@@ -41,37 +39,44 @@ export async function POST(request: Request) {
       );
     }
 
-    await assertCreditsAvailable(ctx.orgId, "draft_pr");
+    const action = "draft_pr";
+    const estimatedCredits = estimateCreditsForAction(action);
+    await assertCreditsAvailable(ctx.orgId, action, estimatedCredits);
 
+    const appliedPatches = pending.patches.map((p) => ({ ...p, applied: true }));
+    const { files } = applyPatchesToFiles(pending.filesSnapshot, appliedPatches);
     const patchedPaths = pending.patches.map((p) => p.path);
+    const prBody = buildBootRisePrBodyFromPendingFix(pending);
+    const baseBranch = body.branch?.trim() || "main";
+
     try {
       const push = await pushFilesToGithub({
         remoteUrl: body.remoteUrl.trim(),
-        baseBranch: body.branch ?? "main",
-        files: body.files,
+        baseBranch,
+        files,
         onlyPaths: patchedPaths,
         commitMessage: `BootRise: ${pending.request.slice(0, 72)}`
       });
 
-      if (!body.report) {
-        return NextResponse.json({ error: "report is required for PR body." }, { status: 400 });
-      }
-      const report = body.report;
-
       const pr = await createDraftPullRequest({
         remoteUrl: body.remoteUrl.trim(),
         headBranch: push.branch,
-        baseBranch: body.branch ?? "main",
+        baseBranch,
         title: `BootRise: ${pending.request.slice(0, 80)}`,
-        body: buildBootRisePrBody(report, pending.request),
+        body: prBody,
         draft: true
       });
 
-      void chargeCredits({ orgId: ctx.orgId, userId: ctx.user.id, action: "draft_pr" });
+      void chargeCredits({
+        orgId: ctx.orgId,
+        userId: ctx.user.id,
+        action,
+        credits: estimatedCredits,
+        metadata: { taskType: action, projectId: body.projectId ?? pending.repositoryId }
+      });
 
       const supabase = getSupabaseServiceClient();
       if (supabase) {
-        const prBody = buildBootRisePrBody(report, pending.request);
         await supabase.from("bootrise_github_pull_requests").upsert({
           id: `pr_${pr.prNumber}_${Date.now()}`,
           org_id: ctx.orgId,
@@ -79,7 +84,7 @@ export async function POST(request: Request) {
           repository_id: pending.repositoryId,
           provider: "github",
           remote_url: body.remoteUrl.trim(),
-          base_branch: body.branch ?? "main",
+          base_branch: baseBranch,
           head_branch: push.branch,
           pr_number: pr.prNumber,
           pr_url: pr.prUrl,
@@ -95,7 +100,7 @@ export async function POST(request: Request) {
         ctx.orgId
       );
 
-      return NextResponse.json({ product: "BootRise", push, draftPr: pr });
+      return NextResponse.json({ product: "BootRise", push, draftPr: pr, estimatedCredits });
     } catch (error) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "PR creation failed." },

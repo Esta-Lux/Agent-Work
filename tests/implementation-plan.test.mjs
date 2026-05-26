@@ -18,15 +18,16 @@ describe("project brain file index", () => {
   it("skips unchanged files by hash", async () => {
     const { indexProjectFiles } = await import("../src/lib/project-brain/file-indexer.ts");
     const files = [{ path: "src/a.ts", content: "export const a = 1" }];
+    const projectId = `proj_index_${Date.now()}`;
     const first = await indexProjectFiles({
       orgId: "org_test",
-      projectId: "proj_test_index",
+      projectId,
       files
     });
     assert.equal(first.indexed, 1);
     const second = await indexProjectFiles({
       orgId: "org_test",
-      projectId: "proj_test_index",
+      projectId,
       files
     });
     assert.equal(second.skipped, 1);
@@ -42,6 +43,21 @@ describe("credit store", () => {
     assert.ok(before.remaining > 0);
     const after = await chargeCredits({ orgId, userId: "u1", action: "context_gate" });
     assert.ok(after.remaining < before.remaining);
+  });
+
+  it("charges explicit credit amount from model route estimate", async () => {
+    const { getCreditBalance, chargeCredits } = await import("../src/lib/usage/credit-store.ts");
+    const orgId = `org_credit_exact_${Date.now()}`;
+    const before = await getCreditBalance(orgId);
+    const amount = 750;
+    const after = await chargeCredits({
+      orgId,
+      userId: "u1",
+      action: "code_review",
+      credits: amount
+    });
+    assert.equal(before.usedCredits + amount, after.usedCredits);
+    assert.equal(before.remaining - amount, after.remaining);
   });
 });
 

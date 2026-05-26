@@ -72,8 +72,12 @@ export async function getCreditBalance(orgId: string): Promise<CreditBalance> {
   return balance;
 }
 
-export async function assertCreditsAvailable(orgId: string, action: string): Promise<number> {
-  const cost = estimateCreditsForAction(action);
+export async function assertCreditsAvailable(
+  orgId: string,
+  action: string,
+  creditsOverride?: number
+): Promise<number> {
+  const cost = creditsOverride ?? estimateCreditsForAction(action);
   const balance = await getCreditBalance(orgId);
   if (balance.remaining < cost) {
     throw new Error(`Insufficient credits: need ${cost}, have ${balance.remaining}.`);
@@ -81,15 +85,27 @@ export async function assertCreditsAvailable(orgId: string, action: string): Pro
   return cost;
 }
 
-export async function chargeCredits(input: {
+export interface ChargeCreditsInput {
   orgId: string;
   userId: string;
   action: string;
   credits?: number;
-}): Promise<CreditBalance> {
+  premiumCredits?: number;
+  metadata?: {
+    taskType?: string;
+    premiumCredits?: number;
+    provider?: string;
+    model?: string;
+    projectId?: string;
+  };
+}
+
+export async function chargeCredits(input: ChargeCreditsInput): Promise<CreditBalance> {
   const cost = input.credits ?? estimateCreditsForAction(input.action);
+  const premiumCost = input.premiumCredits ?? 0;
   const balance = await getCreditBalance(input.orgId);
   balance.usedCredits += cost;
+  balance.premiumCreditsUsed += premiumCost;
   balance.remaining = Math.max(0, balance.includedCredits - balance.usedCredits);
 
   const all = loadLocal();
@@ -120,7 +136,13 @@ export async function chargeCredits(input: {
       action: input.action,
       credits: cost,
       balance_after: balance.remaining,
-      metadata: {}
+      metadata: {
+        taskType: input.metadata?.taskType ?? input.action,
+        premiumCredits: premiumCost,
+        provider: input.metadata?.provider ?? null,
+        model: input.metadata?.model ?? null,
+        projectId: input.metadata?.projectId ?? null
+      }
     });
   }
 

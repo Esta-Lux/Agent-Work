@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   return withAdminAuth(request, async () => {
     return NextResponse.json({
       product: "BootRise",
-      report: getProductionReadinessReport()
+      report: await getProductionReadinessReport()
     });
   });
 }

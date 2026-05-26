@@ -107,7 +107,20 @@ export async function recordModelUsage(
     premium: decision.premium
   });
   if (status === "succeeded") {
-    void chargeCredits({ orgId: input.orgId, userId: input.userId, action: String(decision.taskType) });
+    void chargeCredits({
+      orgId: input.orgId,
+      userId: input.userId,
+      action: String(decision.taskType),
+      credits: decision.quota.creditsRequired,
+      premiumCredits: decision.quota.premiumCreditsRequired,
+      metadata: {
+        taskType: String(decision.taskType),
+        premiumCredits: decision.quota.premiumCreditsRequired,
+        provider: decision.provider,
+        model: decision.modelLabel,
+        projectId: input.projectId
+      }
+    });
   }
   return recordUsageEvent({
     orgId: input.orgId,

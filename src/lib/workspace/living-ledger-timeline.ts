@@ -14,7 +14,8 @@ export type LedgerEventKind =
   | "export"
   | "github_push"
   | "chat"
-  | "stream";
+  | "stream"
+  | "security_scan";
 
 export interface LedgerEvent {
   id: string;
