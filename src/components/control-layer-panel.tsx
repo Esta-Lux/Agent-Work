@@ -6,6 +6,7 @@ import type { ControlLayerSummary } from "@/lib/control/types";
 export function ControlLayerPanel({ control }: { control: ControlLayerSummary }) {
   const { scopeContract, contextPlan, patchGuard, tokenEstimate, tokenWaste, regressionGuard, repositoryMap } =
     control;
+  const { contextGate, agentCoordination } = control;
 
   return (
     <div className="mt-4 space-y-4 rounded-lg border border-line bg-white p-4">
@@ -33,6 +34,53 @@ export function ControlLayerPanel({ control }: { control: ControlLayerSummary })
           ) : null}
         </p>
       ) : null}
+
+      <section>
+        <p className="text-xs font-semibold uppercase text-steel">0 · Context Gate</p>
+        <p className="mt-1 text-sm text-ink">
+          {Math.round(contextGate.confidence * 100)}% confidence · {contextGate.status.replace(/_/g, " ")} ·{" "}
+          {contextGate.safetyMode.replace(/_/g, " ")}
+        </p>
+        <p className="mt-1 text-xs text-graphite">{contextGate.reason}</p>
+        {contextGate.questions.length > 0 ? (
+          <ul className="mt-2 space-y-1 text-xs text-graphite">
+            {contextGate.questions.map((q) => (
+              <li key={q.id}>
+                <span className="font-semibold text-ink">{q.question}</span>{" "}
+                <span className="text-steel">{q.whyItMatters}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section>
+        <p className="text-xs font-semibold uppercase text-steel">Agent coordination</p>
+        <p className="mt-1 text-sm text-ink">{agentCoordination.leadSummary}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <StatusPill label={agentCoordination.canApply ? "Apply allowed" : "Apply gated"} tone={agentCoordination.canApply ? "passed" : "failed"} />
+          <StatusPill label={agentCoordination.safeToPr ? "Safe to PR" : "PR not ready"} tone={agentCoordination.safeToPr ? "passed" : "failed"} />
+          <StatusPill label={agentCoordination.safeToDeploy ? "Deploy ready" : "Deploy blocked"} tone={agentCoordination.safeToDeploy ? "passed" : "failed"} />
+        </div>
+        <ul className="mt-2 space-y-1">
+          {agentCoordination.decisions.map((decision) => (
+            <li
+              key={decision.agent}
+              className={`rounded border px-2 py-1 text-xs ${
+                decision.blocksPatch
+                  ? "border-critical/30 bg-critical/5 text-critical"
+                  : decision.severity === "warning"
+                    ? "border-amber-200/60 bg-amber-50 text-amber-950"
+                    : "border-line bg-cloud text-graphite"
+              }`}
+            >
+              <span className="font-semibold capitalize text-ink">{decision.agent.replace(/_/g, " ")}:</span>{" "}
+              {decision.finding}
+              <span className="block text-steel">{decision.recommendedFix}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section>
         <p className="text-xs font-semibold uppercase text-steel">1 · Task scope lock</p>

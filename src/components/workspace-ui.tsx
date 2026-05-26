@@ -248,10 +248,12 @@ export function EngineToggle({
           className={`cursor-pointer rounded-md px-3 py-2 text-xs font-semibold ${provider === "openai" ? "bg-ink text-white" : "text-graphite"}`}
           onClick={() => onChange("openai")}
         >
-          OpenAI
+          ChatGPT
         </button>
       </div>
-      <StatusPill label={provider === "bootrise" ? (bootriseOk ? "NVIDIA on" : "NVIDIA off") : openaiOk ? "GPT on" : "GPT off"} />
+      <StatusPill
+        label={provider === "bootrise" ? (bootriseOk ? "BootRise ready" : "BootRise offline") : openaiOk ? "ChatGPT ready" : "ChatGPT offline"}
+      />
     </div>
   );
 }

@@ -73,7 +73,7 @@ export function WorkspaceChatMessage({
 
       {displayPlain && role === "assistant" ? (
         <div className="mt-3 rounded-lg border border-signal/25 bg-signal/5 p-3">
-          <p className="text-xs font-semibold uppercase text-signal">In plain English</p>
+          <p className="text-xs font-semibold uppercase text-signal">Summary</p>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite">{stripMarkdownForUser(displayPlain)}</p>
         </div>
       ) : null}

@@ -58,7 +58,7 @@ export function DiffReportPanel({ report }: { report: WorkspaceFixReport }) {
 
       {report.plainEnglishSummary ? (
         <section className="mt-4 rounded-lg border border-signal/20 bg-signal/5 p-3">
-          <p className="text-xs font-semibold uppercase text-signal">In plain English</p>
+          <p className="text-xs font-semibold uppercase text-signal">Summary</p>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-graphite">{report.plainEnglishSummary}</p>
         </section>
       ) : null}

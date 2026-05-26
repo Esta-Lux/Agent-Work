@@ -60,17 +60,10 @@ export async function createPendingFixPlan(
   const rootSymbol = repo.symbols.find((symbol) => symbol.exported)?.name ?? repo.symbols[0]?.name ?? "Page";
   const blast = await traceBlastRadius(repositoryId, rootSymbol);
 
-  const fallbackPlan = createInitialChangePlan(request, repo);
-  let plan = fallbackPlan;
-  let plannerSource = "deterministic";
-
-  try {
-    const ai = await createProviderChangePlan(provider, request, repo, fallbackPlan);
-    plan = ai.plan;
-    plannerSource = `${ai.provider}:${ai.model}`;
-  } catch {
-    plannerSource = "deterministic-fallback";
-  }
+  const scaffoldPlan = createInitialChangePlan(request, repo);
+  const ai = await createProviderChangePlan(provider, request, repo, scaffoldPlan);
+  const plan = ai.plan;
+  const plannerSource = ai.provider === "openai" ? `chatgpt:${ai.model}` : `bootrise:${ai.model}`;
 
   const { patches, source: patchSource } = await generateRealPatches({ provider, request, files, plan });
   const pendingFixId = createPendingFixId();
@@ -119,6 +112,10 @@ export async function createPendingFixPlan(
     approvalStatus: "pending_approval",
     controlLayer
   });
+  const agentSummary = controlLayer.agentCoordination.leadSummary;
+  if (!report.guidanceForBuilder.includes(agentSummary)) {
+    report.guidanceForBuilder = [agentSummary, ...report.guidanceForBuilder];
+  }
 
   return {
     repositoryId,

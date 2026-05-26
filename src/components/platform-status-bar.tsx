@@ -59,15 +59,15 @@ export function PlatformStatusBar({ variant, provider, storage }: PlatformStatus
         {loading ? <StatusPill label="Checking" /> : null}
         {!loading && activeProvider ? (
           <StatusPill
-            label={provider === "openai" ? `OpenAI ${activeProvider.connected ? "on" : "off"}` : `NVIDIA ${activeProvider.connected ? "on" : "off"}`}
+            label={provider === "openai" ? `ChatGPT ${activeProvider.connected ? "ready" : "offline"}` : `BootRise ${activeProvider.connected ? "ready" : "offline"}`}
             tone={activeProvider.connected ? "neutral" : "failed"}
           />
         ) : null}
         {!loading && bootrise && provider !== "openai" ? null : !loading && bootrise ? (
-          <StatusPill label={`NVIDIA ${bootrise.connected ? "on" : "off"}`} tone={bootrise.connected ? "neutral" : "failed"} />
+          <StatusPill label={`BootRise ${bootrise.connected ? "ready" : "offline"}`} tone={bootrise.connected ? "neutral" : "failed"} />
         ) : null}
         {!loading && openai && variant === "admin" ? (
-          <StatusPill label={`OpenAI ${openai.connected ? "on" : "off"}`} tone={openai.connected ? "neutral" : "failed"} />
+          <StatusPill label={`ChatGPT ${openai.connected ? "ready" : "offline"}`} tone={openai.connected ? "neutral" : "failed"} />
         ) : null}
         {!loading && supabase ? (
           <StatusPill
@@ -99,8 +99,8 @@ export function PlatformStatusBar({ variant, provider, storage }: PlatformStatus
 
       {variant === "admin" && !loading && supabase?.schemaReady ? (
         <p className="mt-2 text-xs text-steel">
-          {bootrise?.model ? `BootRise model: ${bootrise.model}` : null}
-          {openai?.model ? ` · OpenAI: ${openai.model}` : null}
+          {bootrise?.connected ? "BootRise engine configured" : null}
+          {openai?.connected ? ` · ChatGPT configured` : null}
         </p>
       ) : null}
     </div>

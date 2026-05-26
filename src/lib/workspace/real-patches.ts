@@ -20,16 +20,12 @@ export async function generateRealPatches(input: {
     return { patches: [], source: "no-targets" };
   }
 
-  try {
-    const llmPatches = await generatePatchesWithLlm(input.provider, input.request, input.plan, targets);
-    if (llmPatches.length > 0) {
-      return { patches: llmPatches, source: "llm" };
-    }
-  } catch {
-    /* fallback below */
+  const llmPatches = await generatePatchesWithLlm(input.provider, input.request, input.plan, targets);
+  if (llmPatches.length > 0) {
+    return { patches: llmPatches, source: input.provider === "openai" ? "chatgpt" : "bootrise" };
   }
 
-  return { patches: deterministicFallbackPatches(input.request, targets), source: "deterministic-fallback" };
+  throw new Error("Selected engine did not return an approved patch JSON payload.");
 }
 
 async function selectTargetFiles(
@@ -122,33 +118,4 @@ function parsePatchJson(raw: string, targets: SourceFileInput[]): ProposedPatch[
   }
 
   return patches;
-}
-
-function deterministicFallbackPatches(request: string, targets: SourceFileInput[]): ProposedPatch[] {
-  const primary = targets[0];
-  if (!primary) return [];
-
-  const banner = [
-    "",
-    "/* --- BootRise planned change (approve to apply via pipeline) ---",
-    `   Request: ${request.replace(/\*\//g, "")}`,
-    "   Replace this banner block with the real implementation.",
-    "*/",
-    ""
-  ].join("\n");
-
-  const after =
-    primary.path.endsWith(".py") || primary.path.endsWith(".md")
-      ? `${banner}${primary.content}`
-      : `${banner}\n${primary.content}`;
-
-  return [
-    {
-      path: primary.path,
-      before: primary.content,
-      after,
-      summary: `Marked ${primary.path} for planned change (LLM unavailable — edit after approve).`,
-      applied: false
-    }
-  ];
 }

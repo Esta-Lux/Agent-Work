@@ -231,7 +231,7 @@ export function AdminConsole() {
             {providers.map((p) => (
               <li key={p.provider} className="rounded border border-line bg-cloud p-3 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-ink">{p.provider === "bootrise" ? "BootRise / NVIDIA" : "OpenAI"}</span>
+                  <span className="font-semibold text-ink">{p.provider === "bootrise" ? "BootRise" : "ChatGPT"}</span>
                   <StatusPill label={p.connected ? "On" : "Off"} tone={p.connected ? "neutral" : "failed"} />
                 </div>
                 <p className="mt-1 text-steel">{p.model}</p>
@@ -385,8 +385,8 @@ export function AdminConsole() {
             value={adminProvider}
             onChange={(e) => setAdminProvider(e.target.value as "bootrise" | "openai")}
           >
-            <option value="bootrise">BootRise / NVIDIA NIM</option>
-            <option value="openai">OpenAI GPT-5.5</option>
+            <option value="bootrise">BootRise</option>
+            <option value="openai">ChatGPT</option>
           </select>
           <textarea
             className="mt-3 min-h-24 w-full rounded border border-line bg-cloud p-3 text-sm"

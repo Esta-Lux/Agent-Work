@@ -64,6 +64,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A non-empty message is required." }, { status: 400 });
   }
 
+  if (!isProviderConfigured(provider)) {
+    return NextResponse.json(
+      {
+        error:
+          provider === "openai"
+            ? "ChatGPT is not configured for this workspace."
+            : "BootRise is not configured for this workspace.",
+        provider,
+        connected: false
+      },
+      { status: 503 }
+    );
+  }
+
   const context: WorkspaceChatContext = {
     projectBrief: body?.projectBrief as ProjectBrief | undefined,
     hasCode: body?.hasCode,
@@ -93,17 +107,26 @@ export async function POST(request: Request) {
         connected: isProviderConfigured(provider),
         reply: chatControl.stopReason ?? "BootRise stopped this chat turn to protect your credits and scope.",
         phase: "planning" as const,
-        discoveryQuestions: [
-          {
-            id: "scope",
-            prompt: "Which file, screen, or API route should BootRise focus on?",
-            whyItMatters: "The control layer needs a narrow target before reading more of the repo."
-          }
-        ],
+        discoveryQuestions: chatControl.contextGate.questions.map((q) => ({
+          id: q.id,
+          prompt: q.question,
+          whyItMatters: q.whyItMatters
+        })),
         featureAdvice: [],
         suggestedActions: ["Run Fix with a file-specific request", "Rephrase with a module path"],
         thinkingSteps: [
-          { id: "control", label: "Chat control layer", status: "done" as const, detail: "Stopped — scope guard" }
+          {
+            id: "control",
+            label: "Context Gate",
+            status: "done" as const,
+            detail: `${Math.round(chatControl.contextGate.confidence * 100)}% confidence`
+          },
+          {
+            id: "lead",
+            label: "Lead Architect",
+            status: "done" as const,
+            detail: "Questions required before patching"
+          }
         ],
         fileActivity: [],
         chatControl
@@ -111,7 +134,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message) && isProviderConfigured(provider)) {
+  if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message)) {
     try {
       assertKillSwitchAllowed("expensive_model");
       const review = await runPrimaryCodeReview({
@@ -128,7 +151,7 @@ export async function POST(request: Request) {
         product: "BootRise",
         provider,
         connected: true,
-        model: review.model,
+        model: provider === "openai" ? "ChatGPT" : "BootRise",
         chatControl: review.chatControl ?? chatControl,
         ...review.result
       });
@@ -136,7 +159,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: error instanceof Error ? error.message : "Code review failed.",
-          hint: "Try OpenAI provider or re-import the repo."
+          hint: provider === "openai" ? "Check the ChatGPT runtime key and try again." : "Check the BootRise runtime key and try again."
         },
         { status: 502 }
       );
@@ -152,8 +175,8 @@ export async function POST(request: Request) {
   const base = createWorkspaceChatResponse(message, context, { githubReview });
 
   let merged = base;
-  const skipLlm = Boolean(githubReview) || !shouldEnhanceWithLlm(base);
-  if (!skipLlm && isProviderConfigured(provider)) {
+  const shouldUseSelectedEngine = Boolean(githubReview) || shouldEnhanceWithLlm(base);
+  if (shouldUseSelectedEngine) {
     try {
       assertKillSwitchAllowed("expensive_model");
       const rulesBlock =
@@ -161,12 +184,19 @@ export async function POST(request: Request) {
       const result = await createProviderChatResponse({
         provider,
         message: buildLlmEnhancementPrompt({ message, result: base, githubReview }),
-        history: [],
+        history: body?.history?.slice(-6) ?? [],
         system: getPersonaSystem(persona) + buildRulesPromptBlock(rulesBlock)
       });
       merged = mergeChatResponse(base, result.text, { provider: result.provider, model: result.model });
-    } catch {
-      merged = base;
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Selected engine failed to respond.",
+          provider,
+          connected: false
+        },
+        { status: 502 }
+      );
     }
   } else {
     merged = mergeChatResponse(base, null);
@@ -175,8 +205,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     product: "BootRise",
     provider,
-    connected: isProviderConfigured(provider),
-    model: merged.thinkingSteps.find((s) => s.id === "llm")?.detail,
+    connected: true,
+    model: provider === "openai" ? "ChatGPT" : "BootRise",
     chatControl,
     ...merged
   });
@@ -321,9 +351,9 @@ async function runPrimaryCodeReview(input: {
         },
         {
           id: "llm",
-          label: input.provider === "openai" ? "OpenAI code review" : "NVIDIA code review",
+          label: input.provider === "openai" ? "ChatGPT code review" : "BootRise code review",
           status: "done" as const,
-          detail: result.model
+          detail: input.provider === "openai" ? "ChatGPT" : "BootRise"
         }
       ],
       fileActivity

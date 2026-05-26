@@ -8,6 +8,7 @@ import { buildRepoIntelligenceSnapshot } from "@/lib/intelligence/repo-intellige
 import type { ChatControlSummary, ContextPlan } from "@/lib/control/types";
 import { getFailedAttemptCount } from "@/lib/control/task-session";
 import { buildInjectedContextRules } from "@/lib/control/context-rules";
+import { evaluateContextGate, isWorkIntent } from "@/lib/control/context-gate";
 
 export async function runChatControlGate(input: {
   request: string;
@@ -27,6 +28,7 @@ export async function runChatControlGate(input: {
     plan,
     files: input.files
   });
+  const contextGate = evaluateContextGate({ request: input.request, files: input.files });
 
   const estimatedUsd = Math.round(((contextPlan.estimatedChars / 4) / 1000) * 0.002 * 100) / 100;
   const tokenWaste = buildTokenWasteSummary({
@@ -44,11 +46,14 @@ export async function runChatControlGate(input: {
     stopReason = `Stopped after ${failedPatchAttempts} failed patch attempts on this task — narrow scope before more chat spend.`;
   } else if (input.request.trim().length < 8) {
     stopReason = "Message is too vague — specify screen, API, or file.";
+  } else if (isWorkIntent(input.request) && contextGate.status !== "proceed_with_assumptions") {
+    stopReason = `${contextGate.reason} Context confidence: ${Math.round(contextGate.confidence * 100)}%.`;
   } else if (scopeContract.confidence < 0.45 && input.files.length > 50) {
     stopReason = "Low confidence on likely files — mention a path or module name.";
   }
 
   return {
+    contextGate,
     contextPlan,
     repositoryMap,
     tokenWaste,

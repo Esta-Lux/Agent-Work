@@ -52,7 +52,7 @@ export function buildScopeContract(input: {
 
   const planFiles = input.plan.impact.files.filter((p) => corpusPaths.has(p));
   const patchFiles = (input.patches ?? []).map((p) => p.path);
-  const allowedSet = new Set([...planFiles, ...patchFiles]);
+  const allowedSet = new Set(planFiles.length > 0 ? planFiles : patchFiles);
 
   const readOnly = input.files
     .map((f) => f.path)

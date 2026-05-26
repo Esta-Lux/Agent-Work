@@ -763,7 +763,7 @@ export function UserWorkspace() {
       ...fixReport.guidanceForBuilder.map((g) => `- ${g}`)
     ];
     if (fixReport.plainEnglishSummary) {
-      parts.push("", "In plain English:", fixReport.plainEnglishSummary);
+      parts.push("", "Summary:", fixReport.plainEnglishSummary);
     }
     if (fixReport.safeToPr) {
       parts.push("", `Safe to PR? ${fixReport.safeToPr.label}`, ...fixReport.safeToPr.reasons.map((r) => `- ${r}`));
@@ -1510,7 +1510,7 @@ export function UserWorkspace() {
               <Panel title="Export">
                 <p className="text-sm text-graphite">
                   Bundle includes brief, {loadedFilePaths.length} files, architecture health
-                  {report ? ", fix report + plain English" : ""}, and GitHub metadata.
+                  {report ? ", fix report + summary" : ""}, and GitHub metadata.
                 </p>
                 {!briefReady ? (
                   <p className="mt-2 text-xs text-amber-800">Fill product name and workflow in Files before exporting.</p>

@@ -32,7 +32,7 @@ export function createWorkspaceChatResponse(
       status: "done",
       detail: `${context.loadedFilePaths?.length ?? 0} file(s) in workspace`
     },
-    { id: "model", label: "Select response path", status: "done", detail: "Use loaded files first; call NVIDIA/OpenAI only when useful" },
+    { id: "model", label: "Select engine", status: "done", detail: "Use loaded files first; selected engine only" },
     { id: "respond", label: "Publish answer", status: "done" }
   ];
 
@@ -92,7 +92,7 @@ export function createWorkspaceChatResponse(
     phase = "review";
     reply = "Analyzing your question against loaded source files…";
     suggestedActions.push("Import full repo if navigation files are missing", "Run Fix and report on one specific change");
-    thinkingSteps.push({ id: "review", label: "Code review", status: "active", detail: "Waiting for NVIDIA/OpenAI" });
+    thinkingSteps.push({ id: "review", label: "Code review", status: "active", detail: "Waiting for selected engine" });
     return wrapResult({ reply, discoveryQuestions, featureAdvice, suggestedActions, phase, thinkingSteps, fileActivity });
   }
 

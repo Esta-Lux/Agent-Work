@@ -40,7 +40,23 @@ export async function POST(request: Request) {
 
   const provider = resolveUserProvider(body?.provider);
   const startedAt = Date.now();
-  const result = await createPendingFixPlan(files, userRequest, provider);
+  let result: Awaited<ReturnType<typeof createPendingFixPlan>>;
+  try {
+    result = await createPendingFixPlan(files, userRequest, provider);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Fix workflow failed.",
+        provider,
+        connected: false,
+        nextAction:
+          provider === "openai"
+            ? "Configure ChatGPT or choose BootRise if it is available."
+            : "Configure BootRise or choose ChatGPT if it is available."
+      },
+      { status: 502 }
+    );
+  }
   void recordAudit({ actor: "workspace-user", action: "fix_proposed", detail: userRequest.slice(0, 120) });
   const durationMs = Date.now() - startedAt;
 

@@ -43,6 +43,7 @@ export interface ContextPlan {
 }
 
 export interface ChatControlSummary {
+  contextGate: ContextGateDecision;
   contextPlan: ContextPlan;
   repositoryMap: RepositoryMap;
   tokenWaste: TokenWasteSummary;
@@ -50,6 +51,45 @@ export interface ChatControlSummary {
   stopReason: string | null;
   failedPatchAttempts: number;
   scopePreview: string;
+}
+
+export type ContextGateStatus = "proceed_with_assumptions" | "needs_clarification" | "blocked";
+export type SafetyMode = "observe" | "suggest_patches" | "auto_fix_safe" | "autonomous_blocked";
+
+export interface ContextGateDecision {
+  confidence: number;
+  status: ContextGateStatus;
+  safetyMode: SafetyMode;
+  reason: string;
+  questions: Array<{
+    id: string;
+    question: string;
+    whyItMatters: string;
+  }>;
+  assumptions: string[];
+  sensitiveAreas: string[];
+}
+
+export type AgentRole = "lead_architect" | "builder" | "security" | "qa" | "runtime_monitor" | "deployment";
+
+export interface AgentDecision {
+  agent: AgentRole;
+  finding: string;
+  severity: ControlSeverity;
+  blocksPatch: boolean;
+  recommendedFix: string;
+}
+
+export interface AgentCoordinationSummary {
+  leadSummary: string;
+  mode: SafetyMode;
+  canPatch: boolean;
+  canApply: boolean;
+  safeToPr: boolean;
+  safeToDeploy: boolean;
+  userApprovalRequired: string[];
+  blockers: string[];
+  decisions: AgentDecision[];
 }
 
 export interface ControlFinding {
@@ -72,6 +112,8 @@ export interface PatchGuardResult {
 }
 
 export interface ControlLayerSummary {
+  contextGate: ContextGateDecision;
+  agentCoordination: AgentCoordinationSummary;
   scopeContract: ScopeContract;
   contextPlan: ContextPlan;
   patchGuard: PatchGuardResult;

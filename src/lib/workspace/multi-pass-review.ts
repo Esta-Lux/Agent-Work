@@ -131,9 +131,9 @@ export async function runMultiPassCodeReview(input: {
   });
   thinkingSteps.push({
     id: "llm",
-    label: input.provider === "openai" ? "OpenAI code review" : "NVIDIA code review",
+    label: input.provider === "openai" ? "ChatGPT code review" : "BootRise code review",
     status: "done",
-    detail: lastModel
+    detail: input.provider === "openai" ? "ChatGPT" : "BootRise"
   });
 
   return {

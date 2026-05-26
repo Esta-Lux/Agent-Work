@@ -1,9 +1,8 @@
-import { createNvidiaChangePlan, createNvidiaChatResponse, checkNvidiaConnection, hasNvidiaKey, getNvidiaModel } from "@/lib/ai/nvidia-client";
+import { createNvidiaChangePlan, createNvidiaChatResponse, checkNvidiaConnection, hasNvidiaKey } from "@/lib/ai/nvidia-client";
 import {
   checkOpenAIConnection,
   createOpenAIChangePlan,
   createOpenAIChatResponse,
-  getOpenAIModel,
   hasOpenAIKey
 } from "@/lib/ai/openai-client";
 import type { LlmHealthResult, LlmProviderId, LlmChatResult } from "@/lib/ai/providers";
@@ -24,7 +23,7 @@ export async function checkAllProviderHealth(): Promise<LlmHealthResult[]> {
 }
 
 export function providerLabel(provider: LlmProviderId): string {
-  return provider === "openai" ? `OpenAI ${getOpenAIModel()}` : `BootRise / NVIDIA ${getNvidiaModel()}`;
+  return provider === "openai" ? "ChatGPT" : "BootRise";
 }
 
 export function isProviderConfigured(provider: LlmProviderId): boolean {
@@ -35,16 +34,16 @@ export async function createProviderChangePlan(
   provider: LlmProviderId,
   request: string,
   repo: RepoIntelligenceSnapshot,
-  fallbackPlan: ChangePlan
+  scaffoldPlan: ChangePlan
 ): Promise<{ plan: ChangePlan; model: string; provider: LlmProviderId }> {
   if (provider === "openai") {
-    if (!hasOpenAIKey()) throw new Error("OPENAI_API_KEY is not configured.");
-    const result = await createOpenAIChangePlan(request, repo, fallbackPlan);
+    if (!hasOpenAIKey()) throw new Error("ChatGPT is not configured on the server.");
+    const result = await createOpenAIChangePlan(request, repo, scaffoldPlan);
     return { plan: result.plan, model: result.model, provider: "openai" };
   }
 
-  if (!hasNvidiaKey()) throw new Error("NVIDIA_API_KEY is not configured.");
-  const result = await createNvidiaChangePlan(request, repo, fallbackPlan);
+  if (!hasNvidiaKey()) throw new Error("BootRise is not configured on the server.");
+  const result = await createNvidiaChangePlan(request, repo, scaffoldPlan);
   return { plan: result.plan, model: result.model, provider: "bootrise" };
 }
 
@@ -55,7 +54,7 @@ export async function createProviderChatResponse(input: {
   system?: string;
 }): Promise<LlmChatResult> {
   if (input.provider === "openai") {
-    if (!hasOpenAIKey()) throw new Error("OPENAI_API_KEY is not configured.");
+    if (!hasOpenAIKey()) throw new Error("ChatGPT is not configured on the server.");
     const result = await createOpenAIChatResponse({
       message: input.system ? `${input.system}\n\n${input.message}` : input.message,
       history: input.history
@@ -63,7 +62,7 @@ export async function createProviderChatResponse(input: {
     return { provider: "openai", model: result.model, text: result.text };
   }
 
-  if (!hasNvidiaKey()) throw new Error("NVIDIA_API_KEY is not configured.");
+  if (!hasNvidiaKey()) throw new Error("BootRise is not configured on the server.");
   const result = await createNvidiaChatResponse({
     message: input.message,
     history: input.history,

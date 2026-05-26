@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StatusPill } from "@/components/status-pill";
 
 interface StreamRecord {
@@ -26,12 +26,12 @@ export function DeviceStreamPanel({
   const [error, setError] = useState<string | null>(null);
   const [provisioning, setProvisioning] = useState(false);
 
-  async function loadStreams() {
+  const loadStreams = useCallback(async () => {
     if (!repositoryId) return;
     const res = await fetch(`/api/workspace/streams?repositoryId=${encodeURIComponent(repositoryId)}`);
     const data = (await res.json()) as { streams?: StreamRecord[]; error?: string };
     if (res.ok) setStreams(data.streams ?? []);
-  }
+  }, [repositoryId]);
 
   async function provision(runtime: "android" | "ios") {
     if (!repositoryId) return;
@@ -56,7 +56,7 @@ export function DeviceStreamPanel({
 
   useEffect(() => {
     void loadStreams();
-  }, [repositoryId]);
+  }, [loadStreams]);
 
   if (!hasExpo) {
     return (
@@ -66,7 +66,7 @@ export function DeviceStreamPanel({
     );
   }
 
-  const active = streams.find((s) => s.runtime === "android" || activeRuntime === "ios") ?? streams[0];
+  const active = streams.find((s) => s.runtime === activeRuntime) ?? streams[0];
   const streamUrl = active?.streamUrl;
 
   return (

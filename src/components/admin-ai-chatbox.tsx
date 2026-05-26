@@ -58,7 +58,7 @@ export function AdminAIChatbox() {
       role: "assistant",
       model: "bootrise",
       content:
-        "Use this console to design the user-facing BootRise website from the admin side. Choose BootRise for deterministic product planning or GPT-5.5 when the server key is configured."
+        "Use this console to design the user-facing BootRise website from the admin side. Choose BootRise or ChatGPT as separate engines."
     }
   ]);
   const [plan, setPlan] = useState<WebsitePlan | null>(null);
@@ -110,7 +110,7 @@ export function AdminAIChatbox() {
       ]);
       setPlan(data.websitePlan);
       setOperatorPlan(data.operatorPlan);
-      setStatus(data.connected ? `Responded with ${data.provider}` : data.message ?? "BootRise fallback responded");
+      setStatus(data.connected ? `Responded with ${data.provider === "openai" ? "ChatGPT" : "BootRise"}` : data.message ?? "Selected engine is offline");
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -176,7 +176,7 @@ export function AdminAIChatbox() {
                 onClick={() => setModel("openai")}
                 type="button"
               >
-                GPT-5.5
+                ChatGPT
               </button>
             </div>
             <div className="flex flex-wrap gap-2">

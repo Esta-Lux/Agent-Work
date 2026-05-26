@@ -11,6 +11,8 @@ import { evaluateStopPolicy } from "@/lib/control/stop-policy";
 import { clearTaskSession, buildTaskKey } from "@/lib/control/task-session";
 import type { ControlLayerSummary } from "@/lib/control/types";
 import { recordControlEvent } from "@/lib/control/control-telemetry";
+import { evaluateContextGate } from "@/lib/control/context-gate";
+import { buildAgentCoordination } from "@/lib/control/agent-coordination";
 
 function estimateUsd(chars: number): number {
   const tokens = chars / 4;
@@ -31,6 +33,11 @@ export async function runControlGate(input: {
     plan: input.plan,
     files: input.files,
     patches: input.patches
+  });
+  const contextGate = evaluateContextGate({
+    request: input.request,
+    files: input.files,
+    targetFiles: input.plan.impact.files
   });
 
   const contextPlan = await buildContextPlan(input.request, input.files, {
@@ -78,11 +85,25 @@ export async function runControlGate(input: {
   });
 
   let stopReason: string | null = stop.reason;
+  if (!stopReason && contextGate.status !== "proceed_with_assumptions") {
+    stopReason = `${contextGate.reason} Context confidence: ${Math.round(contextGate.confidence * 100)}%.`;
+  }
   if (!stop.shouldStop && !regressionGuard.passed) {
     stopReason = regressionGuard.summary;
   }
 
+  const agentCoordination = buildAgentCoordination({
+    contextGate,
+    scopeContract,
+    patchGuard,
+    regressionGuard,
+    stopReason,
+    patchesCount: input.patches.length
+  });
+
   const canApprove =
+    contextGate.status === "proceed_with_assumptions" &&
+    agentCoordination.canPatch &&
     !patchGuard.blocked &&
     regressionGuard.passed &&
     !stop.shouldStop &&
@@ -90,6 +111,8 @@ export async function runControlGate(input: {
   const canApply = canApprove && input.patches.length > 0;
 
   const summary: ControlLayerSummary = {
+    contextGate,
+    agentCoordination,
     scopeContract,
     contextPlan,
     patchGuard,
@@ -131,6 +154,10 @@ export function assertApproveAllowed(control: ControlLayerSummary): void {
   if (!control.regressionGuard.passed) {
     const fail = control.regressionGuard.checks.find((c) => c.status === "failed");
     throw new Error(fail?.detail ?? control.regressionGuard.summary);
+  }
+  const agentBlock = control.agentCoordination.decisions.find((decision) => decision.blocksPatch);
+  if (agentBlock) {
+    throw new Error(`${agentBlock.agent.replace("_", " ")} blocked approval: ${agentBlock.finding}`);
   }
 }
 

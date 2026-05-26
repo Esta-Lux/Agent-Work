@@ -3,7 +3,7 @@ import type { GithubRepoInsight } from "@/lib/workspace/github-inspector";
 import type { WorkspaceChatResult } from "@/lib/workspace/workspace-types";
 
 const MAX_REPLY_CHARS = 1800;
-const MAX_LLM_INSIGHT_CHARS = 520;
+const MAX_LLM_INSIGHT_CHARS = 900;
 
 export function shouldEnhanceWithLlm(result: WorkspaceChatResult): boolean {
   if (result.triggerFix) return false;
@@ -40,6 +40,9 @@ export function buildLlmEnhancementPrompt(input: {
 
   return [
     BOOTRISE_INSIGHT_SYSTEM,
+    "Write the final answer for the user's current action. Do not give a generic feature list.",
+    "Mention what BootRise is doing now, where the likely mismatch or risk is, and the next safe action.",
+    "Keep it concise: 2-5 short paragraphs or up to 4 bullets. No markdown tables.",
     "",
     ...facts.filter(Boolean),
     "",
@@ -55,7 +58,7 @@ export function mergeChatResponse(
   const insight = sanitizeLlmInsight(llmInsight);
   let reply = base.reply;
 
-  if (insight && shouldEnhanceWithLlm(base)) {
+  if (insight) {
     reply = `${base.reply}\n\n${insight}`;
   }
 
@@ -65,9 +68,9 @@ export function mergeChatResponse(
   if (insight) {
     thinkingSteps.push({
       id: "llm",
-      label: meta?.provider === "openai" ? "OpenAI architect insight" : "BootRise architect insight",
+      label: meta?.provider === "openai" ? "ChatGPT response" : "BootRise response",
       status: "done",
-      detail: meta?.model ?? "LLM"
+      detail: meta?.provider === "openai" ? "ChatGPT" : "BootRise"
     });
   }
 

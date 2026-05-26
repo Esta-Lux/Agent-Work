@@ -24,7 +24,7 @@ export function UnitEconomicsPanel() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric title="Light verified task" value={money(economics.taskCosts.lightTaskCost)} detail="GPT-5.5 planner, Sonnet worker, 10 min sandbox, logs." />
+        <Metric title="Light verified task" value={money(economics.taskCosts.lightTaskCost)} detail="Strong planner, code worker, 10 min sandbox, logs." />
         <Metric title="Heavy verified task" value={money(economics.taskCosts.heavyTaskCost)} detail="Larger context, Opus review path, 45 min sandbox." />
         <Metric
           title="7-day trial cost"
