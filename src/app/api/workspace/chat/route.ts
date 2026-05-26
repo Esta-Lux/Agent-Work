@@ -14,7 +14,6 @@ import {
   buildCodeReviewSystemPrompt,
   formatFilesThinkingDetail,
   isProductCodeReviewQuestion,
-  selectRelevantFiles,
   type LoadedFileSnippet
 } from "@/lib/workspace/workspace-code-context";
 import { readRepoFiles, repoExists } from "@/lib/workspace/repo-store";
@@ -29,6 +28,12 @@ import {
   shouldEnhanceWithLlm
 } from "@/lib/workspace/workspace-chat-wrapper";
 import type { ProjectBrief, WorkspaceChatContext, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import {
+  buildChatRulesBlock,
+  runChatControlGate,
+  selectChatContextFiles
+} from "@/lib/control/chat-control";
+import { buildRulesPromptBlock } from "@/lib/control/context-governor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +51,7 @@ interface WorkspaceChatRequest {
   githubUrl?: string | null;
   githubBranch?: string | null;
   repositoryId?: string | null;
+  projectId?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -68,6 +74,42 @@ export async function POST(request: Request) {
   };
 
   const loadedFiles = resolveChatFileCorpus(body?.loadedFiles ?? [], body?.repositoryId);
+  const repositoryId = body?.repositoryId?.trim() ?? undefined;
+  const projectId = body?.projectId?.trim() ?? repositoryId;
+
+  let chatControl = null;
+  if (loadedFiles.length > 0) {
+    chatControl = await runChatControlGate({
+      request: message,
+      files: loadedFiles,
+      repositoryId,
+      projectId
+    });
+
+    if (!chatControl.canProceed) {
+      return NextResponse.json({
+        product: "BootRise",
+        provider,
+        connected: isProviderConfigured(provider),
+        reply: chatControl.stopReason ?? "BootRise stopped this chat turn to protect your credits and scope.",
+        phase: "planning" as const,
+        discoveryQuestions: [
+          {
+            id: "scope",
+            prompt: "Which file, screen, or API route should BootRise focus on?",
+            whyItMatters: "The control layer needs a narrow target before reading more of the repo."
+          }
+        ],
+        featureAdvice: [],
+        suggestedActions: ["Run Fix with a file-specific request", "Rephrase with a module path"],
+        thinkingSteps: [
+          { id: "control", label: "Chat control layer", status: "done" as const, detail: "Stopped — scope guard" }
+        ],
+        fileActivity: [],
+        chatControl
+      });
+    }
+  }
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message) && isProviderConfigured(provider)) {
     try {
@@ -78,13 +120,16 @@ export async function POST(request: Request) {
         files: loadedFiles,
         productName: context.projectBrief?.productName,
         provider,
-        persona
+        persona,
+        chatControl,
+        projectId
       });
       return NextResponse.json({
         product: "BootRise",
         provider,
         connected: true,
         model: review.model,
+        chatControl: review.chatControl ?? chatControl,
         ...review.result
       });
     } catch (error) {
@@ -111,11 +156,13 @@ export async function POST(request: Request) {
   if (!skipLlm && isProviderConfigured(provider)) {
     try {
       assertKillSwitchAllowed("expensive_model");
+      const rulesBlock =
+        loadedFiles.length > 0 ? await buildChatRulesBlock({ files: loadedFiles, projectId }) : "";
       const result = await createProviderChatResponse({
         provider,
         message: buildLlmEnhancementPrompt({ message, result: base, githubReview }),
         history: [],
-        system: getPersonaSystem(persona)
+        system: getPersonaSystem(persona) + buildRulesPromptBlock(rulesBlock)
       });
       merged = mergeChatResponse(base, result.text, { provider: result.provider, model: result.model });
     } catch {
@@ -130,6 +177,7 @@ export async function POST(request: Request) {
     provider,
     connected: isProviderConfigured(provider),
     model: merged.thinkingSteps.find((s) => s.id === "llm")?.detail,
+    chatControl,
     ...merged
   });
 }
@@ -155,15 +203,23 @@ async function runPrimaryCodeReview(input: {
   productName?: string;
   provider: "bootrise" | "openai";
   persona: BootrisePersonaId;
+  chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
+  projectId?: string;
 }) {
   const config = getReviewConfig();
+  const rulesBlock = await buildChatRulesBlock({ files: input.files, projectId: input.projectId });
+  const rulesSuffix = buildRulesPromptBlock(rulesBlock);
 
   if (shouldUseMultiPassReview(input.files.length, input.message, config)) {
-    const multi = await runMultiPassCodeReview(input);
+    const multi = await runMultiPassCodeReview({
+      ...input,
+      rulesBlock: rulesSuffix
+    });
     const plainEnglishSummary = extractPlainEnglishSection(multi.reply) ?? undefined;
 
     return {
       model: multi.model,
+      chatControl: input.chatControl,
       result: {
         reply: normalizeAgentReply(multi.reply),
         plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
@@ -175,7 +231,15 @@ async function runPrimaryCodeReview(input: {
           `Deep-read ${multi.deepReadFiles.length} files in ${multi.batchCount} passes — ask about a module for more depth`,
           "Export bundle"
         ],
-        thinkingSteps: multi.thinkingSteps,
+        thinkingSteps: [
+          {
+            id: "control",
+            label: "Chat control layer",
+            status: "done" as const,
+            detail: input.chatControl?.tokenWaste.message ?? "Context governed"
+          },
+          ...multi.thinkingSteps
+        ],
         fileActivity: multi.deepReadFiles.slice(0, 24).map((f) => ({
           path: f.path,
           status: "analyzing" as const,
@@ -186,20 +250,29 @@ async function runPrimaryCodeReview(input: {
     };
   }
 
-  const relevant = selectRelevantFiles(input.message, input.files, config.singleMaxFiles);
+  const relevant = input.chatControl
+    ? selectChatContextFiles(input.files, input.chatControl.contextPlan)
+    : input.files.slice(0, config.singleMaxFiles);
+
   const contextBlock = buildCodeContextBlock(relevant, {
     maxCharsPerFile: config.charsPerFile,
     totalBudget: config.singleCharBudget
   });
-  const system = buildCodeReviewSystemPrompt(input.productName, input.persona);
+  const system = buildCodeReviewSystemPrompt(input.productName, input.persona) + rulesSuffix;
   const userPrompt = [
     `User question: ${input.message}`,
     "",
-    `Relevant source files (${relevant.length} of ${input.files.length} in corpus — production source prioritized over tests unless you asked for tests):`,
+    input.chatControl
+      ? `BootRise context budget: ${input.chatControl.contextPlan.summary}`
+      : null,
+    "",
+    `Relevant source files (${relevant.length} of ${input.files.length} in corpus — governed by control layer):`,
     contextBlock || "(no excerpts — ask user to re-import)",
     "",
     "Answer the user question directly. Use clear language throughout. Do not include a heading named Plain English."
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const result = await createProviderChatResponse({
     provider: input.provider,
@@ -215,11 +288,12 @@ async function runPrimaryCodeReview(input: {
   const fileActivity = relevant.map((f) => ({
     path: f.path,
     status: "analyzing" as const,
-    detail: "Reviewed for this answer"
+    detail: "Governed context — reviewed for this answer"
   }));
 
   return {
     model: result.model,
+    chatControl: input.chatControl,
     result: {
       reply: normalizedText,
       plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
@@ -232,10 +306,16 @@ async function runPrimaryCodeReview(input: {
         "Export bundle"
       ],
       thinkingSteps: [
+        {
+          id: "control",
+          label: "Chat control layer",
+          status: "done" as const,
+          detail: input.chatControl?.tokenWaste.message ?? "Context governed"
+        },
         { id: "intent", label: "Understand request", status: "done" as const, detail: input.message.slice(0, 72) },
         {
           id: "files",
-          label: "Read relevant source",
+          label: "Read governed source",
           status: "done" as const,
           detail: formatFilesThinkingDetail(relevant)
         },

@@ -35,6 +35,7 @@ export async function runMultiPassCodeReview(input: {
   productName?: string;
   provider: LlmProviderId;
   persona: BootrisePersonaId;
+  rulesBlock?: string;
 }): Promise<MultiPassReviewResult> {
   const config = getReviewConfig();
   const plan = selectReviewBatches(input.message, input.files, config.batchSize, config.maxBatches);
@@ -99,7 +100,7 @@ export async function runMultiPassCodeReview(input: {
 
   const deepReadFiles = input.files.filter((f) => deepReadPaths.has(f.path));
   const pathIndex = buildRepoPathIndex(input.files, deepReadPaths);
-  const synthesisSystem = buildCodeReviewSystemPrompt(input.productName, input.persona);
+  const synthesisSystem = buildCodeReviewSystemPrompt(input.productName, input.persona) + (input.rulesBlock ?? "");
 
   const synthesisPrompt = [
     `User question: ${input.message}`,

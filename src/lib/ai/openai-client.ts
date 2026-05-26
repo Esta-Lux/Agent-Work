@@ -107,7 +107,7 @@ export async function createOpenAIChatResponse({
   history: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<OpenAIChatResult> {
   const prompt = `You are BootRise's senior product-engineering operator inside the admin console.
-BootRise is an architecture-aware AI engineering reliability platform.
+BootRise is the AI coding control layer for large codebases — it scopes tasks, governs context, blocks unsafe patches, and verifies changes before PR.
 It is NOT a generic business website builder.
 
 Current live capabilities:

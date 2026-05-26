@@ -11,7 +11,9 @@ export default function Home() {
             </div>
             <div>
               <p className="text-lg font-semibold leading-tight text-ink">BootRise</p>
-              <p className="text-xs text-steel">Build → fix → verify → ship</p>
+              <p className="text-xs text-steel">
+                Stops AI agents from breaking large codebases — scope, context, guards, verified PRs
+              </p>
             </div>
           </div>
           <a

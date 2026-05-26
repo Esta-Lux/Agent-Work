@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { createGitSync } from "@/lib/infrastructure/control-plane";
+import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { createExportBundle } from "@/lib/workspace/workspace-export";
+import { pushFilesToGithub } from "@/lib/workspace/github-push";
+import { buildPullRequestBody, createDraftPullRequest } from "@/lib/workspace/github-pr";
 import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { ChangePlan } from "@/lib/types/core";
@@ -10,6 +12,7 @@ export const runtime = "nodejs";
 
 interface ExportRequestBody {
   mode?: "download" | "github";
+  createDraftPr?: boolean;
   projectBrief?: ProjectBrief;
   files?: SourceFileInput[];
   plan?: ChangePlan;
@@ -49,27 +52,83 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "remoteUrl is required for GitHub export." }, { status: 400 });
     }
 
-    const repositoryId = body.repositoryId ?? `repo_export_${Date.now()}`;
-    const sync = await createGitSync({
-      repositoryId,
-      remoteUrl,
-      defaultBranch: body.branch ?? "main"
-    });
+    const wantsPr = body.createDraftPr !== false;
+    const patchedPaths = body.report?.patches?.map((p) => p.path) ?? body.report?.fixed.map((f) => f.path);
 
-    return NextResponse.json({
-      product: "BootRise",
-      mode: "github",
-      bundle,
-      gitSync: sync,
-      pushSteps: [
-        `git init && git remote add origin ${remoteUrl}`,
-        "Copy exported files from the BootRise bundle into the repository root.",
-        "git add . && git commit -m \"BootRise export\"",
-        `git push -u origin ${body.branch ?? "main"}`,
-        "Configure GITHUB_TOKEN in BootRise for automated push in a later release."
-      ],
-      status: "ready-for-manual-push"
-    });
+    if (!process.env.GITHUB_TOKEN?.trim()) {
+      return NextResponse.json({
+        product: "BootRise",
+        mode: "github",
+        bundle,
+        status: "token-missing",
+        error: "GITHUB_TOKEN is required for automated push and draft PR.",
+        pushSteps: [
+          "Add GITHUB_TOKEN to Agent-Work/.env with repo scope.",
+          "Re-run GitHub export with an approved fix report."
+        ]
+      }, { status: 400 });
+    }
+
+    if (!patchedPaths?.length) {
+      return NextResponse.json({
+        error: "Approve a fix plan before GitHub push — draft PR requires applied patch paths.",
+        hint: "Run Fix → Approve → Export to GitHub."
+      }, { status: 400 });
+    }
+
+    if (
+      body.report?.approvalStatus === "pending_approval" &&
+      body.report.controlLayer &&
+      !body.report.controlLayer.canApprove
+    ) {
+      return NextResponse.json({
+        error: "Control layer blocked this plan — resolve patch guard before opening a PR.",
+        stopReason: body.report.controlLayer.stopReason
+      }, { status: 400 });
+    }
+
+    try {
+      assertKillSwitchAllowed("github_push");
+
+      const push = await pushFilesToGithub({
+        remoteUrl,
+        baseBranch: body.branch ?? "main",
+        files: body.files,
+        onlyPaths: patchedPaths,
+        commitMessage: `BootRise: ${body.report?.plan.intent.interpretedGoal.slice(0, 72) ?? "controlled change"}`
+      });
+
+      let draftPr = null;
+      if (wantsPr && body.report) {
+        draftPr = await createDraftPullRequest({
+          remoteUrl,
+          headBranch: push.branch,
+          baseBranch: body.branch ?? "main",
+          title: `BootRise: ${body.report.plan.intent.interpretedGoal.slice(0, 80)}`,
+          body: buildPullRequestBody(body.report),
+          draft: true
+        });
+      }
+
+      return NextResponse.json({
+        product: "BootRise",
+        mode: "github",
+        bundle,
+        status: draftPr ? "draft-pr-opened" : "branch-pushed",
+        push,
+        draftPr,
+        message: draftPr
+          ? `Draft PR #${draftPr.prNumber} opened on branch ${push.branch}.`
+          : `Branch ${push.branch} pushed — open PR from compare URL.`
+      });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "GitHub export failed."
+        },
+        { status: 502 }
+      );
+    }
   }
 
   const downloadName = `${body.projectBrief.productName.toLowerCase().replace(/\s+/g, "-")}-bootrise-bundle.json`;

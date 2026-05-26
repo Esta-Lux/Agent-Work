@@ -8,6 +8,9 @@ import { DeviceStreamPanel } from "@/components/device-stream-panel";
 import { WebContainerPreview } from "@/components/webcontainer-preview";
 import { PersonaSelector } from "@/components/persona-selector";
 import { PlanApprovalPanel } from "@/components/plan-approval-panel";
+import { ControlLayerPanel } from "@/components/control-layer-panel";
+import { ChatControlBanner } from "@/components/chat-control-banner";
+import type { ChatControlSummary } from "@/lib/control/types";
 import { ProjectDashboard } from "@/components/project-dashboard";
 import { WebPreviewPanel } from "@/components/web-preview-panel";
 import { WorkspaceLivingLedger } from "@/components/workspace-living-ledger";
@@ -52,6 +55,7 @@ interface ChatApiResponse {
   suggestedActions?: string[];
   triggerFix?: boolean;
   plainEnglishSummary?: string;
+  chatControl?: ChatControlSummary | null;
   error?: string;
 }
 
@@ -72,11 +76,11 @@ const DEFAULT_BRIEF: ProjectBrief = {
 const WELCOME: ChatMessage = {
   role: "assistant",
   content: [
-    "BootRise is your AI architect and safety layer for web and mobile products. It combines architectural memory, controlled execution (approve before apply), sandbox verification, and visual maps so you can build complex apps with explainability — not surprise edits.",
+    "BootRise stops AI coding agents from breaking large codebases. It scopes the task, controls context, blocks hallucinated edits, verifies the patch, and only applies changes after you approve.",
     "",
-    "In this workspace you can import a real GitHub repo, chat with role-based AI (Architect, Developer, DevOps), run Fix to propose patches on your actual files, approve changes, preview in-browser, verify with npm/python checks, and push to GitHub when ready.",
+    "In this workspace: import a real GitHub repo, chat with role-based AI, then run **Fix** to get a scope lock, context budget, file-touch contract, patch guard, and diff budget before anything touches your files. Approve only when the control layer says it is safe, then verify and export.",
     "",
-    "Start in Connect with a full repo import, pick a persona above the chat, then ask a specific question about your code or run Fix and report for a focused change."
+    "Start in **Connect** with a full repo import, pick a persona above the chat, then ask a specific question or run Fix with a narrow request (e.g. “small fix rewards history UI”)."
   ].join("\n")
 };
 
@@ -124,6 +128,7 @@ export function UserWorkspace() {
   const [previewSessionId, setPreviewSessionId] = useState<string | null>(null);
   const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
   const [previewFramework, setPreviewFramework] = useState<string | null>(null);
+  const [lastChatControl, setLastChatControl] = useState<ChatControlSummary | null>(null);
   const orgId = process.env.NEXT_PUBLIC_BOOTRISE_ORG_ID?.trim() || "org_default";
 
   const parsedFiles = useMemo(() => {
@@ -560,7 +565,9 @@ export function UserWorkspace() {
           branch: githubBranch,
           files: parseFiles(),
           onlyPaths: report.patches?.map((p) => p.path),
-          commitMessage: `BootRise: ${fixRequest.slice(0, 72)}`
+          commitMessage: `BootRise: ${fixRequest.slice(0, 72)}`,
+          report,
+          createDraftPr: true
         })
       });
       const data = (await res.json()) as {
@@ -568,6 +575,7 @@ export function UserWorkspace() {
         compareUrl?: string;
         pullRequestHint?: string;
         pushed?: string[];
+        draftPr?: { prUrl: string; prNumber: number };
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Push failed.");
@@ -577,7 +585,11 @@ export function UserWorkspace() {
           role: "assistant",
           content: [
             `Pushed ${data.pushed?.length ?? 0} file(s) to branch \`${data.branch}\`.`,
-            data.compareUrl ? `Compare: ${data.compareUrl}` : "",
+            data.draftPr
+              ? `Draft PR #${data.draftPr.prNumber}: ${data.draftPr.prUrl}`
+              : data.compareUrl
+                ? `Compare: ${data.compareUrl}`
+                : "",
             data.pullRequestHint ?? ""
           ]
             .filter(Boolean)
@@ -909,11 +921,13 @@ export function UserWorkspace() {
           persona,
           githubUrl: githubUrl || null,
           githubBranch,
-          repositoryId: repositoryId ?? undefined
+          repositoryId: repositoryId ?? undefined,
+          projectId: projectId ?? repositoryId ?? undefined
         })
       });
       const data = (await response.json()) as ChatApiResponse;
       if (!response.ok) throw new Error(data.error ?? "Chat failed.");
+      if (data.chatControl) setLastChatControl(data.chatControl);
 
       const assistantMessage: ChatMessage = {
         role: "assistant",
@@ -984,13 +998,16 @@ export function UserWorkspace() {
           remoteUrl: mode === "github" ? githubUrl : undefined,
           branch: githubBranch,
           preferredProvider: provider,
-          repoHealth
+          repoHealth,
+          createDraftPr: mode === "github"
         })
       });
       const data = (await response.json()) as {
         downloadPayload?: string;
         downloadName?: string;
         pushSteps?: string[];
+        draftPr?: { prUrl: string; prNumber: number };
+        message?: string;
         error?: string;
       };
       if (!response.ok) throw new Error(data.error ?? "Export failed.");
@@ -1014,12 +1031,17 @@ export function UserWorkspace() {
         ]);
       }
 
-      if (mode === "github" && data.pushSteps) {
+      if (mode === "github") {
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
-            content: ["GitHub push steps:", ...(data.pushSteps ?? []).map((s, i) => `${i + 1}. ${s}`)].join("\n")
+            content: data.draftPr
+              ? `Draft PR opened: ${data.draftPr.prUrl}`
+              : data.message ??
+                (data.pushSteps
+                  ? ["GitHub push steps:", ...(data.pushSteps ?? []).map((s, i) => `${i + 1}. ${s}`)].join("\n")
+                  : "GitHub export completed.")
           }
         ]);
       }
@@ -1181,6 +1203,7 @@ export function UserWorkspace() {
                 </button>
               ))}
             </div>
+            {lastChatControl ? <ChatControlBanner control={lastChatControl} /> : null}
             <div className="flex gap-2">
               <textarea
                 className="min-h-[44px] flex-1 resize-none rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink"
@@ -1421,11 +1444,14 @@ export function UserWorkspace() {
                 >
                   Run fix pipeline
                 </button>
+                {report?.controlLayer ? <ControlLayerPanel control={report.controlLayer} /> : null}
                 {report?.approvalStatus === "pending_approval" && report.patches?.length ? (
                   <PlanApprovalPanel
                     patches={report.patches}
                     patchSource={report.patchSource}
                     busy={busy}
+                    canApprove={report.controlLayer?.canApprove !== false}
+                    blockReason={report.controlLayer?.stopReason ?? undefined}
                     onApprove={() => void approvePlan()}
                     onReject={() => void rejectPlan()}
                   />
@@ -1515,7 +1541,7 @@ export function UserWorkspace() {
                   className={`${primaryBtn} mt-2 w-full bg-ink`}
                   onClick={() => void exportBundle("github")}
                 >
-                  GitHub push instructions
+                  Open draft PR on GitHub
                 </button>
               </Panel>
             ) : null}

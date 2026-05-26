@@ -2,7 +2,7 @@
   "name": "bootrise",
   "version": "0.1.0",
   "private": true,
-  "description": "Architecture-aware AI engineering reliability platform.",
+  "description": "AI coding control layer — scope, context budget, patch guards, and safe PR workflow for large codebases.",
   "scripts": {
     "dev": "next dev",
     "dev:clean": "rm -rf .next && next dev",
@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test"
+    "test": "node --import ./tests/ts-alias-loader.mjs --test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",

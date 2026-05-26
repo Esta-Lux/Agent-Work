@@ -8,6 +8,7 @@ import {
   persistCloudPendingFix
 } from "@/lib/tenancy/supabase-pending-fix";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
+import type { ControlLayerSummary } from "@/lib/control/types";
 import {
   deletePendingFixRecord,
   loadPendingFixRecord,
@@ -29,6 +30,7 @@ export interface PendingFixRecord {
   status: PendingFixStatus;
   createdAt: string;
   resolvedAt?: string;
+  controlLayer?: ControlLayerSummary;
 }
 
 const memoryCache = new Map<string, PendingFixRecord>();

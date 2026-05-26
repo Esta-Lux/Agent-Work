@@ -3,6 +3,7 @@ import type { LlmProviderId } from "@/lib/ai/providers";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
+import { buildContextPlan } from "@/lib/control/context-governor";
 
 const MAX_FILES_IN_PROMPT = 10;
 const MAX_CHARS_PER_FILE = 6000;
@@ -13,7 +14,7 @@ export async function generateRealPatches(input: {
   files: SourceFileInput[];
   plan: ChangePlan;
 }): Promise<{ patches: ProposedPatch[]; source: string }> {
-  const targets = selectTargetFiles(input.files, input.plan, input.request);
+  const targets = await selectTargetFiles(input.files, input.plan, input.request);
 
   if (targets.length === 0) {
     return { patches: [], source: "no-targets" };
@@ -31,11 +32,22 @@ export async function generateRealPatches(input: {
   return { patches: deterministicFallbackPatches(input.request, targets), source: "deterministic-fallback" };
 }
 
-function selectTargetFiles(files: SourceFileInput[], plan: ChangePlan, request: string): SourceFileInput[] {
+async function selectTargetFiles(
+  files: SourceFileInput[],
+  plan: ChangePlan,
+  request: string
+): Promise<SourceFileInput[]> {
   const byPath = new Map(files.map((f) => [f.path, f]));
   const planned = plan.impact.files.filter((p) => byPath.has(p)).map((p) => byPath.get(p)!);
 
-  if (planned.length > 0) return planned.slice(0, MAX_FILES_IN_PROMPT);
+  const contextPlan = await buildContextPlan(request, files);
+  const deepRead = contextPlan.deepRead
+    .map((entry) => byPath.get(entry.path))
+    .filter((f): f is SourceFileInput => Boolean(f));
+
+  const merged = [...planned, ...deepRead];
+  const unique = new Map(merged.map((f) => [f.path, f]));
+  if (unique.size > 0) return [...unique.values()].slice(0, MAX_FILES_IN_PROMPT);
 
   const n = request.toLowerCase();
   const hints = ["main.py", "mapscreen", "turn", "route", "auth", "middleware", "readme"];
@@ -61,10 +73,11 @@ async function generatePatchesWithLlm(
     "Return ONLY valid JSON (no markdown):",
     '{ "patches": [ { "path": "exact/path/from/input", "after": "complete new file content", "summary": "one line" } ] }',
     "Rules:",
-    "- Only edit paths listed below.",
+    "- Only edit paths listed below (context governor deep-read + plan targets).",
     "- `after` must be the FULL file content after the change.",
-    "- Max 8 patches.",
-    "- Do not invent new file paths.",
+    `- Max ${Math.min(8, plan.impact.files.length || 8)} patches.`,
+    "- Do not invent new file paths or npm packages not in package.json.",
+    "- Do not touch auth, billing, .env, or migrations unless explicitly in scope.",
     "",
     `User request: ${request}`,
     `Plan goal: ${plan.intent.interpretedGoal}`,

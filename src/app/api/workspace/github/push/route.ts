@@ -3,6 +3,8 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { recordAudit } from "@/lib/admin/audit-log";
 import { pushFilesToGithub } from "@/lib/workspace/github-push";
+import { buildPullRequestBody, createDraftPullRequest } from "@/lib/workspace/github-pr";
+import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +17,8 @@ export async function POST(request: Request) {
     files?: SourceFileInput[];
     onlyPaths?: string[];
     commitMessage?: string;
+    report?: WorkspaceFixReport;
+    createDraftPr?: boolean;
   } | null;
 
   const remoteUrl = body?.remoteUrl?.trim();
@@ -43,10 +47,23 @@ export async function POST(request: Request) {
       metadata: { pushed: result.pushed.length }
     });
 
+    let draftPr = null;
+    if (body.createDraftPr !== false && body.report) {
+      draftPr = await createDraftPullRequest({
+        remoteUrl,
+        headBranch: result.branch,
+        baseBranch: body.branch ?? "main",
+        title: `BootRise: ${body.report.plan.intent.interpretedGoal.slice(0, 80)}`,
+        body: buildPullRequestBody(body.report),
+        draft: true
+      });
+    }
+
     return NextResponse.json({
       product: "BootRise",
       phase: 2,
-      ...result
+      ...result,
+      draftPr
     });
   } catch (error) {
     return NextResponse.json(

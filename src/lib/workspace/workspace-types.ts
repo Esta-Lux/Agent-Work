@@ -2,6 +2,7 @@ import type { ChangePlan, DiffPreview } from "@/lib/types/core";
 import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
 import type { SafeToPrVerdict } from "@/lib/workspace/safe-to-pr";
 import type { createVerificationSummary } from "@/lib/verification/verification-summary";
+import type { ChatControlSummary, ControlLayerSummary } from "@/lib/control/types";
 
 export type { RepoHealthSummary, SafeToPrVerdict };
 
@@ -60,6 +61,7 @@ export interface WorkspaceFixReport {
   previewSessionId?: string | null;
   previewUrl?: string | null;
   devPreviewStatus?: string | null;
+  controlLayer?: ControlLayerSummary;
 }
 
 export interface WorkspaceChatContext {
@@ -94,13 +96,18 @@ export interface WorkspaceChatResult {
   fileActivity: FileActivity[];
   triggerFix?: boolean;
   plainEnglishSummary?: string;
+  chatControl?: ChatControlSummary | null;
+  reviewCoverage?: string;
 }
 
 export const FIX_PIPELINE_STEPS: ThinkingStep[] = [
   { id: "parse", label: "Parse uploaded files", status: "pending" },
+  { id: "scope", label: "Lock task scope", status: "pending" },
+  { id: "context", label: "Build context budget", status: "pending" },
   { id: "symbols", label: "Build symbol graph", status: "pending" },
   { id: "blast", label: "Trace blast radius", status: "pending" },
   { id: "plan", label: "Create change plan", status: "pending" },
+  { id: "guard", label: "Run patch guard", status: "pending" },
   { id: "diff", label: "Generate diff preview", status: "pending" },
   { id: "verify", label: "Run verification checks", status: "pending" },
   { id: "report", label: "Publish fix report", status: "pending" }

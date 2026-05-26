@@ -26,6 +26,9 @@ import { createWorkspacePreviewSession, getPreviewSessionRoot } from "@/lib/work
 import type { ProposedPatch, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import { runVerificationChecks } from "@/lib/verification/verification-runner";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
+import { runControlGate, assertApproveAllowed, clearControlTaskSession } from "@/lib/control/control-gate";
+import { recordControlEvent } from "@/lib/control/control-telemetry";
+import type { ControlLayerSummary } from "@/lib/control/types";
 
 export async function createPendingFixPlan(
   files: SourceFileInput[],
@@ -71,6 +74,17 @@ export async function createPendingFixPlan(
 
   const { patches, source: patchSource } = await generateRealPatches({ provider, request, files, plan });
   const pendingFixId = createPendingFixId();
+  const controlLayer = await runControlGate({
+    request,
+    plan,
+    files,
+    patches,
+    repositoryId,
+    blastRadius: [
+      ...plan.impact.blastRadius,
+      ...blast.impactedSymbols.map((s) => `${s.filePath} (${s.symbolName})`)
+    ]
+  });
 
   savePendingFix({
     id: pendingFixId,
@@ -82,7 +96,8 @@ export async function createPendingFixPlan(
     provider,
     plannerSource,
     status: "pending_approval",
-    createdAt: now
+    createdAt: now,
+    controlLayer
   });
 
   upsertRecord(memoryStore.plans, {
@@ -101,7 +116,8 @@ export async function createPendingFixPlan(
     request,
     patchSource,
     pendingFixId,
-    approvalStatus: "pending_approval"
+    approvalStatus: "pending_approval",
+    controlLayer
   });
 
   return {
@@ -129,6 +145,28 @@ export async function approvePendingFix(
   if (!pending) throw new Error("Pending fix not found. Run Fix and report again.");
   if (pending.status === "rejected") throw new Error("This plan was rejected. Create a new fix request.");
   if (pending.status === "approved") throw new Error("This plan was already approved.");
+
+  if (pending.controlLayer) {
+    assertApproveAllowed(pending.controlLayer);
+  } else {
+    const controlLayer = await runControlGate({
+      request: pending.request,
+      plan: pending.plan,
+      files: pending.filesSnapshot,
+      patches: pending.patches,
+      repositoryId: pending.repositoryId
+    });
+    assertApproveAllowed(controlLayer);
+  }
+
+  clearControlTaskSession(pending.repositoryId, pending.request);
+
+  void recordControlEvent({
+    action: "fix_approved",
+    detail: pending.request.slice(0, 120),
+    repositoryId: pending.repositoryId,
+    severity: "info"
+  });
 
   const appliedPatches = pending.patches.map((p) => ({ ...p, applied: true }));
   const { files } = applyPatchesToFiles(pending.filesSnapshot, appliedPatches);
@@ -196,7 +234,8 @@ export async function approvePendingFix(
     previewSessionId: preview.id,
     previewUrl,
     sandboxPassed: options?.sandboxPassed ?? false,
-    devPreviewStatus: devPreview.status
+    devPreviewStatus: devPreview.status,
+    controlLayer: pending.controlLayer
   });
 
   return {
@@ -212,6 +251,11 @@ export async function approvePendingFix(
 export async function rejectPendingFix(pendingFixId: string): Promise<void> {
   const pending = await getPendingFix(pendingFixId);
   if (!pending) throw new Error("Pending fix not found.");
+  void recordControlEvent({
+    action: "fix_rejected",
+    detail: pending.request.slice(0, 120),
+    repositoryId: pending.repositoryId
+  });
   updatePendingFixStatus(pendingFixId, "rejected");
 }
 
@@ -237,6 +281,7 @@ async function buildReportFromPatches(input: {
   previewUrl?: string;
   sandboxPassed?: boolean;
   devPreviewStatus?: string;
+  controlLayer?: ControlLayerSummary;
 }): Promise<WorkspaceFixReport> {
   const diff = createDiffPreviewFromPatches(input.plan.id, input.patches, input.plan.risk.reasons);
   const execution = createDryRunExecutionResult(input.plan);
@@ -272,7 +317,8 @@ async function buildReportFromPatches(input: {
     planReviewStatus: input.approvalStatus === "pending_approval" ? "pending_approval" : "ready_for_review",
     previewSessionId: input.previewSessionId ?? null,
     previewUrl: input.previewUrl ?? null,
-    devPreviewStatus: input.devPreviewStatus ?? null
+    devPreviewStatus: input.devPreviewStatus ?? null,
+    controlLayer: input.controlLayer
   };
 
   report.plainEnglishSummary = buildPlainEnglishFromReport(report);

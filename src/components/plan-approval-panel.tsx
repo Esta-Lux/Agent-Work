@@ -7,12 +7,16 @@ export function PlanApprovalPanel({
   patches,
   patchSource,
   busy,
+  canApprove = true,
+  blockReason,
   onApprove,
   onReject
 }: {
   patches: ProposedPatch[];
   patchSource?: string;
   busy: boolean;
+  canApprove?: boolean;
+  blockReason?: string;
   onApprove: () => void;
   onReject: () => void;
 }) {
@@ -51,11 +55,11 @@ export function PlanApprovalPanel({
       <div className="mt-4 flex gap-2">
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !canApprove}
           className="flex-1 cursor-pointer rounded-lg bg-signal py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           onClick={onApprove}
         >
-          Approve & apply patches
+          {canApprove ? "Approve & apply patches" : "Blocked by control layer"}
         </button>
         <button
           type="button"
@@ -66,6 +70,9 @@ export function PlanApprovalPanel({
           Reject plan
         </button>
       </div>
+      {!canApprove && blockReason ? (
+        <p className="mt-2 text-xs text-critical">{blockReason}</p>
+      ) : null}
     </div>
   );
 }

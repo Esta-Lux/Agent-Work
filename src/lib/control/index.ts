@@ -1,0 +1,20 @@
+export type * from "@/lib/control/types";
+export {
+  runControlGate,
+  assertApproveAllowed,
+  clearControlTaskSession
+} from "@/lib/control/control-gate";
+export { runChatControlGate, selectChatContextFiles, buildChatRulesBlock } from "@/lib/control/chat-control";
+export { buildTaskKey, recordPatchAttempt, getFailedAttemptCount, clearTaskSession } from "@/lib/control/task-session";
+export { buildRepoSchemaIndex } from "@/lib/control/repo-schema-index";
+export { buildInjectedContextRules } from "@/lib/control/context-rules";
+export { buildScopeContract } from "@/lib/control/scope-contract";
+export { buildContextPlan } from "@/lib/control/context-governor";
+export { buildRepositoryMap } from "@/lib/control/repo-map";
+export { buildTokenWasteSummary } from "@/lib/control/token-waste-guard";
+export { runRegressionGuard } from "@/lib/control/regression-guard";
+export { evaluateStopPolicy } from "@/lib/control/stop-policy";
+export { runPatchGuard } from "@/lib/control/patch-guard";
+export { runHallucinationGuard } from "@/lib/control/hallucination-guard";
+export { runNoopGuard } from "@/lib/control/noop-guard";
+export { buildControlTelemetrySnapshot, recordControlEvent, loadControlEvents } from "@/lib/control/control-telemetry";

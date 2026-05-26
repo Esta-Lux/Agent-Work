@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AdminKillSwitches } from "@/components/admin-kill-switches";
+import { AdminControlHub } from "@/components/admin-control-hub";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 
@@ -212,6 +213,16 @@ export function AdminConsole() {
 
       <div className="mb-6">
         <AdminKillSwitches />
+      </div>
+
+      <div className="mb-6 rounded border border-line bg-white p-4">
+        <p className="text-sm font-semibold text-ink">Control hub — user workspace safety</p>
+        <p className="mt-1 text-xs text-steel">
+          Scope locks, patch blocks, token estimates, and approval outcomes from the AI coding control layer.
+        </p>
+        <div className="mt-4">
+          <AdminControlHub />
+        </div>
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
