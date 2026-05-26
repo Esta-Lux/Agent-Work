@@ -7,6 +7,7 @@ import type {
   RepoIntelligenceSnapshot,
   VerificationCheck
 } from "@/lib/types/core";
+import type { ModelMode, ProviderId, TaskRisk } from "@/lib/ai/providers";
 
 export interface RepositoryRecord {
   id: string;
@@ -218,4 +219,24 @@ export interface RemoteStreamRecord {
   exposedPorts: number[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UsageEventRecord {
+  id: string;
+  orgId: string;
+  userId: string;
+  projectId: string;
+  provider: ProviderId;
+  model: string;
+  mode: ModelMode;
+  taskType: string;
+  risk: TaskRisk;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedCostUsd: number;
+  creditsCharged: number;
+  premiumCreditsCharged: number;
+  status: "estimated" | "allowed" | "blocked" | "succeeded" | "failed";
+  failureReason: string | null;
+  createdAt: string;
 }

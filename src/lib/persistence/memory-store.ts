@@ -18,6 +18,7 @@ import type {
   SandboxRunRecord,
   SelfHealingAttemptRecord,
   SnapshotRecord,
+  UsageEventRecord,
   VectorSyncJobRecord,
   VerificationRecord
 } from "@/lib/persistence/schema";
@@ -44,6 +45,7 @@ interface MemoryStore {
   sandboxPools: SandboxPoolRecord[];
   vectorSyncJobs: VectorSyncJobRecord[];
   remoteStreams: RemoteStreamRecord[];
+  usageEvents: UsageEventRecord[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -73,7 +75,8 @@ export const memoryStore: MemoryStore =
     previewSessions: [],
     sandboxPools: [],
     vectorSyncJobs: [],
-    remoteStreams: []
+    remoteStreams: [],
+    usageEvents: []
   });
 
 export function upsertRecord<T extends { id: string }>(records: T[], record: T): T {

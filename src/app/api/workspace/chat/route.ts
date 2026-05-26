@@ -4,6 +4,8 @@ import { getPersonaSystem } from "@/lib/ai/personas";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { createProviderChatResponse, isProviderConfigured } from "@/lib/ai/llm-router";
 import { resolveUserProvider } from "@/lib/ai/providers";
+import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
+import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
 import {
   extractGithubRepoUrl,
   inspectGithubRepo,
@@ -47,6 +49,7 @@ interface WorkspaceChatRequest {
   loadedFiles?: LoadedFileSnippet[];
   lastReport?: WorkspaceFixReport | null;
   provider?: "bootrise" | "openai";
+  mode?: "fast" | "deep" | "security" | "premium";
   persona?: BootrisePersonaId;
   githubUrl?: string | null;
   githubBranch?: string | null;
@@ -57,14 +60,40 @@ interface WorkspaceChatRequest {
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as WorkspaceChatRequest | null;
   const message = body?.message?.trim();
-  const provider = resolveUserProvider(body?.provider);
+  const requestedProvider = resolveUserProvider(body?.provider);
   const persona: BootrisePersonaId = body?.persona ?? "architect";
 
   if (!message) {
     return NextResponse.json({ error: "A non-empty message is required." }, { status: 400 });
   }
 
+  const orgId = resolveOrgId(request);
+  const userId = resolveActorId(request);
+  const projectIdForUsage = body?.projectId?.trim() ?? body?.repositoryId?.trim() ?? "workspace-chat";
+  let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
+  try {
+    modelRoute = await assertModelRouteAllowed({
+      requestedProvider,
+      requestedMode: body?.mode,
+      taskType: isProductCodeReviewQuestion(message) ? "code_review" : "chat",
+      requestText: message,
+      filePaths: body?.loadedFilePaths,
+      fileCount: body?.loadedFilePaths?.length ?? body?.loadedFiles?.length ?? 0,
+      premiumApproved: requestedProvider === "openai" || body?.mode === "premium",
+      orgId,
+      userId,
+      projectId: projectIdForUsage
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Model route blocked.", provider: requestedProvider },
+      { status: 403 }
+    );
+  }
+  const provider = modelRoute.provider;
+
   if (!isProviderConfigured(provider)) {
+    void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "failed", "Provider is not configured.");
     return NextResponse.json(
       {
         error:
@@ -101,6 +130,7 @@ export async function POST(request: Request) {
     });
 
     if (!chatControl.canProceed) {
+      void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
       return NextResponse.json({
         product: "BootRise",
         provider,
@@ -147,6 +177,7 @@ export async function POST(request: Request) {
         chatControl,
         projectId
       });
+      void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
       return NextResponse.json({
         product: "BootRise",
         provider,
@@ -156,6 +187,12 @@ export async function POST(request: Request) {
         ...review.result
       });
     } catch (error) {
+      void recordModelUsage(
+        modelRoute,
+        { orgId, userId, projectId: projectIdForUsage },
+        "failed",
+        error instanceof Error ? error.message : "Code review failed."
+      );
       return NextResponse.json(
         {
           error: error instanceof Error ? error.message : "Code review failed.",
@@ -188,7 +225,14 @@ export async function POST(request: Request) {
         system: getPersonaSystem(persona) + buildRulesPromptBlock(rulesBlock)
       });
       merged = mergeChatResponse(base, result.text, { provider: result.provider, model: result.model });
+      void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
     } catch (error) {
+      void recordModelUsage(
+        modelRoute,
+        { orgId, userId, projectId: projectIdForUsage },
+        "failed",
+        error instanceof Error ? error.message : "Selected engine failed to respond."
+      );
       return NextResponse.json(
         {
           error: error instanceof Error ? error.message : "Selected engine failed to respond.",
@@ -200,6 +244,7 @@ export async function POST(request: Request) {
     }
   } else {
     merged = mergeChatResponse(base, null);
+    void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
   }
 
   return NextResponse.json({
@@ -207,6 +252,7 @@ export async function POST(request: Request) {
     provider,
     connected: true,
     model: provider === "openai" ? "ChatGPT" : "BootRise",
+    modelRoute,
     chatControl,
     ...merged
   });

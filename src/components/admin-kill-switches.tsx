@@ -4,10 +4,18 @@ import { useEffect, useState } from "react";
 import { StatusPill } from "@/components/status-pill";
 
 interface KillSwitchState {
+  disableNvidia: boolean;
+  disableOpenAI: boolean;
+  disableClaude: boolean;
+  disableCodex: boolean;
   disableFixExecution: boolean;
   disableSandbox: boolean;
   disableExpensiveModels: boolean;
+  disablePremiumEscalation: boolean;
+  disableGithubImport: boolean;
   disableGithubPush: boolean;
+  disableDraftPrCreation: boolean;
+  disableAdminChat: boolean;
   maxWorkspaceFiles: number;
   updatedAt: string;
 }
@@ -50,10 +58,18 @@ export function AdminKillSwitches() {
   if (!state) return <p className="text-sm text-steel">Loading kill switches…</p>;
 
   const toggles: Array<{ key: keyof KillSwitchState; label: string; hint: string }> = [
+    { key: "disableNvidia", label: "Disable BootRise AI", hint: "Blocks NVIDIA-backed default model calls" },
+    { key: "disableOpenAI", label: "Disable OpenAI", hint: "Blocks ChatGPT / GPT premium calls" },
+    { key: "disableClaude", label: "Disable Claude", hint: "Keeps planned Claude adapter blocked" },
+    { key: "disableCodex", label: "Disable Codex", hint: "Keeps planned Codex adapter blocked" },
     { key: "disableFixExecution", label: "Disable fix pipeline", hint: "Blocks POST /api/workspace/fix" },
     { key: "disableSandbox", label: "Disable sandbox", hint: "Blocks npm/python verify" },
     { key: "disableExpensiveModels", label: "Disable LLM calls", hint: "Blocks chat + patch LLM" },
-    { key: "disableGithubPush", label: "Disable GitHub push", hint: "Blocks automated branch push" }
+    { key: "disablePremiumEscalation", label: "Disable premium escalation", hint: "Blocks OpenAI/Claude/Codex escalation" },
+    { key: "disableGithubImport", label: "Disable GitHub import", hint: "Blocks repo import from GitHub" },
+    { key: "disableGithubPush", label: "Disable GitHub push", hint: "Blocks automated branch push" },
+    { key: "disableDraftPrCreation", label: "Disable draft PRs", hint: "Blocks automated draft PR creation" },
+    { key: "disableAdminChat", label: "Disable admin chat", hint: "Blocks admin AI chat responses" }
   ];
 
   return (

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { resolveUserProvider } from "@/lib/ai/providers";
+import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
 import { recordAdminTelemetry } from "@/lib/admin/telemetry";
 import { assertKillSwitchAllowed, assertWorkspaceFileLimit } from "@/lib/admin/kill-switches";
 import { recordAudit } from "@/lib/admin/audit-log";
 import { createPendingFixPlan } from "@/lib/workspace/workspace-fix.server";
+import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
 
 export const runtime = "nodejs";
 
@@ -12,6 +14,9 @@ interface FixRequestBody {
   request?: string;
   files?: SourceFileInput[];
   provider?: "bootrise" | "openai";
+  mode?: "fast" | "deep" | "security" | "premium";
+  projectId?: string;
+  plan?: string;
 }
 
 export async function POST(request: Request) {
@@ -39,11 +44,38 @@ export async function POST(request: Request) {
   }
 
   const provider = resolveUserProvider(body?.provider);
+  const orgId = resolveOrgId(request);
+  const userId = resolveActorId(request);
+  const projectId = body?.projectId?.trim() || "workspace-fix";
+  let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
+  try {
+    modelRoute = await assertModelRouteAllowed({
+      requestedProvider: provider,
+      requestedMode: body?.mode,
+      taskType: "fix",
+      requestText: userRequest,
+      filePaths: files.map((file) => file.path),
+      fileCount: files.length,
+      premiumApproved: provider === "openai" || body?.mode === "premium",
+      orgId,
+      userId,
+      projectId,
+      plan: body?.plan
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Model route blocked.", provider, connected: false },
+      { status: 403 }
+    );
+  }
+
   const startedAt = Date.now();
   let result: Awaited<ReturnType<typeof createPendingFixPlan>>;
   try {
-    result = await createPendingFixPlan(files, userRequest, provider);
+    result = await createPendingFixPlan(files, userRequest, modelRoute.provider);
+    void recordModelUsage(modelRoute, { orgId, userId, projectId: result.repositoryId }, "succeeded");
   } catch (error) {
+    void recordModelUsage(modelRoute, { orgId, userId, projectId }, "failed", error instanceof Error ? error.message : "Fix workflow failed.");
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Fix workflow failed.",
@@ -80,6 +112,7 @@ export async function POST(request: Request) {
     health: result.health,
     report: result.report,
     pendingFixId: result.pendingFixId,
+    modelRoute,
     nextAction: "Review proposed patches, then Approve or Reject before changes apply to your workspace."
   });
 }

@@ -105,6 +105,7 @@ export function UserWorkspace() {
   const [activityDetail, setActivityDetail] = useState<string | null>(null);
   const [sandboxLog, setSandboxLog] = useState<string | null>(null);
   const [provider, setProvider] = useState<"bootrise" | "openai">("bootrise");
+  const [modelMode, setModelMode] = useState<"fast" | "deep" | "security" | "premium">("fast");
   const [persona, setPersona] = useState<BootrisePersonaId>("architect");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("My startup");
@@ -808,7 +809,7 @@ export function UserWorkspace() {
       const response = await fetch("/api/workspace/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request, files, provider })
+        body: JSON.stringify({ request, files, provider, mode: modelMode, projectId: projectId ?? repositoryId ?? undefined })
       });
       const data = (await response.json()) as {
         report: WorkspaceFixReport;
@@ -918,6 +919,7 @@ export function UserWorkspace() {
           })),
           lastReport: report,
           provider,
+          mode: modelMode,
           persona,
           githubUrl: githubUrl || null,
           githubBranch,
@@ -1075,6 +1077,8 @@ export function UserWorkspace() {
             <EngineToggle
               provider={provider}
               onChange={setProvider}
+              mode={modelMode}
+              onModeChange={setModelMode}
               bootriseOk={providerHealth.bootrise}
               openaiOk={providerHealth.openai}
             />

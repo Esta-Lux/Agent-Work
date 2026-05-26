@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
+import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
 import { createGitSync } from "@/lib/infrastructure/control-plane";
 import { buildSymbolGraph } from "@/lib/intelligence/symbol-graph";
 import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import { importGithubFiles } from "@/lib/workspace/github-repo-service";
 import { getRepoManifest, syncRepoFiles } from "@/lib/workspace/repo-store";
+import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    assertKillSwitchAllowed("github_import");
     const result = await importGithubFiles({
       remoteUrl,
       branch: body?.branch,
@@ -32,6 +36,20 @@ export async function POST(request: Request) {
     });
 
     const repositoryId = body?.repositoryId ?? `repo_${Date.now()}`;
+    const orgId = resolveOrgId(request);
+    const userId = resolveActorId(request);
+    const usageRoute = await assertModelRouteAllowed({
+      requestedProvider: "bootrise",
+      requestedMode: "fast",
+      taskType: "github_import",
+      requestText: remoteUrl,
+      fileCount: result.files.length,
+      orgId,
+      userId,
+      projectId: repositoryId
+    });
+    void recordModelUsage(usageRoute, { orgId, userId, projectId: repositoryId }, "succeeded");
+
     const sync = syncRepoFiles(repositoryId, result.files, {
       remoteUrl,
       branch: result.branch,

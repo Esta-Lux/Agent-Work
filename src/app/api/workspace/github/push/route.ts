@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { recordAudit } from "@/lib/admin/audit-log";
+import { assertModelRouteAllowed, recordModelUsage } from "@/lib/ai/model-router";
+import { resolveActorId, resolveOrgId } from "@/lib/tenancy/org-context";
 import { pushFilesToGithub } from "@/lib/workspace/github-push";
 import { buildPullRequestBody, createDraftPullRequest } from "@/lib/workspace/github-pr";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
@@ -30,8 +32,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "files are required." }, { status: 400 });
   }
 
+  const orgId = resolveOrgId(request);
+  const userId = resolveActorId(request);
+  const projectId = body.report?.repositoryId ?? "github-push";
+  const changedFileCount = body.onlyPaths?.length ?? body.files.length;
+  let pushRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>> | null = null;
   try {
     assertKillSwitchAllowed("github_push");
+    pushRoute = await assertModelRouteAllowed({
+      requestedProvider: "bootrise",
+      requestedMode: "fast",
+      taskType: "draft_pr",
+      requestText: body.report?.plan.intent.interpretedGoal ?? body.commitMessage,
+      fileCount: body.files.length,
+      changedFileCount,
+      orgId,
+      userId,
+      projectId
+    });
+    if (body.createDraftPr !== false) {
+      assertKillSwitchAllowed("draft_pr");
+      if (!body.report) throw new Error("A BootRise report is required before creating a draft PR.");
+      if (body.report.approvalStatus !== "approved") {
+        throw new Error("Draft PR creation requires an approved BootRise plan.");
+      }
+      if (!body.report.verificationSummary) {
+        throw new Error("Draft PR creation requires captured validation evidence.");
+      }
+      if (body.report.controlLayer && !body.report.controlLayer.canApprove) {
+        throw new Error(body.report.controlLayer.stopReason ?? "Control layer blocked draft PR creation.");
+      }
+    }
     const result = await pushFilesToGithub({
       remoteUrl,
       baseBranch: body.branch ?? "main",
@@ -58,6 +89,7 @@ export async function POST(request: Request) {
         draft: true
       });
     }
+    void recordModelUsage(pushRoute, { orgId, userId, projectId }, "succeeded");
 
     return NextResponse.json({
       product: "BootRise",
@@ -66,6 +98,14 @@ export async function POST(request: Request) {
       draftPr
     });
   } catch (error) {
+    if (pushRoute) {
+      void recordModelUsage(
+        pushRoute,
+        { orgId, userId, projectId },
+        "failed",
+        error instanceof Error ? error.message : "GitHub push failed."
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "GitHub push failed." },
       { status: 502 }

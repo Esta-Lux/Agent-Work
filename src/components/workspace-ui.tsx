@@ -225,14 +225,25 @@ export function ActivityConsole({
 export function EngineToggle({
   provider,
   onChange,
+  mode,
+  onModeChange,
   bootriseOk,
   openaiOk
 }: {
   provider: "bootrise" | "openai";
   onChange: (p: "bootrise" | "openai") => void;
+  mode: "fast" | "deep" | "security" | "premium";
+  onModeChange: (mode: "fast" | "deep" | "security" | "premium") => void;
   bootriseOk: boolean;
   openaiOk: boolean;
 }) {
+  const modes: Array<{ id: "fast" | "deep" | "security" | "premium"; label: string; title: string }> = [
+    { id: "fast", label: "Fast", title: "Default BootRise AI for small and medium tasks" },
+    { id: "deep", label: "Deep", title: "More context for larger architecture questions" },
+    { id: "security", label: "Security", title: "Sensitive auth, data, billing, and deployment review" },
+    { id: "premium", label: "Premium", title: "Premium model escalation with credit approval" }
+  ];
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="inline-flex rounded-lg border border-line bg-white p-0.5 shadow-sm">
@@ -250,6 +261,25 @@ export function EngineToggle({
         >
           ChatGPT
         </button>
+      </div>
+      <div className="inline-flex rounded-lg border border-line bg-white p-0.5 shadow-sm">
+        {modes.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            title={item.title}
+            className={`cursor-pointer rounded-md px-2.5 py-2 text-xs font-semibold ${
+              mode === item.id ? "bg-signal text-white" : "text-graphite"
+            }`}
+            onClick={() => {
+              onModeChange(item.id);
+              if (item.id === "premium") onChange("openai");
+              if (item.id !== "premium" && provider === "openai") onChange("bootrise");
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
       <StatusPill
         label={provider === "bootrise" ? (bootriseOk ? "BootRise ready" : "BootRise offline") : openaiOk ? "ChatGPT ready" : "ChatGPT offline"}

@@ -20,6 +20,10 @@ test("kill switches persist and block fix", async () => {
 
     updateKillSwitches({ disableFixExecution: false });
     assert.doesNotThrow(() => assertKillSwitchAllowed("fix"));
+
+    updateKillSwitches({ disableOpenAI: true, disableDraftPrCreation: true });
+    assert.throws(() => assertKillSwitchAllowed("openai"), /OpenAI is disabled/i);
+    assert.throws(() => assertKillSwitchAllowed("draft_pr"), /Draft PR creation is disabled/i);
   } finally {
     process.chdir(prev);
     rmSync(cwd, { recursive: true, force: true });
