@@ -312,14 +312,23 @@ flowchart TD
 
 ## Next Build Steps
 
-1. Add a filesystem-backed repo ingestion command.
-2. Replace lightweight parsing with TypeScript compiler AST extraction.
-3. Persist snapshots and architecture memory.
-4. Add an approval-gated execution worker.
-5. Run real verification checks and store results.
-6. Add browser-based route and visual smoke checks.
-7. Connect Mission Control panels to streaming execution events.
-8. Add GitHub OAuth, PR creation, and sandbox fleet telemetry.
+| Item | Status |
+| --- | --- |
+| Filesystem-backed repo ingestion | **Done** — `.bootrise/repos/{repositoryId}` + incremental sync via `POST /api/workspace/repos/{id}/sync` |
+| TypeScript compiler AST (exports, re-exports, calls) | **Done** — `ast-analyzer.ts` + `symbol-graph.ts` → blast radius + architecture map |
+| Persist snapshots & architecture memory | **Partial** — disk snapshots + Living Ledger; optional `004_repo_canonical.sql` for cloud registry |
+| Approval-gated execution worker | **Partial** — approve/reject + pending fixes; no queue workers |
+| Real verification checks | **Partial** — npm/python when full import + flags |
+| Browser visual smoke | **Done (opt-in)** — Playwright via `BOOTRISE_VISUAL_SMOKE=1` in sandbox verify |
+| GitHub OAuth + PR workflow | **Not done** (push via token exists) |
+| Cross-repo org dependency graph | **Not done** — single-repo blast radius works today |
+
+Still on the roadmap:
+
+1. Worker queue for approval-gated execution at scale.
+2. GitHub OAuth, PR creation, and managed clone workers.
+3. Cross-repo graph schema (orgs → repos → packages → cross-repo edges).
+4. Mission Control panels wired to streaming execution events.
 
 ## Advanced Direction
 

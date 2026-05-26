@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AgentLiveBar } from "@/components/agent-live-bar";
+import { ArchitectureMapPanel } from "@/components/architecture-map-panel";
 import { DiffReportPanel } from "@/components/diff-report-panel";
+import { DeviceStreamPanel } from "@/components/device-stream-panel";
+import { WebContainerPreview } from "@/components/webcontainer-preview";
+import { PersonaSelector } from "@/components/persona-selector";
+import { PlanApprovalPanel } from "@/components/plan-approval-panel";
+import { ProjectDashboard } from "@/components/project-dashboard";
+import { WebPreviewPanel } from "@/components/web-preview-panel";
+import { WorkspaceLivingLedger } from "@/components/workspace-living-ledger";
+import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
+import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { WorkspaceChatMessage } from "@/components/workspace-chat-message";
+import { WorkspaceQuickNav } from "@/components/workspace-quick-nav";
+import { selectRelevantFiles, selectReviewBatches } from "@/lib/workspace/workspace-code-context";
 import {
-  ActivityConsole,
   EngineToggle,
   FileTreeExplorer,
   Panel,
@@ -17,6 +29,7 @@ import {
   FIX_PIPELINE_STEPS,
   type FileActivity,
   type ProjectBrief,
+  type RepoHealthSummary,
   type ThinkingStep,
   type WorkspaceFixReport
 } from "@/lib/workspace/workspace-types";
@@ -59,15 +72,11 @@ const DEFAULT_BRIEF: ProjectBrief = {
 const WELCOME: ChatMessage = {
   role: "assistant",
   content: [
-    "I am your BootRise builder agent. I can:",
-    "- Answer what I do and guide discovery for long builds",
-    "- Analyze pasted code and run Fix and report (plan, blast radius, diff, verification)",
-    "- Connect GitHub (branch + import) or paste a repo link to review real metadata",
-    "- Advise on features (helpful vs risky for your users)",
-    "- Export a bundle or prepare GitHub push steps",
+    "BootRise is your AI architect and safety layer for web and mobile products. It combines architectural memory, controlled execution (approve before apply), sandbox verification, and visual maps so you can build complex apps with explainability — not surprise edits.",
     "",
+    "In this workspace you can import a real GitHub repo, chat with role-based AI (Architect, Developer, DevOps), run Fix to propose patches on your actual files, approve changes, preview in-browser, verify with npm/python checks, and push to GitHub when ready.",
     "",
-    "Start: open **Connect** → import your GitHub repo, then chat here to plan and fix."
+    "Start in Connect with a full repo import, pick a persona above the chat, then ask a specific question about your code or run Fix and report for a focused change."
   ].join("\n")
 };
 
@@ -92,6 +101,7 @@ export function UserWorkspace() {
   const [activityDetail, setActivityDetail] = useState<string | null>(null);
   const [sandboxLog, setSandboxLog] = useState<string | null>(null);
   const [provider, setProvider] = useState<"bootrise" | "openai">("bootrise");
+  const [persona, setPersona] = useState<BootrisePersonaId>("architect");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("My startup");
   const [projects, setProjects] = useState<Array<{ id: string; name: string; updatedAt: string }>>([]);
@@ -102,7 +112,19 @@ export function UserWorkspace() {
     openai: false
   });
   const [liveThinking, setLiveThinking] = useState<ThinkingStep[]>([]);
+  const [liveFilesInFocus, setLiveFilesInFocus] = useState<string[]>([]);
+  const [liveActiveFile, setLiveActiveFile] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [repoHealth, setRepoHealth] = useState<RepoHealthSummary | null>(null);
+  const [sandboxPassed, setSandboxPassed] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
+  const [lastProjectSaved, setLastProjectSaved] = useState<string | null>(null);
+  const [pendingFixId, setPendingFixId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewSessionId, setPreviewSessionId] = useState<string | null>(null);
+  const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
+  const [previewFramework, setPreviewFramework] = useState<string | null>(null);
+  const orgId = process.env.NEXT_PUBLIC_BOOTRISE_ORG_ID?.trim() || "org_default";
 
   const parsedFiles = useMemo(() => {
     try {
@@ -113,6 +135,23 @@ export function UserWorkspace() {
   }, [filesInput]);
 
   const isWorking = /Thinking|Fix pipeline|Importing|Sandbox|Saving|Loading/.test(status);
+
+  const REVIEW_ISSUES_PROMPT =
+    "Review this codebase and list all issues, risks, and gaps you see. Use file paths from the repo. Cover backend, mobile, frontend, tests, and docs.";
+
+  useEffect(() => {
+    if (!busy || liveFilesInFocus.length === 0) {
+      if (!busy) setLiveActiveFile(null);
+      return;
+    }
+    let idx = 0;
+    setLiveActiveFile(liveFilesInFocus[0] ?? null);
+    const timer = setInterval(() => {
+      idx = (idx + 1) % liveFilesInFocus.length;
+      setLiveActiveFile(liveFilesInFocus[idx] ?? null);
+    }, 900);
+    return () => clearInterval(timer);
+  }, [busy, liveFilesInFocus]);
 
   useEffect(() => {
     void (async () => {
@@ -149,8 +188,61 @@ export function UserWorkspace() {
     plan: briefReady || messages.length > 2,
     fix: Boolean(report),
     verify: Boolean(sandboxLog),
-    export: false
+    export: exportDone
   };
+
+  async function analyzeWorkspace(files: Array<{ path: string; content: string }>) {
+    if (files.length === 0) {
+      setRepoHealth(null);
+      return;
+    }
+    try {
+      const res = await fetch("/api/workspace/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files })
+      });
+      const data = (await res.json()) as { health?: RepoHealthSummary; error?: string };
+      if (res.ok && data.health) setRepoHealth(data.health);
+    } catch {
+      /* non-blocking */
+    }
+  }
+
+  async function recordLedger(
+    kind: "import" | "analyze" | "fix_proposed" | "fix_approved" | "fix_rejected" | "sandbox" | "preview" | "export" | "github_push" | "chat",
+    title: string,
+    narrative: string
+  ) {
+    const id = projectId ?? `proj_${repositoryId ?? "session"}`;
+    try {
+      await fetch("/api/workspace/ledger", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bootrise-org-id": orgId
+        },
+        body: JSON.stringify({ projectId: id, kind, title, narrative })
+      });
+    } catch {
+      /* non-blocking */
+    }
+  }
+
+  function refreshSafeToPr(nextReport: WorkspaceFixReport, passed: boolean) {
+    const hasRealRepoPatches =
+      nextReport.approvalStatus === "approved" &&
+      (nextReport.patches?.length ?? 0) > 0 &&
+      !nextReport.fixed.some((f) => f.path.startsWith("generated/"));
+    return {
+      ...nextReport,
+      safeToPr: computeSafeToPr({
+        report: nextReport,
+        sandboxPassed: passed,
+        hasRealRepoPatches
+      })
+    };
+  }
 
   function updateFileContent(path: string, content: string) {
     const next = parsedFiles.map((f) => (f.path === path ? { ...f, content } : f));
@@ -190,6 +282,7 @@ export function UserWorkspace() {
       if (!response.ok) throw new Error(data.error ?? "Save failed.");
       if (data.project) {
         setProjectId(data.project.id);
+        setLastProjectSaved(data.project.updatedAt);
         setProjects((current) => {
           const next = current.filter((p) => p.id !== data.project!.id);
           return [data.project!, ...next];
@@ -233,6 +326,8 @@ export function UserWorkspace() {
       setReport(p.lastReport);
       setProvider(p.preferredProvider);
       setGithubUrl(p.githubUrl ?? "");
+      setLastProjectSaved(p.id);
+      await analyzeWorkspace(p.files);
       setStatus("Ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Load failed.");
@@ -295,18 +390,20 @@ export function UserWorkspace() {
       });
       setLiveThinking((s) => s.map((step, i) => ({ ...step, status: i <= 1 ? "done" : i === 2 ? "active" : step.status })));
       const data = (await res.json()) as {
+        repositoryId?: string;
         files?: Array<{ path: string; content: string }>;
         imported?: string[];
         branch?: string;
         mode?: "key" | "full";
         truncated?: boolean;
         skipped?: string[];
+        canonicalStore?: { written: number; unchanged: number; totalFiles: number };
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Import failed");
       setFilesInput(JSON.stringify(data.files ?? [], null, 2));
       if (data.branch) setGithubBranch(data.branch);
-      setRepositoryId((id) => id ?? `repo_${Date.now()}`);
+      setRepositoryId(data.repositoryId ?? repositoryId ?? `repo_${Date.now()}`);
       if (!brief.productName.trim()) {
         const repoName = githubUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") ?? "Imported project";
         setBrief((b) => ({ ...b, productName: repoName, primaryWorkflow: b.primaryWorkflow || "Ship core user workflow" }));
@@ -321,11 +418,14 @@ export function UserWorkspace() {
         (data.skipped?.length ?? 0) > 0
           ? `\n\n_Skipped ${data.skipped!.length} path(s) (binaries, node_modules, or very large files)._`
           : "";
+      const storeNote = data.canonicalStore
+        ? `\n\n_Canonical store: ${data.canonicalStore.totalFiles} files on disk (${data.canonicalStore.written} updated, ${data.canonicalStore.unchanged} unchanged)._`
+        : "";
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: `Imported **${count}** file(s) (${modeLabel}) from \`${data.branch}\`.\n\n${sample}${more}${skipNote}\n\nOpen **Files** to browse the tree. Describe a real change before **Fix and report**.`,
+          content: `Imported ${count} file(s) (${modeLabel}) from branch ${data.branch ?? githubBranch}.\n\n${sample}${more}${skipNote}${storeNote}\n\nOpen Files to browse the tree. Describe a real change before Fix and report.`,
           phase: "building",
           thinkingSteps: [
             { id: "gh1", label: "Connect GitHub", status: "done" },
@@ -335,6 +435,14 @@ export function UserWorkspace() {
         }
       ]);
       setLiveThinking((s) => s.map((step) => ({ ...step, status: "done" as const })));
+      setSandboxPassed(false);
+      setExportDone(false);
+      await analyzeWorkspace(data.files ?? []);
+      void recordLedger(
+        "import",
+        "Repository imported",
+        `BootRise imported ${data.files?.length ?? 0} files from GitHub into architectural memory. You can now map symbols, propose fixes with approval gates, and verify before release.`
+      );
       setStatus("Ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Import failed");
@@ -343,6 +451,145 @@ export function UserWorkspace() {
     } finally {
       setBusy(false);
       setActivityDetail(null);
+    }
+  }
+
+  async function approvePlan() {
+    const id = pendingFixId ?? report?.pendingFixId;
+    if (!id) {
+      setError("No pending plan to approve.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setStatus("Applying approved patches");
+    try {
+      const res = await fetch("/api/workspace/fix/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pendingFixId: id, sandboxPassed })
+      });
+      const data = (await res.json()) as {
+        files?: Array<{ path: string; content: string }>;
+        report?: WorkspaceFixReport;
+        previewUrl?: string;
+        previewSessionId?: string;
+        devPreviewStatus?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Approval failed.");
+      if (data.files) setFilesInput(JSON.stringify(data.files, null, 2));
+      if (data.report) setReport(refreshSafeToPr(data.report, sandboxPassed));
+      if (data.previewUrl) setPreviewUrl(data.previewUrl);
+      setPreviewSessionId(data.previewSessionId ?? data.report?.previewSessionId ?? null);
+      setDevPreviewStatus(data.devPreviewStatus ?? data.report?.devPreviewStatus ?? null);
+      setPreviewFramework(data.report?.plan ? "Applied" : null);
+      setActiveStep("verify");
+      setContextTab("verify");
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: `Approved and applied ${data.report?.patches?.length ?? 0} patch(es) to your workspace. Open **Verify** for web preview, then run sandbox.`,
+          phase: "building",
+          suggestedActions: ["Run sandbox verify", "Push to GitHub"]
+        }
+      ]);
+      setStatus("Patches applied");
+      void recordLedger(
+        "fix_approved",
+        "Plan approved",
+        `BootRise applied ${data.report?.patches?.length ?? 0} approved patch(es). Open Verify for dev preview and sandbox build proof before pushing to GitHub.`
+      );
+      void recordLedger("preview", "Preview session", "Web preview and dev server started for post-approval verification.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Approval failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectPlan() {
+    const id = pendingFixId ?? report?.pendingFixId;
+    if (!id) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/workspace/fix/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pendingFixId: id })
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Reject failed.");
+      setReport((r) =>
+        r
+          ? refreshSafeToPr(
+              { ...r, approvalStatus: "rejected", planReviewStatus: "rejected" },
+              sandboxPassed
+            )
+          : r
+      );
+      setPendingFixId(null);
+      setStatus("Plan rejected");
+      void recordLedger("fix_rejected", "Plan rejected", "No files were modified. Refine your fix request and run the pipeline again with a clearer file-specific description.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reject failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pushToGithub() {
+    if (!githubUrl.trim()) {
+      setError("Enter a GitHub URL in Connect first.");
+      return;
+    }
+    if (!report?.approvalStatus || report.approvalStatus !== "approved") {
+      setError("Approve a plan before pushing to GitHub.");
+      return;
+    }
+    setBusy(true);
+    setStatus("Pushing to GitHub");
+    try {
+      const res = await fetch("/api/workspace/github/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remoteUrl: githubUrl.trim(),
+          branch: githubBranch,
+          files: parseFiles(),
+          onlyPaths: report.patches?.map((p) => p.path),
+          commitMessage: `BootRise: ${fixRequest.slice(0, 72)}`
+        })
+      });
+      const data = (await res.json()) as {
+        branch?: string;
+        compareUrl?: string;
+        pullRequestHint?: string;
+        pushed?: string[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Push failed.");
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: [
+            `Pushed ${data.pushed?.length ?? 0} file(s) to branch \`${data.branch}\`.`,
+            data.compareUrl ? `Compare: ${data.compareUrl}` : "",
+            data.pullRequestHint ?? ""
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        }
+      ]);
+      setStatus("Ready");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "GitHub push failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -369,6 +616,18 @@ export function UserWorkspace() {
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Sandbox failed");
+      const passed = data.status === "passed";
+      setSandboxPassed(passed);
+      void recordLedger(
+        "sandbox",
+        "Sandbox verify",
+        `BootRise finished sandbox verification with status "${data.status ?? "unknown"}". This build proof feeds Safe to PR and your Living Ledger timeline.`
+      );
+      if (report?.approvalStatus === "approved") {
+        setReport((r) => (r ? refreshSafeToPr(r, passed) : r));
+      } else if (report?.pendingFixId && passed) {
+        setError("Approve the plan first — sandbox proof applies to applied patches.");
+      }
       const log = (data.commands ?? []).map((c) => `## ${c.label} (exit ${c.exitCode})\n${c.output}`).join("\n\n");
       setSandboxLog(log);
       setMessages((m) => [
@@ -395,20 +654,35 @@ export function UserWorkspace() {
   function handleChatAction(action: string) {
     if (busy) return;
     const lower = action.toLowerCase();
-    if (lower.includes("import") || lower.includes("connect repo")) {
+    if (lower.includes("import") || lower.includes("re-import") || lower.includes("connect repo")) {
       void importFromGithub();
       return;
     }
-    if (lower.includes("fix")) {
+    if (lower.includes("fix and report") || lower.includes("run fix")) {
+      setContextTab("fix");
+      setActiveStep("fix");
       void runFixReport(fixRequest);
       return;
     }
-    if (lower.includes("sandbox")) {
+    if (lower.includes("specific change") || lower.includes("open fix")) {
+      setContextTab("fix");
+      setActiveStep("fix");
+      return;
+    }
+    if (lower.includes("sandbox") || lower.includes("verify")) {
+      setContextTab("verify");
+      setActiveStep("verify");
       void runSandboxVerify();
       return;
     }
-    if (lower.includes("export") || lower.includes("download")) {
+    if (lower.includes("export") || lower.includes("download") || lower.includes("bundle")) {
+      setContextTab("export");
+      setActiveStep("export");
       void exportBundle("download");
+      return;
+    }
+    if (lower.includes("files") || lower.includes("browse")) {
+      setContextTab("files");
       return;
     }
     if (lower.includes("paste")) {
@@ -416,6 +690,18 @@ export function UserWorkspace() {
       return;
     }
     void sendChat(action);
+  }
+
+  function goToStep(step: WorkspaceStep) {
+    setActiveStep(step);
+    const tab: Record<WorkspaceStep, string> = {
+      connect: "connect",
+      plan: "files",
+      fix: "fix",
+      verify: "verify",
+      export: "export"
+    };
+    setContextTab(tab[step]);
   }
 
   async function handleFileUpload(fileList: FileList | null) {
@@ -430,6 +716,7 @@ export function UserWorkspace() {
         entries.push({ path: relativePath.replace(/\\/g, "/"), content });
       }
       setFilesInput(JSON.stringify(entries, null, 2));
+      await analyzeWorkspace(entries);
       setStatus("Ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed.");
@@ -439,10 +726,13 @@ export function UserWorkspace() {
 
   function formatFixReportMessage(fixReport: WorkspaceFixReport): string {
     const previewOnly = fixReport.fixed.some((f) => f.path.startsWith("generated/"));
+    const pending = fixReport.approvalStatus === "pending_approval";
     const parts = [
       previewOnly
-        ? "Fix report (preview scaffold — your imported repo files were not edited):"
-        : "Fix report:",
+        ? "Fix report (generated preview paths only — refine your request):"
+        : pending
+          ? "Fix report (patches proposed — approve to apply to your workspace):"
+          : "Fix report:",
       fixReport.plan.intent.interpretedGoal,
       `Risk: ${fixReport.plan.risk.level}`,
       "",
@@ -462,6 +752,9 @@ export function UserWorkspace() {
     ];
     if (fixReport.plainEnglishSummary) {
       parts.push("", "In plain English:", fixReport.plainEnglishSummary);
+    }
+    if (fixReport.safeToPr) {
+      parts.push("", `Safe to PR? ${fixReport.safeToPr.label}`, ...fixReport.safeToPr.reasons.map((r) => `- ${r}`));
     }
     return parts.join("\n");
   }
@@ -508,15 +801,25 @@ export function UserWorkspace() {
       const data = (await response.json()) as {
         report: WorkspaceFixReport;
         repositoryId: string;
+        pendingFixId?: string;
         error?: string;
       };
       if (!response.ok) throw new Error(data.error ?? "Fix workflow failed.");
 
-      setReport(data.report);
+      setPendingFixId(data.pendingFixId ?? data.report.pendingFixId ?? null);
+      setPreviewUrl(null);
+      setPreviewSessionId(null);
+      setDevPreviewStatus(null);
+      setReport(refreshSafeToPr(data.report, false));
       setRepositoryId(data.repositoryId);
       setActiveStep("fix");
       setContextTab("fix");
-      setStatus("Report ready");
+      setStatus(data.report.approvalStatus === "pending_approval" ? "Awaiting approval" : "Report ready");
+      void recordLedger(
+        "fix_proposed",
+        "Fix plan proposed",
+        `BootRise proposed ${data.report.patches?.length ?? data.report.fixed.length} patch(es) on real paths. Your workspace files are unchanged until you approve — this controlled gate is how BootRise keeps AI-driven development safe and explainable.`
+      );
       setMessages((current) => [
         ...current,
         {
@@ -551,14 +854,43 @@ export function UserWorkspace() {
     setMessages(nextMessages);
     setStatus("Thinking");
     setActivityDetail(githubUrl ? `Repo: ${githubUrl.split("/").slice(-2).join("/")}` : null);
+
+    const previewFiles = hasCode
+      ? (() => {
+          const snippets = parsedFiles.map((f) => ({ path: f.path, content: f.content.slice(0, 400) }));
+          const config = { batchSize: 36, maxBatches: 8, singleMaxFiles: 64 };
+          const plan = selectReviewBatches(message, snippets, config.batchSize, config.maxBatches);
+          if (plan.batches.length > 1) {
+            return plan.batches.flat().map((f) => f.path);
+          }
+          return selectRelevantFiles(message, snippets, config.singleMaxFiles).map((f) => f.path);
+        })()
+      : [];
+    setLiveFilesInFocus(previewFiles);
+    setLiveActiveFile(previewFiles[0] ?? null);
+
     setLiveThinking([
-      { id: "t1", label: "Parse message", status: "active" },
-      { id: "t2", label: "Load file context", status: "pending" },
+      { id: "t1", label: "Parse message", status: "active", detail: message.slice(0, 80) },
+      {
+        id: "t2",
+        label: "Load file context",
+        status: previewFiles.length > 0 ? "active" : "pending",
+        detail: previewFiles.length > 0 ? `${previewFiles.length} file(s) queued` : "No files in workspace"
+      },
       { id: "t3", label: "Plan response", status: "pending" },
       { id: "t4", label: "Publish reply", status: "pending" }
     ]);
 
     try {
+      setLiveThinking((s) =>
+        s.map((step) =>
+          step.id === "t1"
+            ? { ...step, status: "done" }
+            : step.id === "t2"
+              ? { ...step, status: "active" }
+              : step
+        )
+      );
       const response = await fetch("/api/workspace/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -574,8 +906,10 @@ export function UserWorkspace() {
           })),
           lastReport: report,
           provider,
+          persona,
           githubUrl: githubUrl || null,
-          githubBranch
+          githubBranch,
+          repositoryId: repositoryId ?? undefined
         })
       });
       const data = (await response.json()) as ChatApiResponse;
@@ -591,9 +925,21 @@ export function UserWorkspace() {
         plainEnglishSummary: data.plainEnglishSummary
       };
 
-      setLiveThinking((s) => s.map((step, i) => ({ ...step, status: i < 3 ? "done" : "active" })));
+      setLiveThinking((s) =>
+        s.map((step) => ({
+          ...step,
+          status: "done" as const,
+          detail:
+            step.id === "t2" && data.thinkingSteps?.find((x) => x.id === "files")?.detail
+              ? data.thinkingSteps.find((x) => x.id === "files")!.detail
+              : step.detail
+        }))
+      );
+      if (data.thinkingSteps?.length) {
+        const paths = data.fileActivity?.map((f) => f.path) ?? previewFiles;
+        setLiveFilesInFocus(paths);
+      }
       setMessages([...nextMessages, assistantMessage]);
-      setLiveThinking((s) => s.map((step) => ({ ...step, status: "done" as const })));
       setStatus("Ready");
 
       if (data.triggerFix && hasCode) {
@@ -607,6 +953,9 @@ export function UserWorkspace() {
     } finally {
       setBusy(false);
       setActivityDetail(null);
+      setLiveFilesInFocus([]);
+      setLiveActiveFile(null);
+      setLiveThinking([]);
     }
   }
 
@@ -633,7 +982,9 @@ export function UserWorkspace() {
           report: report ?? undefined,
           repositoryId: repositoryId ?? undefined,
           remoteUrl: mode === "github" ? githubUrl : undefined,
-          preferredProvider: provider
+          branch: githubBranch,
+          preferredProvider: provider,
+          repoHealth
         })
       });
       const data = (await response.json()) as {
@@ -652,6 +1003,8 @@ export function UserWorkspace() {
         anchor.download = data.downloadName;
         anchor.click();
         URL.revokeObjectURL(url);
+        setExportDone(true);
+        setActiveStep("export");
         setMessages((current) => [
           ...current,
           {
@@ -686,19 +1039,43 @@ export function UserWorkspace() {
   const secondaryBtn = `${btnClass} rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-graphite hover:bg-cloud`;
 
   return (
-    <section className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <EngineToggle
-          provider={provider}
-          onChange={setProvider}
-          bootriseOk={providerHealth.bootrise}
-          openaiOk={providerHealth.openai}
-        />
-        <div className="flex items-center gap-2">
-          <StatusPill label={projectStorage === "supabase" ? "Cloud saved" : "Local"} tone="neutral" />
-          <StatusPill label={status} tone={error ? "failed" : isWorking ? "neutral" : "neutral"} />
+    <section className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
+      <div className="mb-5 rounded-2xl border border-line bg-gradient-to-br from-white via-white to-signal/5 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-signal">AI product workspace</p>
+            <h2 className="mt-1 text-xl font-semibold text-ink">Build, review, fix, and verify in one flow</h2>
+            <p className="mt-1 max-w-2xl text-sm text-graphite">
+              Import your repo, chat with Architect / Developer / DevOps personas, approve patches, preview, and export.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <EngineToggle
+              provider={provider}
+              onChange={setProvider}
+              bootriseOk={providerHealth.bootrise}
+              openaiOk={providerHealth.openai}
+            />
+            <StatusPill label={projectStorage === "supabase" ? "Cloud saved" : "Local"} tone="neutral" />
+            <StatusPill label={status} tone={error ? "failed" : isWorking ? "neutral" : "neutral"} />
+          </div>
+        </div>
+        <div className="mt-4">
+          <PersonaSelector value={persona} onChange={setPersona} />
         </div>
       </div>
+
+      <ProjectDashboard
+        projectName={projectName}
+        fileCount={loadedFilePaths.length}
+        githubUrl={githubUrl}
+        branch={githubBranch}
+        health={repoHealth}
+        sandboxPassed={sandboxPassed}
+        safeToPr={report?.safeToPr ?? null}
+        storage={projectStorage}
+        lastSaved={lastProjectSaved}
+      />
 
       <WorkspaceStepRail
         active={activeStep}
@@ -723,11 +1100,31 @@ export function UserWorkspace() {
         <div className="mt-4 rounded-lg border border-line bg-cloud px-4 py-2 text-xs text-graphite">{saveNotice}</div>
       ) : null}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <div className="flex min-h-[calc(100vh-220px)] flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
-          {liveThinking.length > 0 || busy ? (
-            <ActivityConsole label={status} steps={liveThinking} detail={activityDetail ?? undefined} />
-          ) : null}
+      <div className="mt-4 grid gap-4 xl:grid-cols-[240px_minmax(0,1.2fr)_minmax(340px,0.9fr)]">
+        <aside className="hidden flex-col gap-4 xl:flex">
+          <div className="rounded-xl border border-line bg-white p-4 shadow-sm">
+            <WorkspaceQuickNav
+              busy={busy}
+              fileCount={loadedFilePaths.length}
+              hasReport={Boolean(report)}
+              onStep={goToStep}
+              onImport={() => void importFromGithub()}
+              onReviewIssues={() => void sendChat(REVIEW_ISSUES_PROMPT)}
+              onFix={() => {
+                goToStep("fix");
+                if (!report) void runFixReport();
+              }}
+              onSandbox={() => void runSandboxVerify()}
+              onExport={() => void exportBundle("download")}
+            />
+          </div>
+        </aside>
+
+        <div className="flex min-h-[calc(100vh-260px)] flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+          <div className="border-b border-line bg-cloud/40 px-4 py-3">
+            <p className="text-sm font-semibold text-ink">Conversation</p>
+            <p className="text-xs text-steel">Live file focus appears below while BootRise works</p>
+          </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.map((message, index) => (
@@ -746,18 +1143,39 @@ export function UserWorkspace() {
           </div>
 
           <div className="border-t border-line bg-cloud/50 p-4">
-            <div className="mb-2 flex flex-wrap gap-2">
+            <AgentLiveBar
+              busy={busy}
+              status={status}
+              steps={liveThinking}
+              filesInFocus={liveFilesInFocus}
+              activeFile={liveActiveFile}
+              totalFiles={loadedFilePaths.length}
+            />
+            <div className="mb-2 mt-3 flex flex-wrap gap-2">
               {[
                 { label: "What can you do?", msg: "What can you do?" },
+                { label: "List project issues", msg: REVIEW_ISSUES_PROMPT },
                 { label: "Review my repo", msg: `What is this repo about? ${githubUrl}` },
-                { label: "Feature advice", msg: "Should I add payments now?" }
+                { label: "Feature advice", msg: "Should I add payments now?" },
+                { label: "Run sandbox", action: "sandbox" as const },
+                { label: "Open Fix", action: "fix" as const }
               ].map((q) => (
                 <button
                   key={q.label}
                   type="button"
                   disabled={busy}
                   className={`${secondaryBtn} rounded-full px-3 py-1 text-xs`}
-                  onClick={() => void sendChat(q.msg)}
+                  onClick={() => {
+                    if ("action" in q && q.action === "sandbox") {
+                      void runSandboxVerify();
+                      return;
+                    }
+                    if ("action" in q && q.action === "fix") {
+                      goToStep("fix");
+                      return;
+                    }
+                    if ("msg" in q) void sendChat(q.msg);
+                  }}
                 >
                   {q.label}
                 </button>
@@ -804,9 +1222,11 @@ export function UserWorkspace() {
             tabs={[
               { id: "connect", label: "Connect", badge: githubUrl ? "●" : undefined },
               { id: "files", label: "Files", badge: String(loadedFilePaths.length) },
+              { id: "architecture", label: "Architecture" },
               { id: "fix", label: "Fix", badge: report ? "✓" : undefined },
               { id: "verify", label: "Verify" },
-              { id: "export", label: "Export" }
+              { id: "ledger", label: "Ledger" },
+              { id: "export", label: "Export", badge: exportDone ? "✓" : undefined }
             ]}
           />
           <div className="flex-1 overflow-y-auto">
@@ -965,6 +1385,26 @@ export function UserWorkspace() {
               </Panel>
             ) : null}
 
+            {contextTab === "architecture" ? (
+              <Panel title="Architecture map & blast radius">
+                <ArchitectureMapPanel
+                  files={parsedFiles}
+                  repositoryId={repositoryId}
+                  blastRootSymbol={report?.plan.impact.files[0] ?? null}
+                />
+              </Panel>
+            ) : null}
+
+            {contextTab === "ledger" ? (
+              <Panel title="Living Ledger">
+                <p className="mb-3 text-sm leading-6 text-graphite">
+                  BootRise records each architectural state transition — import, proposed fix, approval, verification —
+                  so you can trace what changed and why before shipping.
+                </p>
+                <WorkspaceLivingLedger projectId={projectId ?? (repositoryId ? `proj_${repositoryId}` : null)} />
+              </Panel>
+            ) : null}
+
             {contextTab === "fix" ? (
               <Panel title="Fix and report">
                 <textarea
@@ -981,6 +1421,15 @@ export function UserWorkspace() {
                 >
                   Run fix pipeline
                 </button>
+                {report?.approvalStatus === "pending_approval" && report.patches?.length ? (
+                  <PlanApprovalPanel
+                    patches={report.patches}
+                    patchSource={report.patchSource}
+                    busy={busy}
+                    onApprove={() => void approvePlan()}
+                    onReject={() => void rejectPlan()}
+                  />
+                ) : null}
                 {report ? (
                   <div className="mt-4">
                     <DiffReportPanel report={report} />
@@ -992,10 +1441,26 @@ export function UserWorkspace() {
             ) : null}
 
             {contextTab === "verify" ? (
-              <Panel title="Sandbox verify">
-                <p className="text-sm leading-6 text-graphite">
-                  Checks JSON validity and Python syntax on imported files. Full npm install needs a complete repo clone — partial
-                  imports skip heavy installs.
+              <Panel title="Verify & preview">
+                <WebContainerPreview
+                  files={parsedFiles}
+                  active={report?.approvalStatus === "approved"}
+                />
+                <DeviceStreamPanel
+                  repositoryId={repositoryId}
+                  hasExpo={loadedFilePaths.some((p) => p.startsWith("app/mobile/"))}
+                  fileCount={loadedFilePaths.length}
+                />
+                <p className="my-3 text-xs font-semibold uppercase text-steel">Host / proxy fallback</p>
+                <WebPreviewPanel
+                  previewUrl={previewUrl ?? report?.previewUrl ?? null}
+                  previewSessionId={previewSessionId ?? report?.previewSessionId ?? null}
+                  devPreviewStatus={devPreviewStatus ?? report?.devPreviewStatus ?? null}
+                  framework={previewFramework ?? undefined}
+                  changedFiles={report?.patches?.map((p) => p.path)}
+                />
+                <p className="mt-4 text-sm leading-6 text-graphite">
+                  Sandbox checks structure and can run npm scripts when a full import includes lockfiles.
                 </p>
                 <button
                   type="button"
@@ -1017,6 +1482,25 @@ export function UserWorkspace() {
 
             {contextTab === "export" ? (
               <Panel title="Export">
+                <p className="text-sm text-graphite">
+                  Bundle includes brief, {loadedFilePaths.length} files, architecture health
+                  {report ? ", fix report + plain English" : ""}, and GitHub metadata.
+                </p>
+                {!briefReady ? (
+                  <p className="mt-2 text-xs text-amber-800">Fill product name and workflow in Files before exporting.</p>
+                ) : null}
+                {report?.approvalStatus === "approved" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className={`${primaryBtn} mb-2 w-full`}
+                    onClick={() => void pushToGithub()}
+                  >
+                    Push approved patches to GitHub
+                  </button>
+                ) : (
+                  <p className="mb-2 text-xs text-steel">Approve a plan before automated GitHub push (requires GITHUB_TOKEN).</p>
+                )}
                 <button
                   type="button"
                   disabled={busy}

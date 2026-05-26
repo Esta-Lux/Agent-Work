@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { AdminKillSwitches } from "@/components/admin-kill-switches";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 
@@ -156,8 +157,31 @@ export function AdminConsole() {
   const health = overview?.health;
   const telemetry = overview?.telemetry;
 
+  const phase3Complete = [
+    "WebContainer in-browser preview (COOP/COEP)",
+    "Device farm streams API + Supabase remote_streams",
+    "Multi-tenant orgs + RLS (migration 003)",
+    "Cloud Living Ledger + pending fixes + audit",
+    "Architecture map, personas, kill switches, BootRise voice"
+  ];
+
   return (
     <section className="mx-auto max-w-7xl px-6 py-6">
+      <div className="mb-6 rounded-xl border border-signal/25 bg-signal/5 p-4">
+        <p className="text-xs font-semibold uppercase text-signal">Phase 3+ — Enterprise (shipped)</p>
+        <p className="mt-1 text-sm text-graphite">
+          Run Supabase migrations 001–003. WebContainer, device streams, and cloud ledger/audit are live at{" "}
+          <code className="text-ink">/</code>.
+        </p>
+        <ul className="mt-3 grid gap-1 sm:grid-cols-2">
+          {phase3Complete.map((item) => (
+            <li key={item} className="text-xs text-graphite">
+              ✓ {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase text-steel">Operator control</p>
@@ -184,6 +208,10 @@ export function AdminConsole() {
           label="Blended task $"
           value={economics?.taskCosts?.blendedTaskCost != null ? `$${economics.taskCosts.blendedTaskCost.toFixed(2)}` : "—"}
         />
+      </div>
+
+      <div className="mb-6">
+        <AdminKillSwitches />
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">

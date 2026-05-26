@@ -209,10 +209,10 @@ function inferStackHints(paths: string[], topLevel: string[]): string[] {
 
 function buildBootriseNotes(paths: string[], stackHints: string[], isPrivate: boolean, keyPaths: string[]): string[] {
   const notes = [
-    "BootRise can plan fixes on pasted files today; full GitHub clone sync is a later step.",
+    "BootRise persists imports to `.bootrise/repos/{repositoryId}` — re-import only writes changed files.",
     isPrivate
-      ? "This repo is private — paste critical paths (auth, API routes, schema) for accurate blast-radius analysis."
-      : "Public metadata loaded. Paste files you want changed for a fix-and-report run."
+      ? "Private repo: ensure GITHUB_TOKEN is set; canonical store survives browser refresh."
+      : "Public metadata loaded. Full imports sync to server-side repo store for incremental updates."
   ];
   if (paths.length > 100) notes.push(`Large codebase (${paths.length}+ tracked paths) — start with one module at a time.`);
   if (stackHints.length > 0) notes.push(`Detected stack: ${stackHints.join(", ")}.`);

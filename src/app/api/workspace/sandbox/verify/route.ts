@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
+import { recordAudit } from "@/lib/admin/audit-log";
 import { recordAdminTelemetry } from "@/lib/admin/telemetry";
 import { runWorkspaceSandboxVerify } from "@/lib/workspace/workspace-sandbox";
 
@@ -16,9 +18,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Provide files to verify in sandbox." }, { status: 400 });
   }
 
+  try {
+    assertKillSwitchAllowed("sandbox");
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Sandbox blocked." },
+      { status: 403 }
+    );
+  }
+
   const repositoryId = body.repositoryId ?? `repo_${Date.now()}`;
   const startedAt = Date.now();
   const result = await runWorkspaceSandboxVerify(body.files, repositoryId);
+  void recordAudit({ actor: "workspace-user", action: "sandbox_verify", detail: result.status });
 
   void recordAdminTelemetry({
     userId: "workspace-user",

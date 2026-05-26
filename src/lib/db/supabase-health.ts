@@ -2,7 +2,13 @@ import { getSupabaseConfig, getSupabaseDashboardUrl, getSupabaseServiceClient } 
 
 export const BOOTRISE_CORE_TABLES = [
   "bootrise_workspace_projects",
-  "bootrise_admin_telemetry"
+  "bootrise_admin_telemetry",
+  "bootrise_organizations",
+  "bootrise_living_ledger_events",
+  "bootrise_pending_fixes",
+  "bootrise_audit_events",
+  "bootrise_preview_sessions",
+  "bootrise_remote_streams"
 ] as const;
 
 export type BootriseCoreTable = (typeof BOOTRISE_CORE_TABLES)[number];
@@ -66,14 +72,17 @@ export async function getSupabaseHealthReport(): Promise<SupabaseHealthReport> {
         error: "Not configured"
       })),
       message: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env",
-      setupHint: "Copy supabase/migrations/002_workspace_core.sql into the Supabase SQL Editor and run it."
+      setupHint: "Run all files in supabase/migrations/ (001, 002, 003) in the Supabase SQL Editor."
     };
   }
 
   const tables = await Promise.all(BOOTRISE_CORE_TABLES.map((name) => probeTable(name)));
-  const schemaReady = tables.every((table) => table.exists);
+  const schemaReady = tables.filter((t) =>
+    ["bootrise_workspace_projects", "bootrise_organizations", "bootrise_living_ledger_events"].includes(t.name)
+  ).every((table) => table.exists);
   const authFailed = tables.some((table) => /invalid api key|jwt/i.test(table.error ?? ""));
-  const connected = !authFailed && tables.some((table) => table.exists || (table.error?.includes("Could not find the table") ?? false));
+  const connected =
+    !authFailed && tables.some((table) => table.exists || (table.error?.includes("Could not find the table") ?? false));
 
   return {
     configured: true,
@@ -84,10 +93,10 @@ export async function getSupabaseHealthReport(): Promise<SupabaseHealthReport> {
     publishableKeySet: Boolean(config.publishableKey),
     tables,
     message: schemaReady
-      ? "Supabase connected and BootRise schema is ready."
-      : "Supabase API reachable but BootRise tables are missing. Run migration 002_workspace_core.sql.",
+      ? "Supabase connected — workspace, ledger, tenancy, and streams ready."
+      : "Supabase reachable but some BootRise tables are missing. Run migrations 001–003.",
     setupHint: schemaReady
       ? null
-      : "Open Supabase → SQL Editor → paste supabase/migrations/002_workspace_core.sql → Run."
+      : "Supabase → SQL Editor → run 001_living_ledger.sql, 002_workspace_core.sql, 003_enterprise_tenancy.sql"
   };
 }

@@ -1,15 +1,27 @@
 import ts from "typescript";
 import type { DependencyEdge, SymbolRecord } from "@/lib/types/core";
 
+export interface SymbolDependency {
+  symbolName: string;
+  filePath: string;
+  dependencies: string[];
+}
+
 export interface AstAnalysisResult {
   symbols: SymbolRecord[];
   dependencies: DependencyEdge[];
+  symbolDependencies: SymbolDependency[];
+  callEdges: DependencyEdge[];
 }
 
 export function analyzeTypeScriptAst(filePath: string, source: string): AstAnalysisResult {
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, inferScriptKind(filePath));
   const symbols: SymbolRecord[] = [];
   const dependencies: DependencyEdge[] = [];
+  const callEdges: DependencyEdge[] = [];
+  const importBindings = new Map<string, string>();
+  const localSymbols = new Set<string>();
+  const symbolBodies = new Map<string, ts.Node>();
 
   const visit = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -19,11 +31,68 @@ export function analyzeTypeScriptAst(filePath: string, source: string): AstAnaly
         to: target,
         kind: target.startsWith(".") || target.startsWith("@/") ? "import" : "package"
       });
+
+      if (node.importClause) {
+        if (node.importClause.name) {
+          importBindings.set(node.importClause.name.text, target);
+        }
+        if (node.importClause.namedBindings) {
+          if (ts.isNamedImports(node.importClause.namedBindings)) {
+            for (const element of node.importClause.namedBindings.elements) {
+              const local = element.name.text;
+              importBindings.set(local, target);
+            }
+          } else if (ts.isNamespaceImport(node.importClause.namedBindings)) {
+            importBindings.set(node.importClause.namedBindings.name.text, target);
+          }
+        }
+      }
+    }
+
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const target = node.moduleSpecifier.text;
+      dependencies.push({
+        from: filePath,
+        to: target,
+        kind: target.startsWith(".") || target.startsWith("@/") ? "import" : "package"
+      });
+
+      if (node.exportClause) {
+        if (ts.isNamedExports(node.exportClause)) {
+          for (const element of node.exportClause.elements) {
+            const exportName = (element.name ?? element.propertyName)?.text;
+            if (!exportName) continue;
+            symbols.push({
+              name: exportName,
+              kind: "function",
+              filePath,
+              exported: true
+            });
+            localSymbols.add(exportName);
+          }
+        }
+      } else {
+        symbols.push({
+          name: `*:${target}`,
+          kind: "function",
+          filePath,
+          exported: true
+        });
+      }
     }
 
     const symbol = extractSymbol(filePath, node);
     if (symbol) {
       symbols.push(symbol);
+      localSymbols.add(symbol.name);
+      symbolBodies.set(symbol.name, node);
+    }
+
+    if (ts.isCallExpression(node)) {
+      const callee = calleeName(node.expression);
+      if (callee) {
+        callEdges.push({ from: filePath, to: callee, kind: "runtime" });
+      }
     }
 
     ts.forEachChild(node, visit);
@@ -32,18 +101,99 @@ export function analyzeTypeScriptAst(filePath: string, source: string): AstAnaly
   visit(sourceFile);
 
   if (isRouteFile(filePath)) {
+    const routeName = routeNameFromPath(filePath);
     symbols.push({
-      name: routeNameFromPath(filePath),
+      name: routeName,
       kind: "route",
       filePath,
       exported: true
     });
+    localSymbols.add(routeName);
   }
 
+  const dedupedSymbols = dedupeSymbols(symbols);
+  const symbolDependencies = buildSymbolDependencies(
+    filePath,
+    dedupedSymbols,
+    symbolBodies,
+    importBindings,
+    localSymbols
+  );
+
   return {
-    symbols: dedupeSymbols(symbols),
-    dependencies
+    symbols: dedupedSymbols,
+    dependencies,
+    symbolDependencies,
+    callEdges
   };
+}
+
+function buildSymbolDependencies(
+  filePath: string,
+  symbols: SymbolRecord[],
+  symbolBodies: Map<string, ts.Node>,
+  importBindings: Map<string, string>,
+  localSymbols: Set<string>
+): SymbolDependency[] {
+  return symbols.map((symbol) => {
+    const deps = new Set<string>();
+    const body = symbolBodies.get(symbol.name);
+
+    if (body) {
+      collectIdentifierDeps(body, deps, importBindings, localSymbols);
+      collectCallDeps(body, deps, localSymbols);
+    }
+
+    if (symbol.name.startsWith("*:")) {
+      const modulePath = symbol.name.slice(2);
+      deps.add(modulePath);
+    }
+
+    return {
+      symbolName: symbol.name,
+      filePath,
+      dependencies: Array.from(deps).filter((dep) => dep !== symbol.name)
+    };
+  });
+}
+
+function collectIdentifierDeps(
+  node: ts.Node,
+  deps: Set<string>,
+  importBindings: Map<string, string>,
+  localSymbols: Set<string>
+): void {
+  const visit = (child: ts.Node) => {
+    if (ts.isIdentifier(child)) {
+      const name = child.text;
+      if (importBindings.has(name)) {
+        deps.add(name);
+      } else if (localSymbols.has(name)) {
+        deps.add(name);
+      }
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+}
+
+function collectCallDeps(node: ts.Node, deps: Set<string>, localSymbols: Set<string>): void {
+  const visit = (child: ts.Node) => {
+    if (ts.isCallExpression(child)) {
+      const callee = calleeName(child.expression);
+      if (callee && localSymbols.has(callee)) {
+        deps.add(callee);
+      }
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+}
+
+function calleeName(expression: ts.Expression): string | null {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return null;
 }
 
 function inferScriptKind(filePath: string): ts.ScriptKind {
@@ -93,6 +243,24 @@ function extractSymbol(filePath: string, node: ts.Node): SymbolRecord | null {
     }
   }
 
+  if (ts.isExportAssignment(node)) {
+    const name = "default";
+    if (ts.isIdentifier(node.expression)) {
+      return {
+        name: node.expression.text,
+        kind: inferFunctionKind(filePath, node.expression.text),
+        filePath,
+        exported: true
+      };
+    }
+    return {
+      name,
+      kind: inferFunctionKind(filePath, name),
+      filePath,
+      exported: true
+    };
+  }
+
   return null;
 }
 
@@ -133,4 +301,3 @@ function dedupeSymbols(symbols: SymbolRecord[]): SymbolRecord[] {
     return true;
   });
 }
-

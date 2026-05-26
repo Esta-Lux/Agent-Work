@@ -1,5 +1,5 @@
 import { analyzeTypeScriptAst } from "@/lib/intelligence/ast-analyzer";
-import { extractImportEdges } from "@/lib/intelligence/dependency-mapper";
+import { extractImportEdges, resolveDependencyEdges } from "@/lib/intelligence/dependency-mapper";
 import { classifyRepoFile } from "@/lib/intelligence/file-analyzer";
 import { shouldIgnoreRepoPath } from "@/lib/intelligence/ignore-rules";
 import { extractLightweightSymbols } from "@/lib/intelligence/symbol-tracker";
@@ -26,11 +26,16 @@ export function buildRepoIntelligenceSnapshot(
         }
   }));
 
+  const rawDependencies = astResults.flatMap((result) => result.analysis.dependencies);
+  const callEdges = astResults.flatMap((result) =>
+    "callEdges" in result.analysis ? result.analysis.callEdges : []
+  );
+
   return {
     generatedAt: new Date().toISOString(),
     files: includedFiles.map((file) => classifyRepoFile(file.path, file.sizeBytes ?? file.content.length)),
     symbols: astResults.flatMap((result) => result.analysis.symbols),
-    dependencies: astResults.flatMap((result) => result.analysis.dependencies),
+    dependencies: resolveDependencyEdges(includedFiles, [...rawDependencies, ...callEdges]),
     architectureMemory
   };
 }

@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 
 import { join, resolve } from "node:path";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { BOOTRISE_CORE_TABLES } from "@/lib/db/supabase-health";
+import { DEFAULT_ORG_ID } from "@/lib/tenancy/org-context";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 
@@ -58,6 +59,7 @@ function projectToRow(project: WorkspaceProject) {
   return {
     id: project.id,
     name: project.name,
+    org_id: DEFAULT_ORG_ID,
     brief: project.brief,
     files: project.files,
     last_report: project.lastReport,

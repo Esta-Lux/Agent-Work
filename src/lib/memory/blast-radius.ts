@@ -31,9 +31,20 @@ function traceLocalBlastRadius(symbols: LivingLedgerSymbolRecord[], root: string
       const key = `${symbol.filePath}:${symbol.symbolName}`;
       if (impacted.has(key)) continue;
 
-      if (symbol.symbolName === current || symbol.exportDependencies.includes(current)) {
+      const dependsOnRoot =
+        symbol.symbolName === current ||
+        symbol.exportDependencies.includes(current) ||
+        symbol.exportDependencies.some((dep) => dep === current || dep.endsWith(`/${current}`));
+
+      if (dependsOnRoot) {
         impacted.set(key, symbol);
         queue.push(symbol.symbolName);
+
+        for (const dep of symbol.exportDependencies) {
+          if (!impacted.has(`${symbol.filePath}:${dep}`)) {
+            queue.push(dep);
+          }
+        }
       }
     }
   }

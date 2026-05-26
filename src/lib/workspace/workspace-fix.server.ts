@@ -1,6 +1,5 @@
 import { createProviderChangePlan } from "@/lib/ai/llm-router";
 import type { LlmProviderId } from "@/lib/ai/providers";
-import { createDiffPreview } from "@/lib/execution/diff-preview";
 import { createDryRunExecutionResult } from "@/lib/execution/executor";
 import { buildRepoIntelligenceSnapshot, type SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { ContextBuilder } from "@/lib/memory/context-builder";
@@ -10,12 +9,25 @@ import { createChangeReport } from "@/lib/reporting/change-report";
 import { createRepoHealthSummary } from "@/lib/reporting/repo-health";
 import { upsertRecord, memoryStore } from "@/lib/persistence/memory-store";
 import type { ChangePlan, RepoIntelligenceSnapshot } from "@/lib/types/core";
+import { applyPatchesToFiles } from "@/lib/workspace/apply-patches";
+import { createDiffPreviewFromPatches } from "@/lib/workspace/diff-from-patches";
+import {
+  createPendingFixId,
+  getPendingFix,
+  savePendingFix,
+  updatePendingFixStatus
+} from "@/lib/workspace/pending-fix-store";
 import { buildPlainEnglishFromReport } from "@/lib/workspace/plain-english";
-import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import { generateRealPatches } from "@/lib/workspace/real-patches";
+import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
+import { createPreviewSession } from "@/lib/infrastructure/control-plane";
+import { startDevPreview } from "@/lib/workspace/preview-dev-runner";
+import { createWorkspacePreviewSession, getPreviewSessionRoot } from "@/lib/workspace/workspace-preview";
+import type { ProposedPatch, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import { runVerificationChecks } from "@/lib/verification/verification-runner";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
 
-export async function executeFixWorkflow(
+export async function createPendingFixPlan(
   files: SourceFileInput[],
   request: string,
   provider: LlmProviderId = "bootrise"
@@ -25,6 +37,7 @@ export async function executeFixWorkflow(
   health: ReturnType<typeof createRepoHealthSummary>;
   report: WorkspaceFixReport;
   plannerSource: string;
+  pendingFixId: string;
 }> {
   const repo = buildRepoIntelligenceSnapshot(files);
   const repositoryId = `repo_${Date.now()}`;
@@ -56,60 +69,228 @@ export async function executeFixWorkflow(
     plannerSource = "deterministic-fallback";
   }
 
+  const { patches, source: patchSource } = await generateRealPatches({ provider, request, files, plan });
+  const pendingFixId = createPendingFixId();
+
+  savePendingFix({
+    id: pendingFixId,
+    repositoryId,
+    request,
+    plan,
+    patches,
+    filesSnapshot: files,
+    provider,
+    plannerSource,
+    status: "pending_approval",
+    createdAt: now
+  });
+
   upsertRecord(memoryStore.plans, {
     id: plan.id,
     repositoryId,
     plan,
-    status: "approved",
+    status: "draft",
     createdAt: now
   });
 
-  const diff = createDiffPreview(plan);
-  const execution = createDryRunExecutionResult(plan);
-  const verificationChecks = (await runVerificationChecks(plan.validations)).checks;
-  const verificationSummary = createVerificationSummary(plan);
-  const changeReport = createChangeReport(plan, execution, verificationChecks);
-
-  const fixed = diff.files.map((file) => ({
-    path: file.path,
-    summary: file.summary
-  }));
-
-  const potentiallyBroken = Array.from(
-    new Set([
-      ...plan.impact.blastRadius,
-      ...blast.impactedSymbols.map((symbol) => `${symbol.filePath} (${symbol.symbolName})`)
-    ])
-  );
-
-  const report: WorkspaceFixReport = {
+  const report = await buildReportFromPatches({
     repositoryId,
     plan,
-    diff,
-    blastRadius: plan.impact.blastRadius,
-    fixed,
-    potentiallyBroken,
-    howFixed: plan.steps.map((step) => `${step.title}: ${step.summary}`),
-    verificationSummary,
-    residualRisk: changeReport.residualRisk,
-    guidanceForBuilder: buildGuidance(request, plan, potentiallyBroken)
-  };
-  report.plainEnglishSummary = buildPlainEnglishFromReport(report);
+    patches,
+    blast,
+    request,
+    patchSource,
+    pendingFixId,
+    approvalStatus: "pending_approval"
+  });
 
   return {
     repositoryId,
     repo,
     health: createRepoHealthSummary(repo),
     report,
-    plannerSource
+    plannerSource,
+    pendingFixId
   };
+}
+
+export async function approvePendingFix(
+  pendingFixId: string,
+  options?: { sandboxPassed?: boolean }
+): Promise<{
+  files: SourceFileInput[];
+  report: WorkspaceFixReport;
+  previewSessionId: string;
+  previewUrl: string;
+  devPreviewStatus: string;
+  devPreviewLog: string[];
+}> {
+  const pending = await getPendingFix(pendingFixId);
+  if (!pending) throw new Error("Pending fix not found. Run Fix and report again.");
+  if (pending.status === "rejected") throw new Error("This plan was rejected. Create a new fix request.");
+  if (pending.status === "approved") throw new Error("This plan was already approved.");
+
+  const appliedPatches = pending.patches.map((p) => ({ ...p, applied: true }));
+  const { files } = applyPatchesToFiles(pending.filesSnapshot, appliedPatches);
+
+  updatePendingFixStatus(pendingFixId, "approved");
+  upsertRecord(memoryStore.plans, {
+    id: pending.plan.id,
+    repositoryId: pending.repositoryId,
+    plan: pending.plan,
+    status: "approved",
+    createdAt: pending.createdAt
+  });
+
+  const preview = createWorkspacePreviewSession({
+    files,
+    patches: appliedPatches,
+    repositoryId: pending.repositoryId
+  });
+
+  const previewMode = process.env.BOOTRISE_PREVIEW_MODE?.trim() || "auto";
+  const useHostDev = previewMode === "host" || previewMode === "auto";
+
+  const devPreview = useHostDev
+    ? await startDevPreview({
+        sessionId: preview.id,
+        previewRoot: getPreviewSessionRoot(preview.id),
+        files
+      })
+    : {
+        id: preview.id,
+        status: "static_only" as const,
+        port: null,
+        proxyUrl: `/api/workspace/preview/proxy/${preview.id}/`,
+        staticUrl: preview.entryUrl,
+        framework: "WebContainer",
+        cwd: null,
+        log: ["Host dev disabled — use in-browser WebContainer in Verify tab."],
+        updatedAt: new Date().toISOString()
+      };
+
+  await createPreviewSession({
+    repositoryId: pending.repositoryId,
+    mode: "webcontainer",
+    framework: devPreview.framework
+  });
+
+  const previewUrl =
+    previewMode === "webcontainer"
+      ? preview.entryUrl
+      : devPreview.status === "ready" || devPreview.status === "starting" || devPreview.status === "installing"
+        ? devPreview.proxyUrl
+        : preview.entryUrl;
+
+  const blast = await traceBlastRadius(pending.repositoryId, pending.plan.impact.files[0] ?? "Page");
+
+  const report = await buildReportFromPatches({
+    repositoryId: pending.repositoryId,
+    plan: pending.plan,
+    patches: appliedPatches,
+    blast,
+    request: pending.request,
+    patchSource: "applied",
+    pendingFixId,
+    approvalStatus: "approved",
+    previewSessionId: preview.id,
+    previewUrl,
+    sandboxPassed: options?.sandboxPassed ?? false,
+    devPreviewStatus: devPreview.status
+  });
+
+  return {
+    files,
+    report,
+    previewSessionId: preview.id,
+    previewUrl,
+    devPreviewStatus: devPreview.status,
+    devPreviewLog: devPreview.log
+  };
+}
+
+export async function rejectPendingFix(pendingFixId: string): Promise<void> {
+  const pending = await getPendingFix(pendingFixId);
+  if (!pending) throw new Error("Pending fix not found.");
+  updatePendingFixStatus(pendingFixId, "rejected");
+}
+
+/** @deprecated Use createPendingFixPlan — kept for compatibility */
+export async function executeFixWorkflow(
+  files: SourceFileInput[],
+  request: string,
+  provider: LlmProviderId = "bootrise"
+) {
+  return createPendingFixPlan(files, request, provider);
+}
+
+async function buildReportFromPatches(input: {
+  repositoryId: string;
+  plan: ChangePlan;
+  patches: ProposedPatch[];
+  blast: Awaited<ReturnType<typeof traceBlastRadius>>;
+  request: string;
+  patchSource: string;
+  pendingFixId: string;
+  approvalStatus: WorkspaceFixReport["approvalStatus"];
+  previewSessionId?: string;
+  previewUrl?: string;
+  sandboxPassed?: boolean;
+  devPreviewStatus?: string;
+}): Promise<WorkspaceFixReport> {
+  const diff = createDiffPreviewFromPatches(input.plan.id, input.patches, input.plan.risk.reasons);
+  const execution = createDryRunExecutionResult(input.plan);
+  const verificationRun = await runVerificationChecks(input.plan.validations);
+  const verificationChecks = verificationRun.checks;
+  const verificationSummary = createVerificationSummary(input.plan);
+  const changeReport = createChangeReport(input.plan, execution, verificationChecks);
+
+  const potentiallyBroken = Array.from(
+    new Set([
+      ...input.plan.impact.blastRadius,
+      ...input.blast.impactedSymbols.map((symbol) => `${symbol.filePath} (${symbol.symbolName})`)
+    ])
+  );
+
+  const hasReal = input.patches.length > 0 && input.approvalStatus === "approved";
+
+  const report: WorkspaceFixReport = {
+    repositoryId: input.repositoryId,
+    plan: input.plan,
+    diff,
+    blastRadius: input.plan.impact.blastRadius,
+    fixed: input.patches.map((p) => ({ path: p.path, summary: p.summary })),
+    potentiallyBroken,
+    howFixed: input.plan.steps.map((step) => `${step.title}: ${step.summary}`),
+    verificationSummary,
+    residualRisk: changeReport.residualRisk,
+    guidanceForBuilder: buildGuidance(input.request, input.plan, potentiallyBroken),
+    pendingFixId: input.pendingFixId,
+    patches: input.patches,
+    patchSource: input.patchSource,
+    approvalStatus: input.approvalStatus,
+    planReviewStatus: input.approvalStatus === "pending_approval" ? "pending_approval" : "ready_for_review",
+    previewSessionId: input.previewSessionId ?? null,
+    previewUrl: input.previewUrl ?? null,
+    devPreviewStatus: input.devPreviewStatus ?? null
+  };
+
+  report.plainEnglishSummary = buildPlainEnglishFromReport(report);
+  report.safeToPr = computeSafeToPr({
+    report,
+    sandboxPassed: input.sandboxPassed ?? false,
+    hasRealRepoPatches: hasReal
+  });
+
+  return report;
 }
 
 function buildGuidance(request: string, plan: ChangePlan, potentiallyBroken: string[]): string[] {
   const guidance = [
-    "Review the diff preview before applying changes to your real repository.",
-    "Run verification locally after merging BootRise output.",
-    "Export the bundle before deployment so you retain a snapshot."
+    "BootRise holds changes behind the approval gate so your architecture stays explainable until you deliberately apply patches.",
+    "Open Verify to run the dev preview (npm install + dev server when package.json is present) or static staged files as fallback.",
+    "Run sandbox verify after approval — BootRise uses it as build proof for Safe to PR.",
+    "Review the architecture map and Living Ledger to see downstream impact before exporting or pushing to GitHub."
   ];
 
   if (potentiallyBroken.length > 0) {

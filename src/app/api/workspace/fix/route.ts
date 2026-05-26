@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { resolveUserProvider } from "@/lib/ai/providers";
 import { recordAdminTelemetry } from "@/lib/admin/telemetry";
-import { executeFixWorkflow } from "@/lib/workspace/workspace-fix.server";
+import { assertKillSwitchAllowed, assertWorkspaceFileLimit } from "@/lib/admin/kill-switches";
+import { recordAudit } from "@/lib/admin/audit-log";
+import { createPendingFixPlan } from "@/lib/workspace/workspace-fix.server";
 
 export const runtime = "nodejs";
 
@@ -25,9 +27,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Provide at least one file with path and content." }, { status: 400 });
   }
 
+  try {
+    assertKillSwitchAllowed("fix");
+    assertKillSwitchAllowed("expensive_model");
+    assertWorkspaceFileLimit(files.length);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Fix blocked." },
+      { status: 403 }
+    );
+  }
+
   const provider = resolveUserProvider(body?.provider);
   const startedAt = Date.now();
-  const result = await executeFixWorkflow(files, userRequest, provider);
+  const result = await createPendingFixPlan(files, userRequest, provider);
+  void recordAudit({ actor: "workspace-user", action: "fix_proposed", detail: userRequest.slice(0, 120) });
   const durationMs = Date.now() - startedAt;
 
   void recordAdminTelemetry({
@@ -49,6 +63,7 @@ export async function POST(request: Request) {
     repo: result.repo,
     health: result.health,
     report: result.report,
-    nextAction: "Review fixed files and blast radius before exporting or pushing to GitHub."
+    pendingFixId: result.pendingFixId,
+    nextAction: "Review proposed patches, then Approve or Reject before changes apply to your workspace."
   });
 }

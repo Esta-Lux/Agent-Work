@@ -11,7 +11,7 @@ export interface SandboxExecutionResult {
 export class SandboxRuntime {
   constructor(private readonly hostVolumePath: string) {}
 
-  public async executeCommand(command: string[]): Promise<SandboxExecutionResult> {
+  public async executeCommand(command: string[], timeoutMs = 30_000): Promise<SandboxExecutionResult> {
     if (process.env.BOOTRISE_SANDBOX_MODE === "docker") {
       return this.executeDockerCommand(command);
     }
@@ -30,9 +30,9 @@ export class SandboxRuntime {
         resolve({
           exitCode: 124,
           stdout,
-          stderr: stderr || "Command timed out after 30 seconds."
+          stderr: stderr || `Command timed out after ${Math.round(timeoutMs / 1000)} seconds.`
         });
-      }, 30_000);
+      }, timeoutMs);
 
       child.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();

@@ -2,6 +2,7 @@ import { Project, SyntaxKind } from "ts-morph";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { shouldIgnoreRepoPath } from "@/lib/intelligence/ignore-rules";
+import { buildSymbolGraph } from "@/lib/intelligence/symbol-graph";
 import { memoryStore, upsertRecord } from "@/lib/persistence/memory-store";
 import type { EpistemicLedgerRecord, LivingLedgerSymbolRecord } from "@/lib/persistence/schema";
 
@@ -71,17 +72,8 @@ export class ContextBuilder {
   }
 
   public async persistStaticMemory(repositoryId: string): Promise<LivingLedgerSymbolRecord[]> {
-    const now = new Date().toISOString();
-    const symbols = this.extractSymbolGraph().map((symbol) => ({
-      id: `${repositoryId}:${symbol.filePath}:${symbol.name}`,
-      repositoryId,
-      symbolName: symbol.name,
-      symbolKind: symbol.kind,
-      filePath: symbol.filePath,
-      exportDependencies: symbol.calls,
-      astNodeData: symbol.astNodeData,
-      createdAt: now
-    }));
+    const graph = buildSymbolGraph(repositoryId, this.files);
+    const symbols = graph.symbols.length > 0 ? graph.symbols : this.fallbackSymbolRecords(repositoryId);
 
     for (const symbol of symbols) {
       upsertRecord(memoryStore.livingLedgerSymbols, symbol);
@@ -106,6 +98,20 @@ export class ContextBuilder {
     }
 
     return symbols;
+  }
+
+  private fallbackSymbolRecords(repositoryId: string): LivingLedgerSymbolRecord[] {
+    const now = new Date().toISOString();
+    return this.extractSymbolGraph().map((symbol) => ({
+      id: `${repositoryId}:${symbol.filePath}:${symbol.name}`,
+      repositoryId,
+      symbolName: symbol.name,
+      symbolKind: symbol.kind,
+      filePath: symbol.filePath,
+      exportDependencies: symbol.calls,
+      astNodeData: symbol.astNodeData,
+      createdAt: now
+    }));
   }
 
   public async compileContext(repositoryId: string, targetFile: string, symbolName: string): Promise<CompiledContext> {

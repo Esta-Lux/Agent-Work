@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
+import { getPersonaSystem } from "@/lib/ai/personas";
+import { assertKillSwitchAllowed } from "@/lib/admin/kill-switches";
 import { createProviderChatResponse, isProviderConfigured } from "@/lib/ai/llm-router";
 import { resolveUserProvider } from "@/lib/ai/providers";
 import {
@@ -9,10 +12,16 @@ import {
 import {
   buildCodeContextBlock,
   buildCodeReviewSystemPrompt,
+  formatFilesThinkingDetail,
   isProductCodeReviewQuestion,
   selectRelevantFiles,
   type LoadedFileSnippet
 } from "@/lib/workspace/workspace-code-context";
+import { readRepoFiles, repoExists } from "@/lib/workspace/repo-store";
+import { runMultiPassCodeReview } from "@/lib/workspace/multi-pass-review";
+import { getReviewConfig, shouldUseMultiPassReview } from "@/lib/workspace/review-config";
+import { extractPlainEnglishSection } from "@/lib/format-user-message";
+import { sanitizeUserFacingText } from "@/lib/ai/bootrise-voice";
 import { createWorkspaceChatResponse } from "@/lib/workspace/workspace-chat";
 import {
   buildLlmEnhancementPrompt,
@@ -33,14 +42,17 @@ interface WorkspaceChatRequest {
   loadedFiles?: LoadedFileSnippet[];
   lastReport?: WorkspaceFixReport | null;
   provider?: "bootrise" | "openai";
+  persona?: BootrisePersonaId;
   githubUrl?: string | null;
   githubBranch?: string | null;
+  repositoryId?: string | null;
 }
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as WorkspaceChatRequest | null;
   const message = body?.message?.trim();
   const provider = resolveUserProvider(body?.provider);
+  const persona: BootrisePersonaId = body?.persona ?? "architect";
 
   if (!message) {
     return NextResponse.json({ error: "A non-empty message is required." }, { status: 400 });
@@ -55,16 +67,18 @@ export async function POST(request: Request) {
     githubBranch: body?.githubBranch ?? null
   };
 
-  const loadedFiles = body?.loadedFiles ?? [];
+  const loadedFiles = resolveChatFileCorpus(body?.loadedFiles ?? [], body?.repositoryId);
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message) && isProviderConfigured(provider)) {
     try {
+      assertKillSwitchAllowed("expensive_model");
       const review = await runPrimaryCodeReview({
         message,
         history: body?.history ?? [],
         files: loadedFiles,
         productName: context.projectBrief?.productName,
-        provider
+        provider,
+        persona
       });
       return NextResponse.json({
         product: "BootRise",
@@ -96,11 +110,12 @@ export async function POST(request: Request) {
   const skipLlm = Boolean(githubReview) || !shouldEnhanceWithLlm(base);
   if (!skipLlm && isProviderConfigured(provider)) {
     try {
+      assertKillSwitchAllowed("expensive_model");
       const result = await createProviderChatResponse({
         provider,
         message: buildLlmEnhancementPrompt({ message, result: base, githubReview }),
         history: [],
-        system: "Reply with only the insight paragraph. No preamble."
+        system: getPersonaSystem(persona)
       });
       merged = mergeChatResponse(base, result.text, { provider: result.provider, model: result.model });
     } catch {
@@ -119,20 +134,68 @@ export async function POST(request: Request) {
   });
 }
 
+function resolveChatFileCorpus(clientFiles: LoadedFileSnippet[], repositoryId?: string | null): LoadedFileSnippet[] {
+  const id = repositoryId?.trim();
+  if (id && repoExists(id)) {
+    const disk = readRepoFiles(id);
+    if (disk.length > 0) {
+      return disk.map((file) => ({
+        path: file.path,
+        content: file.content
+      }));
+    }
+  }
+  return clientFiles;
+}
+
 async function runPrimaryCodeReview(input: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   files: LoadedFileSnippet[];
   productName?: string;
   provider: "bootrise" | "openai";
+  persona: BootrisePersonaId;
 }) {
-  const relevant = selectRelevantFiles(input.message, input.files);
-  const contextBlock = buildCodeContextBlock(relevant);
-  const system = buildCodeReviewSystemPrompt(input.productName);
+  const config = getReviewConfig();
+
+  if (shouldUseMultiPassReview(input.files.length, input.message, config)) {
+    const multi = await runMultiPassCodeReview(input);
+    const plainEnglishSummary = extractPlainEnglishSection(multi.reply) ?? undefined;
+
+    return {
+      model: multi.model,
+      result: {
+        reply: normalizeAgentReply(multi.reply),
+        plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
+        phase: "review" as const,
+        discoveryQuestions: [],
+        featureAdvice: [],
+        suggestedActions: [
+          "Run Fix and report on a specific change",
+          `Deep-read ${multi.deepReadFiles.length} files in ${multi.batchCount} passes — ask about a module for more depth`,
+          "Export bundle"
+        ],
+        thinkingSteps: multi.thinkingSteps,
+        fileActivity: multi.deepReadFiles.slice(0, 24).map((f) => ({
+          path: f.path,
+          status: "analyzing" as const,
+          detail: multi.coverageSummary
+        })),
+        reviewCoverage: multi.coverageSummary
+      }
+    };
+  }
+
+  const relevant = selectRelevantFiles(input.message, input.files, config.singleMaxFiles);
+  const contextBlock = buildCodeContextBlock(relevant, {
+    maxCharsPerFile: config.charsPerFile,
+    totalBudget: config.singleCharBudget
+  });
+  const system = buildCodeReviewSystemPrompt(input.productName, input.persona);
   const userPrompt = [
     `User question: ${input.message}`,
     "",
-    `Relevant source files (${relevant.length} of ${input.files.length} loaded):`,
+    `Relevant source files (${relevant.length} of ${input.files.length} in corpus — production source prioritized over tests unless you asked for tests):`,
     contextBlock || "(no excerpts — ask user to re-import)",
     "",
     "Answer the user question directly. Use clear language throughout. Do not include a heading named Plain English."
@@ -147,7 +210,7 @@ async function runPrimaryCodeReview(input: {
 
   const normalizedText = normalizeAgentReply(result.text);
   const plainMatch = normalizedText.match(/##\s*Summary\s*([\s\S]*?)(?=##\s*Suggested|$)/i);
-  const plainEnglishSummary = plainMatch?.[1]?.trim() ?? null;
+  const plainEnglishSummary = plainMatch?.[1]?.trim() ?? extractPlainEnglishSection(result.text) ?? undefined;
 
   const fileActivity = relevant.map((f) => ({
     path: f.path,
@@ -159,7 +222,7 @@ async function runPrimaryCodeReview(input: {
     model: result.model,
     result: {
       reply: normalizedText,
-      plainEnglishSummary: plainEnglishSummary ?? undefined,
+      plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
       phase: "review" as const,
       discoveryQuestions: [],
       featureAdvice: [],
@@ -174,7 +237,7 @@ async function runPrimaryCodeReview(input: {
           id: "files",
           label: "Read relevant source",
           status: "done" as const,
-          detail: `${relevant.length} file(s): ${relevant.map((f) => f.path.split("/").pop()).join(", ")}`
+          detail: formatFilesThinkingDetail(relevant)
         },
         {
           id: "llm",

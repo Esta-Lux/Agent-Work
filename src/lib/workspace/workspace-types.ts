@@ -1,5 +1,9 @@
 import type { ChangePlan, DiffPreview } from "@/lib/types/core";
+import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
+import type { SafeToPrVerdict } from "@/lib/workspace/safe-to-pr";
 import type { createVerificationSummary } from "@/lib/verification/verification-summary";
+
+export type { RepoHealthSummary, SafeToPrVerdict };
 
 export interface ProjectBrief {
   productName: string;
@@ -25,6 +29,16 @@ export interface FeatureAdvice {
   builderImpact: string;
 }
 
+export interface ProposedPatch {
+  path: string;
+  before: string;
+  after: string;
+  summary: string;
+  applied?: boolean;
+}
+
+export type PlanApprovalStatus = "pending_approval" | "approved" | "rejected";
+
 export interface WorkspaceFixReport {
   repositoryId: string;
   plan: ChangePlan;
@@ -37,6 +51,15 @@ export interface WorkspaceFixReport {
   residualRisk: string[];
   guidanceForBuilder: string[];
   plainEnglishSummary?: string;
+  safeToPr?: SafeToPrVerdict;
+  planReviewStatus?: "draft" | "ready_for_review" | PlanApprovalStatus;
+  pendingFixId?: string;
+  patches?: ProposedPatch[];
+  patchSource?: string;
+  approvalStatus?: PlanApprovalStatus;
+  previewSessionId?: string | null;
+  previewUrl?: string | null;
+  devPreviewStatus?: string | null;
 }
 
 export interface WorkspaceChatContext {

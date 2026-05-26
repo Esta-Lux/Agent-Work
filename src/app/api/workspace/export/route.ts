@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createGitSync } from "@/lib/infrastructure/control-plane";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { createExportBundle } from "@/lib/workspace/workspace-export";
+import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { ChangePlan } from "@/lib/types/core";
 
@@ -17,6 +18,7 @@ interface ExportRequestBody {
   remoteUrl?: string;
   branch?: string;
   preferredProvider?: "bootrise" | "openai";
+  repoHealth?: RepoHealthSummary | null;
 }
 
 export async function POST(request: Request) {
@@ -35,7 +37,10 @@ export async function POST(request: Request) {
     files: body.files,
     plan: body.plan,
     report: body.report,
-    preferredProvider: body.preferredProvider
+    preferredProvider: body.preferredProvider,
+    repoHealth: body.repoHealth ?? null,
+    githubUrl: body.remoteUrl ?? null,
+    branch: body.branch ?? null
   });
 
   if (body.mode === "github") {

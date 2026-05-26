@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
 
@@ -6,12 +6,19 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const path = join(process.cwd(), "supabase", "migrations", "002_workspace_core.sql");
-  const sql = readFileSync(path, "utf8");
+  const dir = join(process.cwd(), "supabase", "migrations");
+  const files = readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort();
+
+  const parts = files.map((name) => {
+    const sql = readFileSync(join(dir, name), "utf8");
+    return `-- ═══ ${name} ═══\n${sql}`;
+  });
 
   return NextResponse.json({
     product: "BootRise",
-    file: "supabase/migrations/002_workspace_core.sql",
-    sql
+    files,
+    sql: parts.join("\n\n")
   });
 }
