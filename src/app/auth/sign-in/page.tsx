@@ -1,19 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { isClientDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase/browser-client";
 
-function getSupabaseBrowser() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
-
-const devBypass = process.env.NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS === "1";
+const devBypass = isClientDevAuthBypass();
 
 function GitHubIcon() {
   return (
@@ -24,13 +18,20 @@ function GitHubIcon() {
 }
 
 export default function SignInPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    if (!devBypass) return;
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+    router.replace(next);
+  }, [router]);
+
   async function sendMagicLink(event: React.FormEvent) {
     event.preventDefault();
-    const supabase = getSupabaseBrowser();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setStatus("error");
       setMessage(
@@ -55,7 +56,7 @@ export default function SignInPage() {
   }
 
   async function signInWithGitHub() {
-    const supabase = getSupabaseBrowser();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setStatus("error");
       setMessage("Supabase is not configured.");
@@ -79,25 +80,20 @@ export default function SignInPage() {
     >
       {devBypass ? (
         <div className="mb-6 rounded-xl border border-signal/25 bg-signal/5 p-4">
-          <p className="text-sm font-medium text-ink">Development mode</p>
-          <p className="mt-1 text-xs text-steel">
-            Signed in as <strong>dev@bootrise.local</strong> — no Supabase or password needed.
-          </p>
-          <Link
-            href="/"
-            className="mt-3 flex w-full items-center justify-center rounded-xl bg-signal px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-signal-bright"
-          >
-            Open workspace
-          </Link>
+          <p className="text-sm font-medium text-ink">Local development</p>
+          <p className="mt-1 text-xs text-steel">Auth is bypassed on localhost — redirecting to workspace…</p>
         </div>
-      ) : (
+      ) : !isSupabaseBrowserConfigured() ? (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm font-medium text-ink">Local dev without Supabase</p>
+          <p className="text-sm font-medium text-ink">Supabase URL not visible to the browser</p>
           <p className="mt-1 text-xs leading-relaxed text-steel">
-            Create <code className="text-graphite">.env.local</code> in the project root with{" "}
-            <code className="text-graphite">BOOTRISE_DEV_AUTH_BYPASS=1</code> and{" "}
-            <code className="text-graphite">NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS=1</code>, then restart{" "}
-            <code className="text-graphite">npm run dev</code>. See <strong>docs/DEV.md</strong>.
+            Add <code className="text-graphite">NEXT_PUBLIC_SUPABASE_URL</code> (same value as{" "}
+            <code className="text-graphite">SUPABASE_URL</code>) and your publishable key to{" "}
+            <code className="text-graphite">.env</code> or <code className="text-graphite">.env.local</code>, then restart{" "}
+            <code className="text-graphite">npm run dev</code>. Or enable dev bypass — see <strong>docs/DEV.md</strong>.
+          </p>
+          <p className="mt-2 text-xs text-steel">
+            Local dev normally skips login automatically; you only need these vars if bypass was disabled.
           </p>
           <Link
             href="/"
@@ -106,7 +102,7 @@ export default function SignInPage() {
             Try workspace anyway →
           </Link>
         </div>
-      )}
+      ) : null}
 
       <form className="space-y-4" onSubmit={sendMagicLink}>
         <label className="block text-sm font-medium text-graphite">

@@ -2,6 +2,8 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ContextGateDecision, SafetyMode } from "@/lib/control/types";
 
 const WORK_INTENT = /\b(add|build|create|implement|change|fix|refactor|remove|delete|migrate|integrate|ship|deploy|wire|connect)\b/i;
+const ASSUMPTIONS_APPROVED =
+  /\b(proceed anyway|approve assumptions|use assumptions|skip questions|continue anyway|go ahead with assumptions|proceed with assumptions)\b/i;
 const HIGH_RISK = [
   { id: "auth", pattern: /\b(auth|login|signup|session|role|permission|sso|oauth|jwt)\b/i },
   { id: "billing", pattern: /\b(stripe|billing|payment|subscription|invoice|checkout|webhook)\b/i },
@@ -14,10 +16,15 @@ export function isWorkIntent(request: string): boolean {
   return WORK_INTENT.test(request);
 }
 
+export function userApprovedAssumptions(request: string): boolean {
+  return ASSUMPTIONS_APPROVED.test(request);
+}
+
 export function evaluateContextGate(input: {
   request: string;
   files: SourceFileInput[];
   targetFiles?: string[];
+  assumptionsApproved?: boolean;
 }): ContextGateDecision {
   const request = input.request.trim();
   const lower = request.toLowerCase();
@@ -26,6 +33,7 @@ export function evaluateContextGate(input: {
   const hasRepoContext = input.files.length > 0;
   const hasTargetFiles = (input.targetFiles ?? []).length > 0;
   const isWork = isWorkIntent(request);
+  const assumptionsApproved = Boolean(input.assumptionsApproved) || userApprovedAssumptions(request);
 
   let confidence = 0.44;
   if (request.length >= 35) confidence += 0.12;
@@ -35,14 +43,19 @@ export function evaluateContextGate(input: {
   if (hasTargetFiles) confidence += 0.18;
   if (sensitiveAreas.length > 0) confidence -= 0.16;
   if (!isWork) confidence += 0.14;
+  if (assumptionsApproved) confidence += 0.08;
   confidence = Math.max(0.12, Math.min(0.94, Number(confidence.toFixed(2))));
 
-  const status =
+  let status: ContextGateDecision["status"] =
     !isWork || confidence >= 0.72
       ? "proceed_with_assumptions"
       : confidence >= 0.48
         ? "needs_clarification"
         : "blocked";
+
+  if (assumptionsApproved && status === "needs_clarification") {
+    status = "proceed_with_assumptions";
+  }
 
   const safetyMode: SafetyMode =
     status === "blocked"
@@ -57,9 +70,17 @@ export function evaluateContextGate(input: {
     confidence,
     status,
     safetyMode,
-    reason: buildReason({ isWork, hasRepoContext, hasTargetFiles, mentionsSpecificTarget, sensitiveAreas, status }),
+    reason: buildReason({
+      isWork,
+      hasRepoContext,
+      hasTargetFiles,
+      mentionsSpecificTarget,
+      sensitiveAreas,
+      status,
+      assumptionsApproved
+    }),
     questions: status === "proceed_with_assumptions" ? [] : buildQuestions(lower, sensitiveAreas),
-    assumptions: buildAssumptions(lower, sensitiveAreas, hasRepoContext),
+    assumptions: buildAssumptions(lower, sensitiveAreas, hasRepoContext, assumptionsApproved),
     sensitiveAreas
   };
 }
@@ -71,8 +92,12 @@ function buildReason(input: {
   mentionsSpecificTarget: boolean;
   sensitiveAreas: string[];
   status: ContextGateDecision["status"];
+  assumptionsApproved: boolean;
 }): string {
   if (!input.isWork) return "This is a review or explanation request, so BootRise can answer without locking edit scope.";
+  if (input.assumptionsApproved && input.status === "proceed_with_assumptions") {
+    return "Proceeding with user-approved assumptions — scope lock and patch guards still apply.";
+  }
   if (input.status === "blocked") return "The request is too broad to patch safely without narrowing the target and ownership rules.";
   if (input.status === "needs_clarification") {
     return "BootRise needs a few product and data-shape answers before it can authorize code edits.";
@@ -133,12 +158,20 @@ function buildQuestions(lower: string, sensitiveAreas: string[]): ContextGateDec
   return questions.slice(0, 5);
 }
 
-function buildAssumptions(lower: string, sensitiveAreas: string[], hasRepoContext: boolean): string[] {
+function buildAssumptions(
+  lower: string,
+  sensitiveAreas: string[],
+  hasRepoContext: boolean,
+  assumptionsApproved: boolean
+): string[] {
   const assumptions = [
     hasRepoContext ? "Use the imported repository as the source of truth." : "Do not generate code until repository context is loaded.",
     "Keep changes behind review and approval before applying patches.",
     "Prefer small, testable diffs over wide rewrites."
   ];
+  if (assumptionsApproved) {
+    assumptions.push("User approved proceeding with stated assumptions — diff budget and patch guards remain enforced.");
+  }
   if (/chat|message/.test(lower)) {
     assumptions.push("Consider status-based updates before full free-form messaging if moderation or safety is a concern.");
   }

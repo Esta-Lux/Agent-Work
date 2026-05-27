@@ -1,8 +1,7 @@
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
+import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
 import { AuthError, type AuthUser, type UserOrgContext } from "@/lib/auth/types";
 import { requireUser } from "@/lib/auth/server-auth";
-
-const DEV_BYPASS = process.env.BOOTRISE_DEV_AUTH_BYPASS === "1";
 
 function personalOrgId(userId: string): string {
   return `org_personal_${userId.replace(/-/g, "").slice(0, 24)}`;
@@ -14,7 +13,7 @@ async function ensurePersonalOrg(user: AuthUser): Promise<UserOrgContext> {
   const orgName = user.email ? `${user.email.split("@")[0]}'s workspace` : "Personal workspace";
 
   if (!supabase) {
-    if (DEV_BYPASS && process.env.NODE_ENV !== "production") {
+    if (isServerDevAuthBypass()) {
       return {
         user,
         orgId: process.env.BOOTRISE_DEV_ORG_ID?.trim() || "org_default",
@@ -63,7 +62,7 @@ export async function resolveUserOrgContext(orgId?: string | null): Promise<User
   }
 
   if (!supabase) {
-    if (DEV_BYPASS && process.env.NODE_ENV !== "production") {
+    if (isServerDevAuthBypass()) {
       return {
         user,
         orgId,

@@ -27,7 +27,7 @@ import type { ProposedPatch, WorkspaceFixReport } from "@/lib/workspace/workspac
 import { runVerificationChecks } from "@/lib/verification/verification-runner";
 import { createVerificationSummary } from "@/lib/verification/verification-summary";
 import { assertApproveAllowed, clearControlTaskSession, runControlGate } from "@/lib/control/control-gate";
-import { evaluateContextGate } from "@/lib/control/context-gate";
+import { evaluateContextGate, userApprovedAssumptions } from "@/lib/control/context-gate";
 import { runControlLayerBeforePatch } from "@/lib/control/control-orchestrator";
 import { recordControlEvent } from "@/lib/control/control-telemetry";
 import type { ControlLayerSummary } from "@/lib/control/types";
@@ -36,7 +36,7 @@ export async function createPendingFixPlan(
   files: SourceFileInput[],
   request: string,
   provider: LlmProviderId = "bootrise",
-  options?: { orgId?: string; projectId?: string; userId?: string }
+  options?: { orgId?: string; projectId?: string; userId?: string; assumptionsApproved?: boolean }
 ): Promise<{
   repositoryId: string;
   repo: RepoIntelligenceSnapshot;
@@ -64,7 +64,14 @@ export async function createPendingFixPlan(
   const blast = await traceBlastRadius(repositoryId, rootSymbol);
 
   const scaffoldPlan = createInitialChangePlan(request, repo);
-  const contextGate = evaluateContextGate({ request, files, targetFiles: scaffoldPlan.impact.files });
+  const assumptionsApproved =
+    Boolean(options?.assumptionsApproved) || userApprovedAssumptions(request);
+  const contextGate = evaluateContextGate({
+    request,
+    files,
+    targetFiles: scaffoldPlan.impact.files,
+    assumptionsApproved
+  });
   const projectId = options?.projectId ?? repositoryId;
   const orgId = options?.orgId ?? "org_default";
   const userId = options?.userId ?? "workspace-user";
@@ -79,7 +86,8 @@ export async function createPendingFixPlan(
       request,
       files,
       plan: scaffoldPlan,
-      patches: []
+      patches: [],
+      assumptionsApproved
     });
     savePendingFix(
       {
@@ -124,8 +132,16 @@ export async function createPendingFixPlan(
 
   let patches: ProposedPatch[] = [];
   let patchSource = "none";
-  if (contextGate.status === "proceed_with_assumptions") {
-    const generated = await generateRealPatches({ provider, request, files, plan });
+  if (contextGate.status === "proceed_with_assumptions" || assumptionsApproved) {
+    const generated = await generateRealPatches({
+      provider,
+      request,
+      files,
+      plan,
+      orgId,
+      projectId,
+      repositoryId
+    });
     patches = generated.patches;
     patchSource = generated.source;
   }
@@ -140,7 +156,7 @@ export async function createPendingFixPlan(
     files,
     plan,
     patches,
-    assumptionsApproved: contextGate.status === "proceed_with_assumptions"
+    assumptionsApproved
   });
 
   savePendingFix(

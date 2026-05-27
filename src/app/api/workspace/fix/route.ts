@@ -7,6 +7,8 @@ import { assertKillSwitchAllowed, assertWorkspaceFileLimit } from "@/lib/admin/k
 import { recordAudit } from "@/lib/admin/audit-log";
 import { createPendingFixPlan } from "@/lib/workspace/workspace-fix.server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
+import { buildContextPlan } from "@/lib/control/context-governor";
+import { getFailedAttemptCount } from "@/lib/control/task-session";
 
 export const runtime = "nodejs";
 
@@ -17,6 +19,9 @@ interface FixRequestBody {
   mode?: "fast" | "deep" | "security" | "premium";
   projectId?: string;
   plan?: string;
+  assumptionsApproved?: boolean;
+  premiumApproved?: boolean;
+  repositoryId?: string;
 }
 
 export async function POST(request: Request) {
@@ -48,6 +53,26 @@ export async function POST(request: Request) {
     const orgId = ctx.orgId;
     const userId = ctx.user.id;
     const projectId = body?.projectId?.trim() || "workspace-fix";
+    const repositoryId = body?.repositoryId?.trim();
+    const premium = provider === "openai" || body?.mode === "premium";
+    if (premium) {
+      try {
+        assertKillSwitchAllowed("premium_escalation");
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Premium blocked." },
+          { status: 403 }
+        );
+      }
+    }
+
+    const contextPlan = await buildContextPlan(userRequest, files, {
+      orgId,
+      projectId,
+      repositoryId
+    });
+    const failedAttempts = repositoryId ? getFailedAttemptCount(repositoryId, userRequest) : 0;
+
     let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
     try {
       modelRoute = await assertModelRouteAllowed({
@@ -57,7 +82,9 @@ export async function POST(request: Request) {
         requestText: userRequest,
         filePaths: files.map((file) => file.path),
         fileCount: files.length,
-        premiumApproved: provider === "openai" || body?.mode === "premium",
+        contextChars: contextPlan.estimatedChars,
+        failedAttempts,
+        premiumApproved: Boolean(body?.premiumApproved),
         orgId,
         userId,
         projectId,
@@ -76,11 +103,17 @@ export async function POST(request: Request) {
       result = await createPendingFixPlan(files, userRequest, modelRoute.provider, {
         orgId,
         projectId,
-        userId
+        userId,
+        assumptionsApproved: body?.assumptionsApproved
       });
       void recordModelUsage(modelRoute, { orgId, userId, projectId: result.repositoryId }, "succeeded");
     } catch (error) {
-      void recordModelUsage(modelRoute, { orgId, userId, projectId }, "failed", error instanceof Error ? error.message : "Fix workflow failed.");
+      void recordModelUsage(
+        modelRoute,
+        { orgId, userId, projectId },
+        "failed",
+        error instanceof Error ? error.message : "Fix workflow failed."
+      );
       return NextResponse.json(
         {
           error: error instanceof Error ? error.message : "Fix workflow failed.",

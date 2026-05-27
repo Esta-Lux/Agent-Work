@@ -51,6 +51,33 @@ export interface ChatControlSummary {
   stopReason: string | null;
   failedPatchAttempts: number;
   scopePreview: string;
+  assumptionsApproved?: boolean;
+  brainRulesCount?: number;
+  brainFileHintsCount?: number;
+}
+
+/** Serializable pack reused across chat, fix, and PR — proves what BootRise selected before spend. */
+export interface TaskContextPack {
+  taskKey: string;
+  createdAt: string;
+  request: string;
+  orgId: string;
+  projectId: string;
+  repositoryId?: string;
+  contextGate: ContextGateDecision;
+  scopeContract: ScopeContract;
+  contextPlan: ContextPlan;
+  repositoryMap: RepositoryMap;
+  tokenWaste: TokenWasteSummary;
+  agentCoordination: AgentCoordinationSummary;
+  brainSnapshot?: {
+    rules: string[];
+    fileHints: string[];
+    moduleNames: string[];
+  };
+  canProceed: boolean;
+  stopReason: string | null;
+  assumptionsApproved: boolean;
 }
 
 export type ContextGateStatus = "proceed_with_assumptions" | "needs_clarification" | "blocked";

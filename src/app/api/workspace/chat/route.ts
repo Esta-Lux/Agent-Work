@@ -32,6 +32,7 @@ import {
   shouldEnhanceWithLlm
 } from "@/lib/workspace/workspace-chat-wrapper";
 import type { ProjectBrief, WorkspaceChatContext, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import { userApprovedAssumptions } from "@/lib/control/context-gate";
 import {
   buildChatRulesBlock,
   runChatControlGate,
@@ -57,6 +58,8 @@ interface WorkspaceChatRequest {
   githubBranch?: string | null;
   repositoryId?: string | null;
   projectId?: string | null;
+  assumptionsApproved?: boolean;
+  premiumApproved?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -75,7 +78,35 @@ export async function POST(request: Request) {
   const repositoryId = body?.repositoryId?.trim() ?? undefined;
   const loadedFiles = resolveChatFileCorpus(body?.loadedFiles ?? [], repositoryId);
   const resolvedLoadedFilePaths = loadedFiles.length > 0 ? loadedFiles.map((file) => file.path) : body?.loadedFilePaths;
-  const projectIdForUsage = body?.projectId?.trim() ?? repositoryId ?? "workspace-chat";
+  const projectId = body?.projectId?.trim() ?? repositoryId;
+  const projectIdForUsage = projectId ?? "workspace-chat";
+
+  let chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null = null;
+  if (loadedFiles.length > 0) {
+    const assumptionsApproved =
+      Boolean(body?.assumptionsApproved) || userApprovedAssumptions(message);
+    chatControl = await runChatControlGate({
+      request: message,
+      files: loadedFiles,
+      repositoryId,
+      projectId,
+      orgId,
+      assumptionsApproved
+    });
+  }
+
+  const premium = requestedProvider === "openai" || body?.mode === "premium";
+  if (premium) {
+    try {
+      assertKillSwitchAllowed("premium_escalation");
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Premium blocked." },
+        { status: 403 }
+      );
+    }
+  }
+
   let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
   try {
     modelRoute = await assertModelRouteAllowed({
@@ -85,7 +116,9 @@ export async function POST(request: Request) {
       requestText: message,
       filePaths: resolvedLoadedFilePaths,
       fileCount: resolvedLoadedFilePaths?.length ?? loadedFiles.length,
-      premiumApproved: requestedProvider === "openai" || body?.mode === "premium",
+      contextChars: chatControl?.contextPlan.estimatedChars,
+      failedAttempts: chatControl?.failedPatchAttempts,
+      premiumApproved: Boolean(body?.premiumApproved),
       orgId,
       userId,
       projectId: projectIdForUsage
@@ -112,18 +145,7 @@ export async function POST(request: Request) {
     githubBranch: body?.githubBranch ?? null
   };
 
-  const projectId = body?.projectId?.trim() ?? repositoryId;
-
-  let chatControl = null;
-  if (loadedFiles.length > 0) {
-    chatControl = await runChatControlGate({
-      request: message,
-      files: loadedFiles,
-      repositoryId,
-      projectId
-    });
-
-    if (!chatControl.canProceed) {
+  if (chatControl && !chatControl.canProceed) {
       void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
       return NextResponse.json({
         product: "BootRise",
@@ -137,7 +159,11 @@ export async function POST(request: Request) {
           whyItMatters: q.whyItMatters
         })),
         featureAdvice: [],
-        suggestedActions: ["Run Fix with a file-specific request", "Rephrase with a module path"],
+        suggestedActions: [
+          "Answer the context questions above",
+          'Reply "proceed with assumptions" to continue under scope lock',
+          "Run Fix with a file-specific request"
+        ],
         thinkingSteps: [
           {
             id: "control",
@@ -155,7 +181,6 @@ export async function POST(request: Request) {
         fileActivity: [],
         chatControl
       });
-    }
   }
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message)) {
@@ -189,6 +214,7 @@ export async function POST(request: Request) {
         persona,
         chatControl,
         projectId,
+        orgId,
         mode: body?.mode
       });
       void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
@@ -232,7 +258,9 @@ export async function POST(request: Request) {
     try {
       assertKillSwitchAllowed("expensive_model");
       const rulesBlock =
-        loadedFiles.length > 0 ? await buildChatRulesBlock({ files: loadedFiles, projectId }) : "";
+        loadedFiles.length > 0
+          ? await buildChatRulesBlock({ files: loadedFiles, projectId, orgId, request: message })
+          : "";
       const result = await createProviderChatResponse({
         provider,
         message: buildLlmEnhancementPrompt({ message, result: base, githubReview }),
@@ -302,10 +330,16 @@ async function runPrimaryCodeReview(input: {
   persona: BootrisePersonaId;
   chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
   projectId?: string;
+  orgId?: string;
   mode?: "fast" | "deep" | "security" | "premium";
 }) {
   const config = getReviewConfig();
-  const rulesBlock = await buildChatRulesBlock({ files: input.files, projectId: input.projectId });
+  const rulesBlock = await buildChatRulesBlock({
+    files: input.files,
+    projectId: input.projectId,
+    orgId: input.orgId,
+    request: input.message
+  });
   const rulesSuffix = buildRulesPromptBlock(rulesBlock);
 
   if (shouldUseMultiPassReview(input.files.length, input.message, config)) {

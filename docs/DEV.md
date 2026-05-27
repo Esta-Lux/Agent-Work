@@ -2,27 +2,33 @@
 
 BootRise does **not** ship a fixed username/password. Use one of the modes below.
 
-## Recommended: dev auth bypass (no Supabase)
+## Supabase URL for the browser
 
-Create `.env.local` from `.env.example` and uncomment:
+Next.js only exposes `NEXT_PUBLIC_*` vars to client components. If you already set `SUPABASE_URL` in `.env`, `next.config.mjs` mirrors it to `NEXT_PUBLIC_SUPABASE_URL` at dev/build time. You can still set `NEXT_PUBLIC_SUPABASE_URL` explicitly if you prefer.
 
-```env
-BOOTRISE_DEV_AUTH_BYPASS=1
-NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS=1
-BOOTRISE_DEV_USER_ID=dev-user
-BOOTRISE_DEV_USER_EMAIL=dev@bootrise.local
-```
+## Local auth bypass (default on `npm run dev`)
 
-Optional overrides:
+**You do not need to sign in on localhost.** When `NODE_ENV=development`, BootRise acts as **dev@bootrise.local** for all workspace APIs and the UI. Production builds never enable this.
+
+| Variable | When to set | Effect |
+| --- | --- | --- |
+| *(none)* | Normal local testing | Bypass **on** — workspace loads immediately |
+| `BOOTRISE_DEV_AUTH_STRICT=1` | Test magic link / GitHub / cookies | Bypass **off** — real Supabase auth required |
+| `BOOTRISE_DEV_AUTH_BYPASS=0` | Same as strict | Bypass **off** |
+| `BOOTRISE_DEV_AUTH_BYPASS=1` | Explicit (optional) | Bypass **on** (redundant in dev) |
+
+Optional identity overrides:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `BOOTRISE_DEV_USER_ID` | `dev-user` | Synthetic user id for APIs |
+| `BOOTRISE_DEV_USER_EMAIL` | `dev@bootrise.local` | Shown in header |
 | `BOOTRISE_DEV_ORG_ID` | `org_default` | Tenant org for API + project scope |
 | `BOOTRISE_DEFAULT_ORG_ID` | `org_default` | Must match a row in `bootrise_organizations` if using Supabase DB |
 
-**How to sign in:** restart `npm run dev`, open [http://localhost:3000](http://localhost:3000). The workspace loads as **dev@bootrise.local** with no login form. On `/auth/sign-in` you will see **Continue as dev user**.
+`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing.
 
-**Never set `BOOTRISE_DEV_AUTH_BYPASS=1` in production.** Middleware disables bypass when `NODE_ENV=production`.
+**Never rely on bypass in production** — it is disabled when `NODE_ENV=production`.
 
 ## AI chat / fix (separate from Supabase auth)
 

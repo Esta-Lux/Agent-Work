@@ -1,11 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/db/supabase-server";
 import { isSupabaseConfigured } from "@/lib/db/supabase";
+import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
 import { AuthError, type AuthUser } from "@/lib/auth/types";
 
-const DEV_BYPASS = process.env.BOOTRISE_DEV_AUTH_BYPASS === "1";
-
 function devBypassUser(): AuthUser | null {
-  if (!DEV_BYPASS || process.env.NODE_ENV === "production") return null;
+  if (!isServerDevAuthBypass()) return null;
   const id = process.env.BOOTRISE_DEV_USER_ID?.trim() || "dev-user";
   const email = process.env.BOOTRISE_DEV_USER_EMAIL?.trim() || "dev@bootrise.local";
   return { id, email };

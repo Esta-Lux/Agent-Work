@@ -13,8 +13,15 @@ export async function generateRealPatches(input: {
   request: string;
   files: SourceFileInput[];
   plan: ChangePlan;
+  orgId?: string;
+  projectId?: string;
+  repositoryId?: string;
 }): Promise<{ patches: ProposedPatch[]; source: string }> {
-  const targets = await selectTargetFiles(input.files, input.plan, input.request);
+  const targets = await selectTargetFiles(input.files, input.plan, input.request, {
+    orgId: input.orgId,
+    projectId: input.projectId ?? input.repositoryId,
+    repositoryId: input.repositoryId
+  });
 
   if (targets.length === 0) {
     return { patches: [], source: "no-targets" };
@@ -31,12 +38,17 @@ export async function generateRealPatches(input: {
 async function selectTargetFiles(
   files: SourceFileInput[],
   plan: ChangePlan,
-  request: string
+  request: string,
+  scope?: { orgId?: string; projectId?: string; repositoryId?: string }
 ): Promise<SourceFileInput[]> {
   const byPath = new Map(files.map((f) => [f.path, f]));
   const planned = plan.impact.files.filter((p) => byPath.has(p)).map((p) => byPath.get(p)!);
 
-  const contextPlan = await buildContextPlan(request, files);
+  const contextPlan = await buildContextPlan(request, files, {
+    orgId: scope?.orgId,
+    projectId: scope?.projectId,
+    repositoryId: scope?.repositoryId
+  });
   const deepRead = contextPlan.deepRead
     .map((entry) => byPath.get(entry.path))
     .filter((f): f is SourceFileInput => Boolean(f));

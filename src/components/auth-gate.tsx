@@ -2,14 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-
-function getSupabaseBrowser() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
+import { isClientDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 interface SessionUser {
   email: string | null;
@@ -29,22 +23,22 @@ function SessionSpinner() {
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
-  const devBypass = process.env.NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS === "1";
+  const devBypass = isClientDevAuthBypass();
 
   useEffect(() => {
     if (devBypass) {
       setUser({ email: "dev@bootrise.local" });
       return;
     }
-    const supabase = getSupabaseBrowser();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setUser(null);
       return;
     }
-    void supabase.auth.getUser().then(({ data }) => {
+    void supabase.auth.getUser().then(({ data }: { data: { user: { email?: string | null } | null } }) => {
       setUser(data.user ? { email: data.user.email ?? null } : null);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: string, session: { user?: { email?: string | null } } | null) => {
       setUser(session?.user ? { email: session.user.email ?? null } : null);
     });
     return () => sub.subscription.unsubscribe();
@@ -73,8 +67,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
             Sign in
           </Link>
           <p className="mt-4 text-xs text-steel">
-            Local dev without Supabase? Set <code className="text-graphite">BOOTRISE_DEV_AUTH_BYPASS=1</code> — see{" "}
-            <span className="font-medium text-graphite">docs/DEV.md</span>.
+            On localhost, auth is bypassed by default in <code className="text-graphite">npm run dev</code>. If you see
+            this screen, restart the dev server or see <span className="font-medium text-graphite">docs/DEV.md</span>.
           </p>
         </div>
       </div>
@@ -86,20 +80,26 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 export function AuthHeaderActions() {
   const [email, setEmail] = useState<string | null>(null);
-  const devBypass = process.env.NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS === "1";
+  const devBypass = isClientDevAuthBypass();
 
   useEffect(() => {
     if (devBypass) {
       setEmail("dev@bootrise.local");
       return;
     }
-    const supabase = getSupabaseBrowser();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
-    void supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    void supabase.auth.getUser().then(({ data }: { data: { user?: { email?: string | null } | null } }) =>
+      setEmail(data.user?.email ?? null)
+    );
   }, [devBypass]);
 
   async function signOut() {
-    const supabase = getSupabaseBrowser();
+    if (devBypass) {
+      window.location.reload();
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
     if (supabase) await supabase.auth.signOut();
     window.location.href = "/auth/sign-in";
   }

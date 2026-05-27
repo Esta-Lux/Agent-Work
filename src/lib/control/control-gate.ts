@@ -5,7 +5,7 @@ import { buildScopeContract } from "@/lib/control/scope-contract";
 import { buildContextPlan } from "@/lib/control/context-governor";
 import { runPatchGuard } from "@/lib/control/patch-guard";
 import { buildRepositoryMap } from "@/lib/control/repo-map";
-import { buildTokenWasteSummary } from "@/lib/control/token-waste-guard";
+import { buildTokenWasteSummary, evaluateTokenBudget } from "@/lib/control/token-waste-guard";
 import { runRegressionGuard } from "@/lib/control/regression-guard";
 import { evaluateStopPolicy } from "@/lib/control/stop-policy";
 import { clearTaskSession, buildTaskKey } from "@/lib/control/task-session";
@@ -28,6 +28,7 @@ export async function runControlGate(input: {
   projectId?: string;
   orgId?: string;
   blastRadius?: string[];
+  assumptionsApproved?: boolean;
 }): Promise<ControlLayerSummary> {
   const scopeContract = buildScopeContract({
     request: input.request,
@@ -38,7 +39,8 @@ export async function runControlGate(input: {
   const contextGate = evaluateContextGate({
     request: input.request,
     files: input.files,
-    targetFiles: input.plan.impact.files
+    targetFiles: input.plan.impact.files,
+    assumptionsApproved: input.assumptionsApproved
   });
 
   const contextPlan = await buildContextPlan(input.request, input.files, {
@@ -86,7 +88,11 @@ export async function runControlGate(input: {
     recordAttempt: true
   });
 
+  const tokenBudget = evaluateTokenBudget(contextPlan.estimatedChars);
   let stopReason: string | null = stop.reason;
+  if (!tokenBudget.allowed) {
+    stopReason = tokenBudget.reason;
+  }
   if (!stopReason && contextGate.status !== "proceed_with_assumptions") {
     stopReason = `${contextGate.reason} Context confidence: ${Math.round(contextGate.confidence * 100)}%.`;
   }

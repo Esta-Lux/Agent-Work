@@ -1,6 +1,9 @@
 import type { ContextPlan } from "@/lib/control/types";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 
+/** Max estimated context chars before BootRise blocks LLM spend (chat, fix, context pack). */
+export const MAX_CONTEXT_CHARS = 320_000;
+
 export interface TokenWasteSummary {
   filesRead: number;
   filesEdited: number;
@@ -8,6 +11,23 @@ export interface TokenWasteSummary {
   estimatedUsd: number;
   excludedSample: string[];
   message: string;
+}
+
+export interface TokenBudgetEvaluation {
+  allowed: boolean;
+  reason: string | null;
+  estimatedChars: number;
+}
+
+export function evaluateTokenBudget(estimatedChars: number): TokenBudgetEvaluation {
+  if (estimatedChars <= MAX_CONTEXT_CHARS) {
+    return { allowed: true, reason: null, estimatedChars };
+  }
+  return {
+    allowed: false,
+    reason: `Context budget exceeded (~${Math.round(estimatedChars / 1000)}k chars, max ~${Math.round(MAX_CONTEXT_CHARS / 1000)}k). Narrow the task or name a module path.`,
+    estimatedChars
+  };
 }
 
 export function buildTokenWasteSummary(input: {

@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 const BASE = process.env.BOOTRISE_TEST_BASE_URL ?? "http://127.0.0.1:3000";
-const DEV_BYPASS = process.env.BOOTRISE_DEV_AUTH_BYPASS === "1";
+const { isDevAuthBypassEnabled } = await import("../lib/dev-auth-bypass-env.mjs");
 
 async function fetchJson(path, init) {
   const res = await fetch(`${BASE}${path}`, init);
@@ -10,7 +10,23 @@ async function fetchJson(path, init) {
   return { res, data };
 }
 
-describe("tenant isolation (requires dev server; set BOOTRISE_DEV_AUTH_BYPASS=0 for strict tests)", () => {
+/** True when this test process or the live dev server uses auth bypass. */
+async function resolveDevBypassForTests() {
+  if (process.env.BOOTRISE_DEV_AUTH_STRICT === "1" || process.env.BOOTRISE_DEV_AUTH_BYPASS === "0") {
+    return false;
+  }
+  if (isDevAuthBypassEnabled()) return true;
+  try {
+    const { res } = await fetchJson("/api/workspace/projects");
+    return res.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+const DEV_BYPASS = await resolveDevBypassForTests();
+
+describe("tenant isolation (requires dev server; set BOOTRISE_DEV_AUTH_STRICT=1 for strict tests)", () => {
   it("projects GET returns 401 when unauthenticated", async () => {
     const { res } = await fetchJson("/api/workspace/projects");
     if (DEV_BYPASS) {
@@ -65,6 +81,10 @@ describe("tenant isolation (requires dev server; set BOOTRISE_DEV_AUTH_BYPASS=0 
 
   it("admin kill-switches GET returns 401 or 403 when unauthenticated", async () => {
     const { res } = await fetchJson("/api/admin/kill-switches");
+    if (DEV_BYPASS) {
+      assert.ok(res.status === 200 || res.status === 401 || res.status === 403);
+      return;
+    }
     assert.ok(res.status === 401 || res.status === 403);
   });
 

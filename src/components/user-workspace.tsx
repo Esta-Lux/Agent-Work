@@ -20,6 +20,7 @@ import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
 import { WorkspaceCommandCenter } from "@/components/workspace-command-center";
 import { BlockedStateCard } from "@/components/blocked-state-card";
 import { AgentCouncilPanel } from "@/components/agent-council-panel";
+import { TaskContextPackPanel } from "@/components/task-context-pack-panel";
 import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
 import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { WorkspaceChatMessage } from "@/components/workspace-chat-message";
@@ -162,6 +163,9 @@ export function UserWorkspace() {
   const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
   const [previewFramework, setPreviewFramework] = useState<string | null>(null);
   const [lastChatControl, setLastChatControl] = useState<ChatControlSummary | null>(null);
+  const [assumptionsApproved, setAssumptionsApproved] = useState(false);
+  const [premiumApproved, setPremiumApproved] = useState(false);
+  const [runtimeRefreshToken, setRuntimeRefreshToken] = useState(0);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [securityBlockers, setSecurityBlockers] = useState(0);
   const [brainStats, setBrainStats] = useState<{ files: number; modules: number; stale: number } | null>(null);
@@ -250,6 +254,28 @@ export function UserWorkspace() {
 
   const loadedFilePaths = useMemo(() => parsedFiles.map((f) => f.path).filter(Boolean), [parsedFiles]);
   const hasCode = loadedFilePaths.length > 0;
+  const effectiveProjectId = projectId ?? (repositoryId ? `proj_${repositoryId}` : null);
+
+  function confirmPremiumUse(): boolean {
+    if (premiumApproved) return true;
+    const ok = window.confirm(
+      "Premium / ChatGPT uses more BootRise credits than BootRise AI. Approve premium escalation for this session?"
+    );
+    if (ok) setPremiumApproved(true);
+    return ok;
+  }
+
+  function handleProviderChange(next: "bootrise" | "openai") {
+    if (next === "openai" && !confirmPremiumUse()) return;
+    setProvider(next);
+  }
+
+  function handleModeChange(next: "fast" | "deep" | "security" | "premium") {
+    if (next === "premium" && !confirmPremiumUse()) return;
+    setModelMode(next);
+    if (next === "premium") setProvider("openai");
+    else if (provider === "openai") setProvider("bootrise");
+  }
   const briefReady = brief.productName.trim().length > 0 && brief.primaryWorkflow.trim().length > 0;
   const providerConfigured = provider === "openai" ? providerHealth.openai : providerHealth.bootrise;
 
@@ -608,7 +634,7 @@ export function UserWorkspace() {
       const res = await workspaceFetch("/api/workspace/fix/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pendingFixId: id, sandboxPassed })
+        body: JSON.stringify({ pendingFixId: id })
       });
       const data = (await res.json()) as {
         files?: Array<{ path: string; content: string }>;
@@ -620,7 +646,7 @@ export function UserWorkspace() {
       };
       if (!res.ok) throw new Error(data.error ?? "Approval failed.");
       if (data.files) setFilesInput(JSON.stringify(data.files, null, 2));
-      if (data.report) setReport(refreshSafeToPr(data.report, sandboxPassed));
+      if (data.report) setReport(refreshSafeToPr(data.report, false));
       if (data.previewUrl) setPreviewUrl(data.previewUrl);
       setPreviewSessionId(data.previewSessionId ?? data.report?.previewSessionId ?? null);
       setDevPreviewStatus(data.devPreviewStatus ?? data.report?.devPreviewStatus ?? null);
@@ -967,7 +993,16 @@ export function UserWorkspace() {
       const response = await workspaceFetch("/api/workspace/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request, files, provider, mode: modelMode, projectId: projectId ?? repositoryId ?? undefined })
+        body: JSON.stringify({
+          request,
+          files,
+          provider,
+          mode: modelMode,
+          projectId: projectId ?? repositoryId ?? undefined,
+          repositoryId: repositoryId ?? undefined,
+          assumptionsApproved,
+          premiumApproved: premiumApproved || provider === "openai" || modelMode === "premium"
+        })
       });
       const data = (await response.json()) as {
         report: WorkspaceFixReport;
@@ -1084,7 +1119,9 @@ export function UserWorkspace() {
           githubUrl: githubUrl || null,
           githubBranch,
           repositoryId: repositoryId ?? undefined,
-          projectId: projectId ?? repositoryId ?? undefined
+          projectId: projectId ?? repositoryId ?? undefined,
+          assumptionsApproved,
+          premiumApproved: premiumApproved || provider === "openai" || modelMode === "premium"
         })
       });
       const data = (await response.json()) as ChatApiResponse;
@@ -1330,9 +1367,9 @@ export function UserWorkspace() {
         <div className="flex flex-wrap items-center gap-2">
           <EngineToggle
             provider={provider}
-            onChange={setProvider}
+            onChange={handleProviderChange}
             mode={modelMode}
-            onModeChange={setModelMode}
+            onModeChange={handleModeChange}
             bootriseOk={providerHealth.bootrise}
             openaiOk={providerHealth.openai}
           />
@@ -1457,7 +1494,15 @@ export function UserWorkspace() {
                 </button>
               ))}
             </div>
-            {lastChatControl ? <ChatControlBanner control={lastChatControl} /> : null}
+            {lastChatControl ? (
+              <ChatControlBanner
+                control={lastChatControl}
+                onProceedWithAssumptions={() => {
+                  setAssumptionsApproved(true);
+                  void sendChat("proceed with assumptions — scope lock and patch guards still apply.");
+                }}
+              />
+            ) : null}
             <div className="flex gap-2">
               <textarea
                 className="min-h-[44px] flex-1 resize-none rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink"
@@ -1718,6 +1763,12 @@ export function UserWorkspace() {
 
             {contextTab === "control" ? (
               <div className="space-y-4 p-4">
+                <TaskContextPackPanel
+                  projectId={projectId}
+                  repositoryId={repositoryId}
+                  taskRequest={fixRequest || chatInput}
+                  files={parsedFiles}
+                />
                 <Panel title="Agent council">
                   <AgentCouncilPanel control={report?.controlLayer} />
                 </Panel>
@@ -1879,13 +1930,12 @@ export function UserWorkspace() {
                   files={parsedFiles}
                   active={report?.approvalStatus === "approved"}
                   onRuntimeError={(message, likelyFiles) => {
-                    const pid = projectId ?? (repositoryId ? `proj_${repositoryId}` : null);
-                    if (!pid) return;
+                    if (!effectiveProjectId) return;
                     void workspaceFetch("/api/workspace/runtime/events", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ projectId: pid, message, likelyFiles })
-                    });
+                      body: JSON.stringify({ projectId: effectiveProjectId, message, likelyFiles })
+                    }).then(() => setRuntimeRefreshToken((t) => t + 1));
                   }}
                 />
                 <DeviceStreamPanel
@@ -1902,7 +1952,16 @@ export function UserWorkspace() {
                   changedFiles={report?.patches?.map((p) => p.path)}
                 />
                 <p className="mt-4 text-xs font-semibold uppercase text-steel">Runtime monitor</p>
-                <RuntimeMonitorPanel projectId={projectId} />
+                <RuntimeMonitorPanel
+                  projectId={effectiveProjectId}
+                  refreshToken={runtimeRefreshToken}
+                  onSuggestFix={(suggestedRequest) => {
+                    setFixRequest(suggestedRequest);
+                    setAssumptionsApproved(true);
+                    goToStep("fix");
+                    setContextTab("fix");
+                  }}
+                />
                 <p className="mt-4 text-sm leading-6 text-graphite">
                   Sandbox checks structure and can run npm scripts when a full import includes lockfiles.
                 </p>

@@ -1,3 +1,4 @@
+import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
 import { getSupabaseHealthReport } from "@/lib/db/supabase-health";
 
 export interface ReadinessItem {
@@ -25,8 +26,7 @@ const P0_AREAS = [
 
 export async function getProductionReadinessReport(): Promise<ReadinessReport> {
   const health = await getSupabaseHealthReport();
-  const devBypass =
-    process.env.BOOTRISE_DEV_AUTH_BYPASS === "1" && process.env.NODE_ENV !== "production";
+  const devBypass = isServerDevAuthBypass();
   const supabaseAuth = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   const items: ReadinessItem[] = [
@@ -39,14 +39,14 @@ export async function getProductionReadinessReport(): Promise<ReadinessReport> {
           ? "Dev auth bypass enabled — not valid for production."
           : "No Supabase auth configured.",
       nextStep: devBypass
-        ? "Disable BOOTRISE_DEV_AUTH_BYPASS in production; configure Supabase Auth."
+        ? "Production disables dev bypass automatically; configure Supabase Auth for deploy."
         : "Configure NEXT_PUBLIC_SUPABASE_* and auth redirect URLs."
     },
     {
       area: "Tenant isolation",
       status: "ready",
       summary: "Workspace APIs use withWorkspaceAuth; org hints require membership in bootrise_org_members.",
-      nextStep: "Run tenant isolation tests with BOOTRISE_DEV_AUTH_BYPASS=0 against a live dev server."
+      nextStep: "Run tenant isolation tests with BOOTRISE_DEV_AUTH_STRICT=1 against a live dev server."
     },
     {
       area: "Admin protection",

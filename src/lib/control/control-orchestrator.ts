@@ -32,7 +32,8 @@ export async function runControlLayerBeforePatch(
   const contextGate = evaluateContextGate({
     request: input.request,
     files: input.files,
-    targetFiles: input.plan.impact.files
+    targetFiles: input.plan.impact.files,
+    assumptionsApproved: input.assumptionsApproved
   });
 
   if (contextGate.status === "blocked") {

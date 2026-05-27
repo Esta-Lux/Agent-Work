@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { resolveDevAuthBypass } from "@/lib/auth/resolve-dev-auth-bypass";
 
 export async function middleware(request: NextRequest) {
   const url = process.env.SUPABASE_URL?.trim();
@@ -30,7 +31,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const pathname = request.nextUrl.pathname;
-  const devBypass = process.env.BOOTRISE_DEV_AUTH_BYPASS === "1" && process.env.NODE_ENV !== "production";
+  const devBypass = resolveDevAuthBypass();
 
   if (pathname.startsWith("/admin") && !devBypass) {
     if (!url || !anonKey) {
