@@ -92,21 +92,11 @@ export async function POST(request: Request) {
     );
   }
   const provider = modelRoute.provider;
-
-  if (!isProviderConfigured(provider)) {
-    void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "failed", "Provider is not configured.");
-    return NextResponse.json(
-      {
-        error:
-          provider === "openai"
-            ? "ChatGPT is not configured for this workspace."
-            : "BootRise is not configured for this workspace.",
-        provider,
-        connected: false
-      },
-      { status: 503 }
-    );
-  }
+  const providerConfigured = isProviderConfigured(provider);
+  const providerSetupHint =
+    provider === "openai"
+      ? "Add OPENAI_API_KEY to .env.local and restart npm run dev."
+      : "Add NVIDIA_API_KEY to .env.local (https://build.nvidia.com) and restart npm run dev, or switch engine to ChatGPT.";
 
   const context: WorkspaceChatContext = {
     projectBrief: body?.projectBrief as ProjectBrief | undefined,
@@ -166,6 +156,20 @@ export async function POST(request: Request) {
   }
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message)) {
+    if (!providerConfigured) {
+      const offline = createWorkspaceChatResponse(message, context, { githubReview: undefined });
+      void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
+      return NextResponse.json({
+        product: "BootRise",
+        provider,
+        connected: false,
+        model: "BootRise (offline)",
+        setupHint: providerSetupHint,
+        chatControl,
+        ...offline,
+        reply: `${offline.reply}\n\n**AI engine offline:** ${providerSetupHint}`
+      });
+    }
     try {
       assertKillSwitchAllowed("expensive_model");
       const review = await runPrimaryCodeReview({
@@ -213,7 +217,8 @@ export async function POST(request: Request) {
   const base = createWorkspaceChatResponse(message, context, { githubReview });
 
   let merged = base;
-  const shouldUseSelectedEngine = Boolean(githubReview) || shouldEnhanceWithLlm(base);
+  const shouldUseSelectedEngine =
+    providerConfigured && (Boolean(githubReview) || shouldEnhanceWithLlm(base));
   if (shouldUseSelectedEngine) {
     try {
       assertKillSwitchAllowed("expensive_model");
@@ -238,21 +243,26 @@ export async function POST(request: Request) {
         {
           error: error instanceof Error ? error.message : "Selected engine failed to respond.",
           provider,
-          connected: false
+          connected: false,
+          setupHint: providerSetupHint
         },
         { status: 502 }
       );
     }
   } else {
     merged = mergeChatResponse(base, null);
+    if (!providerConfigured && shouldEnhanceWithLlm(base)) {
+      merged.reply = `${merged.reply}\n\n**Tip:** ${providerSetupHint}`;
+    }
     void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
   }
 
   return NextResponse.json({
     product: "BootRise",
     provider,
-    connected: true,
-    model: provider === "openai" ? "ChatGPT" : "BootRise",
+    connected: providerConfigured,
+    model: providerConfigured ? (provider === "openai" ? "ChatGPT" : "BootRise") : "BootRise (offline)",
+    setupHint: providerConfigured ? undefined : providerSetupHint,
     modelRoute,
     chatControl,
     ...merged

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AgentLiveBar } from "@/components/agent-live-bar";
 import { ArchitectureMapPanel } from "@/components/architecture-map-panel";
 import { DiffReportPanel } from "@/components/diff-report-panel";
@@ -23,14 +23,24 @@ import { AgentCouncilPanel } from "@/components/agent-council-panel";
 import type { BootrisePersonaId } from "@/lib/ai/bootrise-voice";
 import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { WorkspaceChatMessage } from "@/components/workspace-chat-message";
-import { WorkspaceQuickNav } from "@/components/workspace-quick-nav";
+import { WorkspaceBottomBar } from "@/components/workspace-bottom-bar";
+import {
+  WorkspaceOnboardingChecklist,
+  dismissOnboardingChecklist,
+  readOnboardingDismissed,
+  type OnboardingStepId
+} from "@/components/workspace-onboarding-checklist";
+import { WorkspacePanelChrome } from "@/components/workspace-panel-chrome";
+import { isIntelligenceTab, type IntelligenceTabId } from "@/components/workspace-intelligence-menu";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { EmptyStateCard } from "@/components/ui/empty-state-card";
 import { selectRelevantFiles, selectReviewBatches } from "@/lib/workspace/workspace-code-context";
 import {
   EngineToggle,
   FileTreeExplorer,
   Panel,
   WorkspaceStepRail,
-  WorkspaceTabs,
   type WorkspaceStep
 } from "@/components/workspace-ui";
 import { StatusPill } from "@/components/status-pill";
@@ -65,6 +75,15 @@ interface ChatApiResponse {
   error?: string;
 }
 
+type WorkspaceIssueScope = "global" | "connect" | "chat" | "fix" | "verify" | "export" | "provider";
+
+interface WorkspaceIssue {
+  scope: WorkspaceIssueScope;
+  message: string;
+  actionLabel?: string;
+  actionTab?: string;
+}
+
 const EMPTY_FILES = "[]";
 const FIX_REQUEST_PLACEHOLDER = /^Describe the change you want/i;
 
@@ -86,18 +105,16 @@ function workspaceFetch(input: string, init?: RequestInit) {
 const WELCOME: ChatMessage = {
   role: "assistant",
   content: [
-    "BootRise stops AI coding agents from breaking large codebases. It scopes the task, controls context, blocks hallucinated edits, verifies the patch, and only applies changes after you approve.",
+    "Welcome to BootRise — your AI engineering command center.",
     "",
-    "In this workspace: import a real GitHub repo, chat with role-based AI, then run **Fix** to get a scope lock, context budget, file-touch contract, patch guard, and diff budget before anything touches your files. Approve only when the control layer says it is safe, then verify and export.",
-    "",
-    "Start in **Connect** with a full repo import, pick a persona above the chat, then ask a specific question or run Fix with a narrow request (e.g. “small fix rewards history UI”)."
+    "Use the **workflow bar** below: connect a repo, complete your brief, run a controlled **Fix**, verify, then export. Chat here anytime; the panel on the right follows your current step."
   ].join("\n")
 };
 
 export function UserWorkspace() {
   const [brief, setBrief] = useState<ProjectBrief>(DEFAULT_BRIEF);
   const [filesInput, setFilesInput] = useState(EMPTY_FILES);
-  const [fixRequest, setFixRequest] = useState("Describe the change you want (module, file, or behavior)");
+  const [fixRequest, setFixRequest] = useState("");
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("connect");
   const [contextTab, setContextTab] = useState("connect");
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
@@ -126,10 +143,15 @@ export function UserWorkspace() {
     bootrise: false,
     openai: false
   });
+  const [providerHealthChecked, setProviderHealthChecked] = useState(false);
   const [liveThinking, setLiveThinking] = useState<ThinkingStep[]>([]);
   const [liveFilesInFocus, setLiveFilesInFocus] = useState<string[]>([]);
   const [liveActiveFile, setLiveActiveFile] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const busy = chatBusy || operationBusy;
   const [repoHealth, setRepoHealth] = useState<RepoHealthSummary | null>(null);
   const [sandboxPassed, setSandboxPassed] = useState(false);
   const [exportDone, setExportDone] = useState(false);
@@ -143,6 +165,7 @@ export function UserWorkspace() {
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [securityBlockers, setSecurityBlockers] = useState(0);
   const [brainStats, setBrainStats] = useState<{ files: number; modules: number; stale: number } | null>(null);
+  const [workspaceIssue, setWorkspaceIssue] = useState<WorkspaceIssue | null>(null);
 
   const parsedFiles = useMemo(() => {
     try {
@@ -172,6 +195,10 @@ export function UserWorkspace() {
   }, [busy, liveFilesInFocus]);
 
   useEffect(() => {
+    setShowOnboarding(!readOnboardingDismissed());
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       try {
         const [projectsRes, healthRes, creditsRes] = await Promise.all([
@@ -196,6 +223,8 @@ export function UserWorkspace() {
         setCreditsRemaining(creditsJson.balance?.remaining ?? null);
       } catch {
         /* non-blocking */
+      } finally {
+        setProviderHealthChecked(true);
       }
     })();
   }, []);
@@ -222,6 +251,7 @@ export function UserWorkspace() {
   const loadedFilePaths = useMemo(() => parsedFiles.map((f) => f.path).filter(Boolean), [parsedFiles]);
   const hasCode = loadedFilePaths.length > 0;
   const briefReady = brief.productName.trim().length > 0 && brief.primaryWorkflow.trim().length > 0;
+  const providerConfigured = provider === "openai" ? providerHealth.openai : providerHealth.bootrise;
 
   const stepCompleted: Partial<Record<WorkspaceStep, boolean>> = {
     connect: loadedFilePaths.length > 0,
@@ -230,6 +260,43 @@ export function UserWorkspace() {
     verify: Boolean(sandboxLog),
     export: exportDone
   };
+
+  function clearIssue(scope?: WorkspaceIssueScope) {
+    if (!scope || workspaceIssue?.scope === scope || workspaceIssue?.scope === "global") {
+      setWorkspaceIssue(null);
+      setError(null);
+    }
+  }
+
+  function raiseIssue(issue: WorkspaceIssue) {
+    setWorkspaceIssue(issue);
+    setError(issue.message);
+  }
+
+  function renderIssue(scope: WorkspaceIssueScope) {
+    if (!workspaceIssue || (workspaceIssue.scope !== scope && workspaceIssue.scope !== "global")) return null;
+    return (
+      <Alert
+        className="mb-3"
+        tone={workspaceIssue.scope === "provider" ? "warning" : "danger"}
+        title={workspaceIssue.scope === "provider" ? "AI engine offline" : "Needs attention"}
+        action={
+          workspaceIssue.actionLabel && workspaceIssue.actionTab
+            ? {
+                label: workspaceIssue.actionLabel,
+                onClick: () => {
+                  setContextTab(workspaceIssue.actionTab!);
+                  clearIssue();
+                }
+              }
+            : undefined
+        }
+        onDismiss={() => clearIssue()}
+      >
+        {workspaceIssue.message}
+      </Alert>
+    );
+  }
 
   async function analyzeWorkspace(files: Array<{ path: string; content: string }>) {
     if (files.length === 0) {
@@ -291,8 +358,8 @@ export function UserWorkspace() {
   }
 
   async function saveProject() {
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus("Saving project");
     try {
       const files = parseFiles();
@@ -329,16 +396,16 @@ export function UserWorkspace() {
       setSaveNotice(data.supabase?.message ?? (data.cloudSaved ? "Saved to Supabase." : "Saved locally."));
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Save failed.");
+      raiseIssue({ scope: "global", message: caught instanceof Error ? caught.message : "Save failed." });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function loadProject(id: string) {
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus("Loading project");
     try {
       const response = await workspaceFetch(`/api/workspace/projects?id=${encodeURIComponent(id)}`);
@@ -367,19 +434,19 @@ export function UserWorkspace() {
       await analyzeWorkspace(p.files);
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Load failed.");
+      raiseIssue({ scope: "global", message: caught instanceof Error ? caught.message : "Load failed." });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function loadGithubBranches() {
     if (!githubUrl.trim()) {
-      setError("Enter a GitHub URL first.");
+      raiseIssue({ scope: "connect", message: "Enter a GitHub URL first.", actionLabel: "Open Connect", actionTab: "connect" });
       return;
     }
-    setBusy(true);
+    setOperationBusy(true);
     setStatus("Loading branches");
     try {
       const res = await workspaceFetch(`/api/workspace/github/branches?url=${encodeURIComponent(githubUrl.trim())}`);
@@ -390,20 +457,20 @@ export function UserWorkspace() {
       if (data.defaultBranch) setGithubBranch(data.defaultBranch);
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Branch load failed");
+      raiseIssue({ scope: "connect", message: caught instanceof Error ? caught.message : "Branch load failed" });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function importFromGithub() {
     if (!githubUrl.trim()) {
-      setError("Enter a GitHub URL first.");
+      raiseIssue({ scope: "connect", message: "Enter a GitHub URL first.", actionLabel: "Open Connect", actionTab: "connect" });
       return;
     }
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus(importMode === "full" ? "Importing full repo" : "Importing key files");
     setActivityDetail(importMode === "full" ? "Up to 400 text files · skips node_modules, binaries" : "README + manifests");
     setLiveThinking([
@@ -482,11 +549,11 @@ export function UserWorkspace() {
       );
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Import failed");
+      raiseIssue({ scope: "connect", message: caught instanceof Error ? caught.message : "Import failed" });
       setStatus("Blocked");
       setLiveThinking([]);
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
       setActivityDetail(null);
     }
   }
@@ -494,11 +561,11 @@ export function UserWorkspace() {
   async function approvePlan() {
     const id = pendingFixId ?? report?.pendingFixId;
     if (!id) {
-      setError("No pending plan to approve.");
+      raiseIssue({ scope: "fix", message: "No pending plan to approve.", actionLabel: "Open Fix", actionTab: "fix" });
       return;
     }
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus("Applying approved patches");
     try {
       const res = await workspaceFetch("/api/workspace/fix/approve", {
@@ -540,17 +607,17 @@ export function UserWorkspace() {
       );
       void recordLedger("preview", "Preview session", "Web preview and dev server started for post-approval verification.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Approval failed.");
+      raiseIssue({ scope: "fix", message: caught instanceof Error ? caught.message : "Approval failed.", actionLabel: "Review Fix", actionTab: "fix" });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function rejectPlan() {
     const id = pendingFixId ?? report?.pendingFixId;
     if (!id) return;
-    setBusy(true);
+    setOperationBusy(true);
     try {
       const res = await workspaceFetch("/api/workspace/fix/reject", {
         method: "POST",
@@ -571,27 +638,27 @@ export function UserWorkspace() {
       setStatus("Plan rejected");
       void recordLedger("fix_rejected", "Plan rejected", "No files were modified. Refine your fix request and run the pipeline again with a clearer file-specific description.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Reject failed.");
+      raiseIssue({ scope: "fix", message: caught instanceof Error ? caught.message : "Reject failed." });
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function pushToGithub() {
     if (!githubUrl.trim()) {
-      setError("Enter a GitHub URL in Connect first.");
+      raiseIssue({ scope: "export", message: "Enter a GitHub URL in Connect first.", actionLabel: "Open Connect", actionTab: "connect" });
       return;
     }
     if (!report?.approvalStatus || report.approvalStatus !== "approved") {
-      setError("Approve a plan before pushing to GitHub.");
+      raiseIssue({ scope: "export", message: "Approve a plan before pushing to GitHub.", actionLabel: "Open Fix", actionTab: "fix" });
       return;
     }
     const fixId = pendingFixId ?? report?.pendingFixId;
     if (!fixId) {
-      setError("No approved pending fix — run Fix and approve before opening a draft PR.");
+      raiseIssue({ scope: "export", message: "No approved pending fix — run Fix and approve before opening a draft PR.", actionLabel: "Open Fix", actionTab: "fix" });
       return;
     }
-    setBusy(true);
+    setOperationBusy(true);
     setStatus("Opening draft PR");
     try {
       const res = await workspaceFetch("/api/workspace/github/pr", {
@@ -632,21 +699,21 @@ export function UserWorkspace() {
       ]);
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "GitHub push failed.");
+      raiseIssue({ scope: "export", message: caught instanceof Error ? caught.message : "GitHub push failed." });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   async function runSandboxVerify() {
     if (parsedFiles.length === 0) {
-      setError("Import or add files before running sandbox verify.");
+      raiseIssue({ scope: "verify", message: "Import or add files before running sandbox verify.", actionLabel: "Open Connect", actionTab: "connect" });
       setContextTab("connect");
       return;
     }
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus("Sandbox verify");
     try {
       const files = parsedFiles;
@@ -672,7 +739,7 @@ export function UserWorkspace() {
       if (report?.approvalStatus === "approved") {
         setReport((r) => (r ? refreshSafeToPr(r, passed) : r));
       } else if (report?.pendingFixId && passed) {
-        setError("Approve the plan first — sandbox proof applies to applied patches.");
+        raiseIssue({ scope: "verify", message: "Approve the plan first — sandbox proof applies to applied patches.", actionLabel: "Open Fix", actionTab: "fix" });
       }
       const log = (data.commands ?? []).map((c) => `## ${c.label} (exit ${c.exitCode})\n${c.output}`).join("\n\n");
       setSandboxLog(log);
@@ -690,15 +757,14 @@ export function UserWorkspace() {
       ]);
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Sandbox failed");
+      raiseIssue({ scope: "verify", message: caught instanceof Error ? caught.message : "Sandbox failed" });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
   function handleChatAction(action: string) {
-    if (busy) return;
     const lower = action.toLowerCase();
     if (lower.includes("import") || lower.includes("re-import") || lower.includes("connect repo")) {
       void importFromGithub();
@@ -750,9 +816,28 @@ export function UserWorkspace() {
     setContextTab(tab[step]);
   }
 
+  function goToOnboardingStep(id: OnboardingStepId) {
+    const map: Record<OnboardingStepId, WorkspaceStep> = {
+      connect: "connect",
+      brief: "plan",
+      fix: "fix",
+      verify: "verify",
+      export: "export"
+    };
+    goToStep(map[id]);
+  }
+
+  function scrollToChat() {
+    chatPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openIntelligence(tab: IntelligenceTabId) {
+    setContextTab(tab);
+  }
+
   async function handleFileUpload(fileList: FileList | null) {
     if (!fileList?.length) return;
-    setError(null);
+    clearIssue();
     setStatus("Reading files");
     try {
       const entries: Array<{ path: string; content: string }> = [];
@@ -765,7 +850,7 @@ export function UserWorkspace() {
       await analyzeWorkspace(entries);
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Upload failed.");
+      raiseIssue({ scope: "connect", message: caught instanceof Error ? caught.message : "Upload failed." });
       setStatus("Blocked");
     }
   }
@@ -805,39 +890,40 @@ export function UserWorkspace() {
     return parts.join("\n");
   }
 
-  async function animateFixPipeline() {
-    const steps = FIX_PIPELINE_STEPS.map((s) => ({ ...s }));
-    setLiveThinking(steps);
-    for (let i = 0; i < steps.length; i++) {
-      steps[i] = { ...steps[i], status: "active" };
-      setLiveThinking([...steps]);
-      if (i > 0) steps[i - 1] = { ...steps[i - 1], status: "done" };
-      await new Promise((r) => setTimeout(r, 280));
-    }
-
-    steps[steps.length - 1] = { ...steps[steps.length - 1], status: "done" };
-    setLiveThinking([...steps]);
+  function setFixPipelineProgress(activeIndex: number) {
+    setLiveThinking(
+      FIX_PIPELINE_STEPS.map((step, index) => ({
+        ...step,
+        status: index < activeIndex ? ("done" as const) : index === activeIndex ? ("active" as const) : ("pending" as const)
+      }))
+    );
   }
 
   async function runFixReport(requestOverride?: string) {
     if (parsedFiles.length === 0) {
-      setError("Import or paste code before running Fix and report.");
+      raiseIssue({ scope: "fix", message: "Import or paste code before running Fix and report.", actionLabel: "Open Connect", actionTab: "connect" });
       setContextTab("connect");
       return;
     }
     const request = (requestOverride ?? fixRequest).trim();
-    if (!requestOverride && FIX_REQUEST_PLACEHOLDER.test(request)) {
-      setError("Describe a specific change in Fix and report (e.g. add header X-App-Version in app/backend/main.py).");
+    if (!request || (!requestOverride && FIX_REQUEST_PLACEHOLDER.test(request))) {
+      raiseIssue({ scope: "fix", message: "Describe a specific change in Fix and report, for example: add header X-App-Version in app/backend/main.py.", actionLabel: "Open Fix", actionTab: "fix" });
       setContextTab("fix");
       return;
     }
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus("Fix pipeline");
-    setActivityDetail("Planning → blast radius → diff preview");
+    setActivityDetail("Server-side scope lock, patch guard, and diff preview");
+
+    let pipelineIndex = 0;
+    setFixPipelineProgress(0);
+    const pipelineTimer = window.setInterval(() => {
+      pipelineIndex = Math.min(pipelineIndex + 1, FIX_PIPELINE_STEPS.length - 1);
+      setFixPipelineProgress(pipelineIndex);
+    }, 700);
 
     try {
-      await animateFixPipeline();
       const files = parseFiles();
       const response = await workspaceFetch("/api/workspace/fix", {
         method: "POST",
@@ -852,6 +938,7 @@ export function UserWorkspace() {
       };
       if (!response.ok) throw new Error(data.error ?? "Fix workflow failed.");
 
+      setFixPipelineProgress(FIX_PIPELINE_STEPS.length);
       setPendingFixId(data.pendingFixId ?? data.report.pendingFixId ?? null);
       setPreviewUrl(null);
       setPreviewSessionId(null);
@@ -883,19 +970,20 @@ export function UserWorkspace() {
         }
       ]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Fix workflow failed.");
+      raiseIssue({ scope: "fix", message: caught instanceof Error ? caught.message : "Fix workflow failed.", actionLabel: "Review Fix", actionTab: "fix" });
       setStatus("Blocked");
     } finally {
+      window.clearInterval(pipelineTimer);
       setLiveThinking([]);
-      setBusy(false);
+      setOperationBusy(false);
       setActivityDetail(null);
     }
   }
 
   async function sendChat(message: string) {
-    if (!message.trim() || busy) return;
-    setBusy(true);
-    setError(null);
+    if (!message.trim() || chatBusy) return;
+    setChatBusy(true);
+    clearIssue();
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: message }];
     setMessages(nextMessages);
     setStatus("Thinking");
@@ -996,11 +1084,11 @@ export function UserWorkspace() {
         await runFixReport(message);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Chat failed.");
+      raiseIssue({ scope: "chat", message: caught instanceof Error ? caught.message : "Chat failed." });
       setStatus("Blocked");
       setLiveThinking([]);
     } finally {
-      setBusy(false);
+      setChatBusy(false);
       setActivityDetail(null);
       setLiveFilesInFocus([]);
       setLiveActiveFile(null);
@@ -1010,11 +1098,11 @@ export function UserWorkspace() {
 
   async function exportBundle(mode: "download" | "github") {
     if (parsedFiles.length === 0) {
-      setError("Import files before exporting.");
+      raiseIssue({ scope: "export", message: "Import files before exporting.", actionLabel: "Open Connect", actionTab: "connect" });
       return;
     }
-    setBusy(true);
-    setError(null);
+    setOperationBusy(true);
+    clearIssue();
     setStatus(mode === "download" ? "Preparing download" : "Preparing GitHub export");
 
     try {
@@ -1083,10 +1171,16 @@ export function UserWorkspace() {
 
       setStatus("Ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Export failed.");
+      const message = caught instanceof Error ? caught.message : "Export failed.";
+      raiseIssue({
+        scope: "export",
+        message,
+        actionLabel: message.includes("product brief") ? "Open Files / Brief" : undefined,
+        actionTab: message.includes("product brief") ? "files" : undefined
+      });
       setStatus("Blocked");
     } finally {
-      setBusy(false);
+      setOperationBusy(false);
     }
   }
 
@@ -1095,8 +1189,94 @@ export function UserWorkspace() {
   const primaryBtn = `${btnClass} rounded-lg bg-signal py-2.5 text-sm font-semibold text-white hover:opacity-90`;
   const secondaryBtn = `${btnClass} rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-graphite hover:bg-cloud`;
 
+  const nextAction = (() => {
+    if (!hasCode) {
+      return {
+        label: "Connect repo",
+        helper: "Import a GitHub repository or upload files so BootRise can build project context.",
+        onClick: () => goToStep("connect")
+      };
+    }
+    if (!briefReady) {
+      return {
+        label: "Complete brief",
+        helper: "Add product name and primary workflow to improve planning and unlock clean exports.",
+        onClick: () => goToStep("plan")
+      };
+    }
+    if (report?.controlLayer && !report.controlLayer.canApprove) {
+      return {
+        label: "Review block",
+        helper: report.controlLayer.stopReason ?? "The control layer needs clarification before approval.",
+        onClick: () => {
+          setActiveStep("fix");
+          setContextTab("fix");
+        }
+      };
+    }
+    if (!report) {
+      return {
+        label: "Run Fix",
+        helper: "Describe a narrow change and run the controlled Fix pipeline.",
+        onClick: () => goToStep("fix")
+      };
+    }
+    if (report.approvalStatus === "pending_approval") {
+      return {
+        label: "Review approval",
+        helper: "Inspect proposed patches, control results, and approve only when the scope is safe.",
+        onClick: () => goToStep("fix")
+      };
+    }
+    if (!sandboxPassed) {
+      return {
+        label: "Verify",
+        helper: "Run sandbox verification before exporting or opening a PR.",
+        onClick: () => goToStep("verify")
+      };
+    }
+    return {
+      label: "Export",
+      helper: "Safe evidence is ready. Download the bundle or open a draft PR.",
+      onClick: () => goToStep("export")
+    };
+  })();
+
+  const onboardingSteps = [
+    {
+      id: "connect" as const,
+      label: "Connect your repository",
+      detail: "Import from GitHub or upload files so BootRise can index the codebase.",
+      done: hasCode
+    },
+    {
+      id: "brief" as const,
+      label: "Complete product brief",
+      detail: "Add product name and primary workflow in Files / Brief for better planning.",
+      done: briefReady
+    },
+    {
+      id: "fix" as const,
+      label: "Run a controlled fix",
+      detail: "Describe one narrow change and review the scope lock, patch guard, and diff.",
+      done: Boolean(report)
+    },
+    {
+      id: "verify" as const,
+      label: "Verify in sandbox",
+      detail: "Prove the change builds before you ship.",
+      done: sandboxPassed
+    },
+    {
+      id: "export" as const,
+      label: "Export or open PR",
+      detail: "Download a bundle or push an approved draft PR.",
+      done: exportDone
+    }
+  ];
+
   return (
-    <section className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
+    <section className="mx-auto max-w-[1500px] px-4 py-6 pb-28 sm:px-6 xl:pb-8">
       <WorkspaceCommandCenter
         projectName={projectName}
         report={report}
@@ -1104,8 +1284,9 @@ export function UserWorkspace() {
         modelMode={provider === "openai" ? "Premium" : `BootRise ${modelMode}`}
         securityBlockers={securityBlockers}
         brainSummary={brainStats}
+        nextAction={{ ...nextAction, disabled: busy }}
       />
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <PersonaSelector value={persona} onChange={setPersona} />
         <div className="flex flex-wrap items-center gap-2">
           <EngineToggle
@@ -1121,68 +1302,68 @@ export function UserWorkspace() {
         </div>
       </div>
 
-      <ProjectDashboard
-        projectName={projectName}
-        fileCount={loadedFilePaths.length}
-        githubUrl={githubUrl}
-        branch={githubBranch}
-        health={repoHealth}
-        sandboxPassed={sandboxPassed}
-        safeToPr={report?.safeToPr ?? null}
-        storage={projectStorage}
-        lastSaved={lastProjectSaved}
-      />
+      {showOnboarding ? (
+        <WorkspaceOnboardingChecklist
+          steps={onboardingSteps}
+          onGo={goToOnboardingStep}
+          onDismiss={() => {
+            dismissOnboardingChecklist();
+            setShowOnboarding(false);
+          }}
+        />
+      ) : null}
+
+      <div className="mb-6 hidden md:block">
+        <ProjectDashboard
+          projectName={projectName}
+          fileCount={loadedFilePaths.length}
+          githubUrl={githubUrl}
+          branch={githubBranch}
+          health={repoHealth}
+          sandboxPassed={sandboxPassed}
+          safeToPr={report?.safeToPr ?? null}
+          storage={projectStorage}
+          lastSaved={lastProjectSaved}
+        />
+      </div>
 
       <WorkspaceStepRail
         active={activeStep}
-        onChange={(step) => {
-          setActiveStep(step);
-          const tab: Record<WorkspaceStep, string> = {
-            connect: "connect",
-            plan: "files",
-            fix: "fix",
-            verify: "verify",
-            export: "export"
-          };
-          setContextTab(tab[step]);
-        }}
+        onChange={goToStep}
         completed={stepCompleted}
       />
 
-      {error ? (
-        <div className="mt-4 rounded-lg border border-critical/25 bg-critical/10 px-4 py-3 text-sm text-critical">{error}</div>
+      {providerHealthChecked && !providerConfigured ? (
+        <Alert
+          className="mt-4"
+          tone="warning"
+          title={`${provider === "openai" ? "ChatGPT" : "BootRise"} engine offline`}
+        >
+          Chat still works in offline mode. Full AI review needs{" "}
+          <code>{provider === "openai" ? "OPENAI_API_KEY" : "NVIDIA_API_KEY"}</code> in <code>.env.local</code> and a dev server restart.
+        </Alert>
+      ) : null}
+      {workspaceIssue?.scope === "global" ? (
+        <div className="mt-4">{renderIssue("global")}</div>
       ) : null}
       {saveNotice ? (
-        <div className="mt-4 rounded-lg border border-line bg-cloud px-4 py-2 text-xs text-graphite">{saveNotice}</div>
+        <Alert className="mt-4" tone="success" onDismiss={() => setSaveNotice(null)}>
+          {saveNotice}
+        </Alert>
       ) : null}
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[240px_minmax(0,1.2fr)_minmax(340px,0.9fr)]">
-        <aside className="hidden flex-col gap-4 xl:flex">
-          <div className="rounded-xl border border-line bg-white p-4 shadow-sm">
-            <WorkspaceQuickNav
-              busy={busy}
-              fileCount={loadedFilePaths.length}
-              hasReport={Boolean(report)}
-              onStep={goToStep}
-              onImport={() => void importFromGithub()}
-              onReviewIssues={() => void sendChat(REVIEW_ISSUES_PROMPT)}
-              onFix={() => {
-                goToStep("fix");
-                if (!report) void runFixReport();
-              }}
-              onSandbox={() => void runSandboxVerify()}
-              onExport={() => void exportBundle("download")}
-            />
-          </div>
-        </aside>
-
-        <div className="flex min-h-[calc(100vh-260px)] flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
-          <div className="border-b border-line bg-cloud/40 px-4 py-3">
-            <p className="text-sm font-semibold text-ink">Conversation</p>
-            <p className="text-xs text-steel">Live file focus appears below while BootRise works</p>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(360px,0.98fr)]">
+        <div
+          ref={chatPanelRef}
+          className="flex min-h-[min(72vh,720px)] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm"
+        >
+          <div className="border-b border-line bg-gradient-to-r from-white to-cloud/50 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-signal">Agent conversation</p>
+            <p className="mt-0.5 text-sm text-steel">Ask questions while Fix or import runs — chat stays available</p>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {renderIssue("chat")}
             {messages.map((message, index) => (
               <WorkspaceChatMessage
                 key={`${message.role}-${index}`}
@@ -1201,7 +1382,7 @@ export function UserWorkspace() {
           <div className="border-t border-line bg-cloud/50 p-4">
             <AgentLiveBar
               busy={busy}
-              status={status}
+              status={operationBusy ? status : chatBusy ? "Thinking" : status}
               steps={liveThinking}
               filesInFocus={liveFilesInFocus}
               activeFile={liveActiveFile}
@@ -1219,7 +1400,7 @@ export function UserWorkspace() {
                 <button
                   key={q.label}
                   type="button"
-                  disabled={busy}
+                  disabled={chatBusy}
                   className={`${secondaryBtn} rounded-full px-3 py-1 text-xs`}
                   onClick={() => {
                     if ("action" in q && q.action === "sandbox") {
@@ -1257,7 +1438,7 @@ export function UserWorkspace() {
               />
               <button
                 type="button"
-                disabled={busy}
+                disabled={chatBusy}
                 className={`${primaryBtn} self-end px-5`}
                 onClick={() => {
                   if (chatInput.trim()) {
@@ -1266,35 +1447,37 @@ export function UserWorkspace() {
                   }
                 }}
               >
-                {busy ? "Working…" : "Send"}
+                {chatBusy ? "Thinking…" : "Send"}
               </button>
             </div>
           </div>
         </div>
 
-        <div className="flex min-h-[calc(100vh-220px)] flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
-          <WorkspaceTabs
-            active={contextTab}
-            onChange={setContextTab}
-            tabs={[
-              { id: "overview", label: "Overview" },
-              { id: "connect", label: "Connect", badge: githubUrl ? "●" : undefined },
-              { id: "files", label: "Files", badge: String(loadedFilePaths.length) },
-              { id: "architecture", label: "Architecture" },
-              { id: "brain", label: "Brain" },
-              { id: "control", label: "Control" },
-              { id: "security", label: "Security" },
-              { id: "fix", label: "Fix", badge: report ? "✓" : undefined },
-              { id: "verify", label: "Verify" },
-              { id: "ledger", label: "Ledger" },
-              { id: "export", label: "PR / Export", badge: exportDone ? "✓" : undefined }
-            ]}
+        <div className="flex min-h-[min(72vh,720px)] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+          <WorkspacePanelChrome
+            activeStep={activeStep}
+            contextTab={contextTab}
+            onOverview={() => setContextTab("overview")}
+            onIntelligence={openIntelligence}
+            securityBlockers={securityBlockers}
           />
           <div className="flex-1 overflow-y-auto">
             {contextTab === "connect" ? (
               <Panel title="GitHub repository">
+                {renderIssue("connect")}
+                {!hasCode ? (
+                  <EmptyStateCard
+                    title="Start by connecting real code"
+                    description="Import a GitHub repo or upload files. BootRise will index the project, build a brief, and unlock Fix, Verify, and Export."
+                    action={
+                      <Button type="button" size="sm" onClick={() => void importFromGithub()} disabled={busy || !githubUrl.trim()}>
+                        Import repo
+                      </Button>
+                    }
+                  />
+                ) : null}
                 <input
-                  className="w-full rounded-lg border border-line bg-cloud px-3 py-2 text-sm"
+                  className={`${!hasCode ? "mt-4" : ""} w-full rounded-lg border border-line bg-cloud px-3 py-2 text-sm`}
                   placeholder="https://github.com/org/repo"
                   value={githubUrl}
                   onChange={(e) => setGithubUrl(e.target.value)}
@@ -1313,7 +1496,7 @@ export function UserWorkspace() {
                   </select>
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={operationBusy}
                     className={secondaryBtn}
                     onClick={() => void loadGithubBranches()}
                   >
@@ -1323,7 +1506,7 @@ export function UserWorkspace() {
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={operationBusy}
                     className={`${importMode === "full" ? primaryBtn : secondaryBtn} flex-1`}
                     onClick={() => setImportMode("full")}
                   >
@@ -1331,7 +1514,7 @@ export function UserWorkspace() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={operationBusy}
                     className={`${importMode === "key" ? primaryBtn : secondaryBtn} flex-1`}
                     onClick={() => setImportMode("key")}
                   >
@@ -1340,7 +1523,7 @@ export function UserWorkspace() {
                 </div>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={operationBusy}
                   className={`${primaryBtn} mt-2 w-full`}
                   onClick={() => void importFromGithub()}
                 >
@@ -1359,7 +1542,7 @@ export function UserWorkspace() {
                   />
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={operationBusy}
                     className={`${secondaryBtn} mt-2 w-full`}
                     onClick={() => void saveProject()}
                   >
@@ -1371,7 +1554,7 @@ export function UserWorkspace() {
                         <li key={p.id}>
                           <button
                             type="button"
-                            disabled={busy}
+                            disabled={operationBusy}
                             className="w-full cursor-pointer rounded px-2 py-1 text-left text-xs text-graphite hover:bg-cloud disabled:opacity-50"
                             onClick={() => void loadProject(p.id)}
                           >
@@ -1398,15 +1581,30 @@ export function UserWorkspace() {
                   </button>
                 }
               >
+                {renderIssue("connect")}
                 {!showJsonEditor ? (
                   <>
-                    <p className="mb-2 text-xs text-steel">{parsedFiles.length} file(s) — select to preview</p>
-                    <FileTreeExplorer
-                      files={parsedFiles}
-                      selectedPath={selectedFilePath ?? parsedFiles[0]?.path ?? null}
-                      onSelect={setSelectedFilePath}
-                      maxTreeHeight="min(40vh, 280px)"
-                    />
+                    {parsedFiles.length === 0 ? (
+                      <EmptyStateCard
+                        title="No files in this workspace yet"
+                        description="Connect GitHub or upload source files to unlock project review, Fix, Security, Verify, and Export."
+                        action={
+                          <Button type="button" size="sm" variant="secondary" onClick={() => goToStep("connect")}>
+                            Open Connect
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-xs text-steel">{parsedFiles.length} file(s) — select to preview</p>
+                        <FileTreeExplorer
+                          files={parsedFiles}
+                          selectedPath={selectedFilePath ?? parsedFiles[0]?.path ?? null}
+                          onSelect={setSelectedFilePath}
+                          maxTreeHeight="min(40vh, 280px)"
+                        />
+                      </>
+                    )}
                     {selectedFilePath ? (
                       <textarea
                         className="mt-3 min-h-[min(36vh,320px)] w-full resize-y rounded-lg border border-line bg-cloud p-2 font-mono text-[11px] leading-4"
@@ -1448,27 +1646,22 @@ export function UserWorkspace() {
 
             {contextTab === "overview" ? (
               <Panel title="Overview">
-                <p className="text-sm text-graphite">
-                  Use the command center above for at-a-glance status. Import a repo in Connect, run Fix for control
-                  gates, verify in Verify, then open a server-trusted draft PR from Export.
+                <p className="text-sm leading-6 text-graphite">
+                  The workflow bar is your main navigation. This panel shows tools for the active step — open
+                  Intelligence for architecture, brain, control, security, and ledger.
                 </p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {[
-                    { tab: "connect", label: "Connect GitHub" },
-                    { tab: "fix", label: "Run fix pipeline" },
-                    { tab: "security", label: "Security scan" },
-                    { tab: "export", label: "PR / Export" }
-                  ].map((item) => (
-                    <button
-                      key={item.tab}
-                      type="button"
-                      className={secondaryBtn}
-                      onClick={() => setContextTab(item.tab)}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+                <Button type="button" className="mt-5" variant="dark" fullWidth onClick={nextAction.onClick} disabled={operationBusy}>
+                  {nextAction.label}
+                </Button>
+                {!showOnboarding ? (
+                  <button
+                    type="button"
+                    className="mt-3 cursor-pointer text-xs font-semibold text-signal hover:underline"
+                    onClick={() => setShowOnboarding(true)}
+                  >
+                    Show getting-started checklist
+                  </button>
+                ) : null}
               </Panel>
             ) : null}
 
@@ -1512,6 +1705,17 @@ export function UserWorkspace() {
 
             {contextTab === "security" ? (
               <Panel title="Security & deployment">
+                {!hasCode ? (
+                  <EmptyStateCard
+                    title="Import code to scan"
+                    description="Security checks run against your workspace files — connect a repo first."
+                    action={
+                      <Button type="button" size="sm" variant="secondary" onClick={() => goToStep("connect")}>
+                        Open Connect
+                      </Button>
+                    }
+                  />
+                ) : null}
                 <SecurityPanel
                   filesJson={filesInput}
                   projectId={projectId ?? undefined}
@@ -1533,19 +1737,63 @@ export function UserWorkspace() {
 
             {contextTab === "fix" ? (
               <Panel title="Fix and report">
+                {renderIssue("fix")}
+                {!hasCode ? (
+                  <EmptyStateCard
+                    title="Import code before running Fix"
+                    description="The control layer needs real files to lock scope, estimate risk, and produce a safe patch preview."
+                    action={
+                      <Button type="button" size="sm" variant="secondary" onClick={() => goToStep("connect")}>
+                        Open Connect
+                      </Button>
+                    }
+                  />
+                ) : null}
+                {report?.controlLayer && !report.controlLayer.canApprove ? (
+                  <BlockedStateCard
+                    title={report.controlLayer.contextGate.status === "needs_clarification" ? "Fix is blocked by missing context" : "Approval is blocked"}
+                    reason={report.controlLayer.stopReason ?? "Control layer blocked approval."}
+                    needs={report.controlLayer.contextGate.questions.map((q) => q.question)}
+                    actions={
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setContextTab("control")}>
+                        Open full Control view
+                      </Button>
+                    }
+                  />
+                ) : null}
+                {report?.controlLayer ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl border border-line bg-cloud/40 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-steel">Scope</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">
+                        {report.controlLayer.scopeContract ? "Locked" : "Not locked"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-cloud/40 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-steel">Approval</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">
+                        {report.controlLayer.canApprove ? "Allowed" : "Blocked"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-line bg-cloud/40 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-steel">Safe to PR</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">{report.safeToPr?.label ?? "Not evaluated"}</p>
+                    </div>
+                  </div>
+                ) : null}
                 <textarea
-                  className="min-h-20 w-full rounded-lg border border-line bg-cloud px-3 py-2 text-sm"
+                  className="mt-3 min-h-20 w-full rounded-lg border border-line bg-cloud px-3 py-2 text-sm"
                   placeholder="What should change? Be specific about files or behavior."
                   value={fixRequest}
                   onChange={(e) => setFixRequest(e.target.value)}
                 />
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !hasCode || !fixRequest.trim()}
                   className={`${primaryBtn} mt-3 w-full bg-ink`}
                   onClick={() => void runFixReport()}
                 >
-                  Run fix pipeline
+                  {busy ? "Pipeline running…" : "Run controlled fix pipeline"}
                 </button>
                 {report?.controlLayer ? <ControlLayerPanel control={report.controlLayer} /> : null}
                 {report?.approvalStatus === "pending_approval" && report.patches?.length ? (
@@ -1564,13 +1812,30 @@ export function UserWorkspace() {
                     <DiffReportPanel report={report} />
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-steel">Import files first, then run the pipeline for plan, blast radius, and diff.</p>
+                  hasCode ? (
+                    <EmptyStateCard
+                      title="Ready for a scoped fix"
+                      description="Describe one concrete change. BootRise will plan, check blast radius, preview patches, and wait for your approval."
+                    />
+                  ) : null
                 )}
               </Panel>
             ) : null}
 
             {contextTab === "verify" ? (
               <Panel title="Verify & preview">
+                {renderIssue("verify")}
+                {!report ? (
+                  <EmptyStateCard
+                    title="Nothing to verify yet"
+                    description="Run Fix first so Verify can preview approved changes and collect sandbox proof."
+                    action={
+                      <Button type="button" size="sm" variant="secondary" onClick={() => goToStep("fix")} disabled={!hasCode}>
+                        Open Fix
+                      </Button>
+                    }
+                  />
+                ) : null}
                 <WebContainerPreview
                   files={parsedFiles}
                   active={report?.approvalStatus === "approved"}
@@ -1604,7 +1869,7 @@ export function UserWorkspace() {
                 </p>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={operationBusy}
                   className={`${secondaryBtn} mt-3 w-full`}
                   onClick={() => {
                     setActiveStep("verify");
@@ -1622,17 +1887,36 @@ export function UserWorkspace() {
 
             {contextTab === "export" ? (
               <Panel title="Export">
+                {renderIssue("export")}
                 <p className="text-sm text-graphite">
                   Bundle includes brief, {loadedFilePaths.length} files, architecture health
                   {report ? ", fix report + summary" : ""}, and GitHub metadata.
                 </p>
                 {!briefReady ? (
-                  <p className="mt-2 text-xs text-amber-800">Fill product name and workflow in Files before exporting.</p>
+                  <Alert
+                    className="mt-3"
+                    tone="warning"
+                    title="Brief required for export"
+                    action={{ label: "Open Files / Brief", onClick: () => goToStep("plan") }}
+                  >
+                    Fill product name and workflow in Files before exporting.
+                  </Alert>
+                ) : null}
+                {parsedFiles.length === 0 ? (
+                  <EmptyStateCard
+                    title="Import files before export"
+                    description="Exports include your product brief, files, report, health, and GitHub metadata."
+                    action={
+                      <Button type="button" size="sm" variant="secondary" onClick={() => goToStep("connect")}>
+                        Open Connect
+                      </Button>
+                    }
+                  />
                 ) : null}
                 {report?.approvalStatus === "approved" ? (
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={operationBusy}
                     className={`${primaryBtn} mb-2 w-full`}
                     onClick={() => void pushToGithub()}
                   >
@@ -1643,7 +1927,7 @@ export function UserWorkspace() {
                 )}
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={operationBusy}
                   className={`${secondaryBtn} w-full`}
                   onClick={() => void exportBundle("download")}
                 >
@@ -1651,7 +1935,7 @@ export function UserWorkspace() {
                 </button>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={operationBusy}
                   className={`${primaryBtn} mt-2 w-full bg-ink`}
                   onClick={() => void exportBundle("github")}
                 >
@@ -1662,6 +1946,13 @@ export function UserWorkspace() {
           </div>
         </div>
       </div>
+
+      <WorkspaceBottomBar
+        activeStep={activeStep}
+        onStep={goToStep}
+        onChat={scrollToChat}
+        operationBusy={operationBusy}
+      />
     </section>
   );
 }

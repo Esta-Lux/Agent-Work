@@ -7,7 +7,7 @@ export type WorkspaceStep = "connect" | "plan" | "fix" | "verify" | "export";
 
 const STEPS: Array<{ id: WorkspaceStep; label: string; hint: string }> = [
   { id: "connect", label: "Connect", hint: "GitHub + files" },
-  { id: "plan", label: "Plan", hint: "Chat + brief" },
+  { id: "plan", label: "Brief", hint: "Files + product" },
   { id: "fix", label: "Fix", hint: "Report + diff" },
   { id: "verify", label: "Verify", hint: "Sandbox" },
   { id: "export", label: "Export", hint: "Bundle / push" }
@@ -22,26 +22,48 @@ export function WorkspaceStepRail({
   onChange: (step: WorkspaceStep) => void;
   completed: Partial<Record<WorkspaceStep, boolean>>;
 }) {
+  const activeIndex = STEPS.findIndex((s) => s.id === active);
+
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-white p-1">
-      {STEPS.map((step) => {
-        const done = completed[step.id];
-        const isActive = active === step.id;
-        return (
-          <button
-            key={step.id}
-            type="button"
-            onClick={() => onChange(step.id)}
-            className={`flex min-w-[4.5rem] flex-1 cursor-pointer flex-col rounded-md px-2 py-2 text-left transition ${
-              isActive ? "bg-ink text-white" : "text-graphite hover:bg-cloud"
-            }`}
-          >
-            <span className="text-xs font-semibold">{step.label}</span>
-            <span className={`text-[10px] ${isActive ? "text-white/80" : "text-steel"}`}>{step.hint}</span>
-            {done ? <span className={`mt-0.5 text-[10px] ${isActive ? "text-signal" : "text-signal"}`}>✓</span> : null}
-          </button>
-        );
-      })}
+    <div className="rounded-2xl border border-line bg-white p-2 shadow-sm">
+      <div className="mb-2 hidden px-2 sm:flex sm:items-center sm:justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-steel">Your workflow</p>
+        <p className="text-[10px] text-steel">
+          Step {activeIndex + 1} of {STEPS.length}
+        </p>
+      </div>
+      <div className="flex gap-1 overflow-x-auto pb-0.5 sm:flex-wrap sm:overflow-visible">
+        {STEPS.map((step, index) => {
+          const done = completed[step.id];
+          const isActive = active === step.id;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => onChange(step.id)}
+              className={`flex min-w-[5.5rem] shrink-0 flex-1 cursor-pointer flex-col rounded-xl px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/40 ${
+                isActive
+                  ? "bg-ink text-white shadow-sm"
+                  : done
+                    ? "bg-signal/8 text-ink hover:bg-signal/12"
+                    : "text-graphite hover:bg-cloud"
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                    isActive ? "bg-signal text-white" : done ? "bg-signal/20 text-signal" : "bg-cloud text-steel"
+                  }`}
+                >
+                  {done ? "✓" : index + 1}
+                </span>
+                <span className="text-xs font-semibold">{step.label}</span>
+              </span>
+              <span className={`mt-1 pl-6 text-[10px] ${isActive ? "text-white/75" : "text-steel"}`}>{step.hint}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -53,19 +75,20 @@ export function WorkspaceTabs({
 }: {
   active: string;
   onChange: (id: string) => void;
-  tabs: Array<{ id: string; label: string; badge?: string }>;
+  tabs: Array<{ id: string; label: string; badge?: string; group?: string }>;
 }) {
   return (
-    <div className="flex border-b border-line">
+    <div className="flex overflow-x-auto border-b border-line">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`relative cursor-pointer px-4 py-3 text-sm font-semibold ${
+          className={`relative shrink-0 cursor-pointer px-4 py-3 text-sm font-semibold ${
             active === tab.id ? "text-ink" : "text-steel hover:text-graphite"
           }`}
         >
+          {tab.group ? <span className="mb-0.5 block text-[9px] uppercase tracking-wide text-steel">{tab.group}</span> : null}
           {tab.label}
           {tab.badge ? (
             <span className="ml-1.5 rounded-full bg-cloud px-1.5 py-0.5 text-[10px] font-semibold text-graphite">
@@ -81,9 +104,9 @@ export function WorkspaceTabs({
 
 export function Panel({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-ink">{title}</p>
+    <div className="p-5 sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold tracking-tight text-ink">{title}</p>
         {action}
       </div>
       {children}

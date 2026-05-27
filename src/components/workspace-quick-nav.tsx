@@ -11,7 +11,8 @@ export function WorkspaceQuickNav({
   onReviewIssues,
   onFix,
   onSandbox,
-  onExport
+  onExport,
+  layout = "vertical"
 }: {
   busy: boolean;
   fileCount: number;
@@ -22,29 +23,32 @@ export function WorkspaceQuickNav({
   onFix: () => void;
   onSandbox: () => void;
   onExport: () => void;
+  layout?: "vertical" | "compact";
 }) {
   const btn =
-    "w-full cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-left text-xs font-semibold text-ink transition hover:border-signal/40 hover:bg-cloud disabled:cursor-not-allowed disabled:opacity-50";
+    "cursor-pointer rounded-lg border border-line bg-white px-3 py-2 text-left text-xs font-semibold text-ink transition hover:border-signal/40 hover:bg-cloud disabled:cursor-not-allowed disabled:opacity-50";
+  const navClass = layout === "compact" ? "grid grid-cols-2 gap-2 sm:grid-cols-3" : "space-y-2";
+  const buttonClass = layout === "compact" ? btn : `${btn} w-full`;
 
   return (
-    <nav className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-steel">Quick actions</p>
-      <button type="button" disabled={busy} className={btn} onClick={onImport}>
+    <nav className={navClass}>
+      <p className={layout === "compact" ? "col-span-full text-[10px] font-semibold uppercase tracking-wide text-steel" : "text-[10px] font-semibold uppercase tracking-wide text-steel"}>Quick actions</p>
+      <button type="button" disabled={busy} className={buttonClass} onClick={onImport}>
         Import / refresh GitHub
       </button>
-      <button type="button" disabled={busy || fileCount === 0} className={btn} onClick={() => onStep("plan")}>
+      <button type="button" disabled={busy || fileCount === 0} className={buttonClass} onClick={() => onStep("plan")}>
         Browse {fileCount > 0 ? `${fileCount} files` : "files"}
       </button>
-      <button type="button" disabled={busy || fileCount === 0} className={btn} onClick={onReviewIssues}>
+      <button type="button" disabled={busy || fileCount === 0} className={buttonClass} onClick={onReviewIssues}>
         Review project issues
       </button>
-      <button type="button" disabled={busy || fileCount === 0} className={btn} onClick={onFix}>
+      <button type="button" disabled={busy || fileCount === 0} className={buttonClass} onClick={onFix}>
         {hasReport ? "Open fix report" : "Fix and report"}
       </button>
-      <button type="button" disabled={busy || fileCount === 0} className={btn} onClick={onSandbox}>
+      <button type="button" disabled={busy || fileCount === 0} className={buttonClass} onClick={onSandbox}>
         Run sandbox verify
       </button>
-      <button type="button" disabled={busy || fileCount === 0} className={btn} onClick={onExport}>
+      <button type="button" disabled={busy || fileCount === 0} className={buttonClass} onClick={onExport}>
         Export bundle
       </button>
     </nav>

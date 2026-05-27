@@ -5,6 +5,10 @@ import { AdminKillSwitches } from "@/components/admin-kill-switches";
 import { AdminControlHub } from "@/components/admin-control-hub";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { MetricTile } from "@/components/ui/metric-tile";
+import { PanelShell } from "@/components/ui/panel-shell";
 
 interface ReadinessItem {
   area: string;
@@ -168,7 +172,7 @@ export function AdminConsole() {
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-6">
-      <div className="mb-6 rounded-xl border border-signal/25 bg-signal/5 p-4">
+      <div className="mb-6 rounded-2xl border border-signal/25 bg-gradient-to-br from-white to-signal/10 p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase text-signal">Phase 3+ — Enterprise (shipped)</p>
         <p className="mt-1 text-sm text-graphite">
           Run Supabase migrations 001–003. WebContainer, device streams, and cloud ledger/audit are live at{" "}
@@ -192,7 +196,9 @@ export function AdminConsole() {
       </div>
 
       {loadError ? (
-        <div className="mb-4 rounded border border-critical/25 bg-critical/10 p-3 text-sm text-critical">{loadError}</div>
+        <Alert className="mb-4" tone="danger" title="Admin overview could not fully load" action={{ label: "Retry", onClick: loadOverview }}>
+          {loadError}
+        </Alert>
       ) : null}
 
       <div className="mb-6">
@@ -215,15 +221,13 @@ export function AdminConsole() {
         <AdminKillSwitches />
       </div>
 
-      <div className="mb-6 rounded border border-line bg-white p-4">
-        <p className="text-sm font-semibold text-ink">Control hub — user workspace safety</p>
-        <p className="mt-1 text-xs text-steel">
-          Scope locks, patch blocks, token estimates, and approval outcomes from the AI coding control layer.
-        </p>
-        <div className="mt-4">
-          <AdminControlHub />
-        </div>
-      </div>
+      <PanelShell
+        className="mb-6"
+        title="Control hub — user workspace safety"
+        description="Scope locks, patch blocks, token estimates, and approval outcomes from the AI coding control layer."
+      >
+        <AdminControlHub />
+      </PanelShell>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Panel title="AI providers">
@@ -265,13 +269,15 @@ export function AdminConsole() {
                 </a>
               ) : null}
               {!health.schemaReady ? (
-                <button
+                <Button
                   type="button"
-                  className="mt-2 w-full rounded bg-signal px-3 py-2 text-xs font-semibold text-white"
+                  className="mt-2"
+                  fullWidth
+                  size="sm"
                   onClick={copyMigrationSql}
                 >
                   Copy setup SQL
-                </button>
+                </Button>
               ) : null}
               {copyStatus ? <p className="text-signal">{copyStatus}</p> : null}
             </div>
@@ -300,8 +306,7 @@ export function AdminConsole() {
       </div>
 
       {overview?.projects.recent && overview.projects.recent.length > 0 ? (
-        <div className="mb-6 rounded border border-line bg-white p-4">
-          <p className="text-sm font-semibold text-ink">Recent projects ({overview.projects.storage})</p>
+        <PanelShell className="mb-6" title={`Recent projects (${overview.projects.storage})`}>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -324,12 +329,11 @@ export function AdminConsole() {
               </tbody>
             </table>
           </div>
-        </div>
+        </PanelShell>
       ) : null}
 
       {telemetry && telemetry.recent.length > 0 ? (
-        <div className="mb-6 rounded border border-line bg-white p-4">
-          <p className="text-sm font-semibold text-ink">Recent sessions</p>
+        <PanelShell className="mb-6" title="Recent sessions">
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -356,12 +360,11 @@ export function AdminConsole() {
               </tbody>
             </table>
           </div>
-        </div>
+        </PanelShell>
       ) : null}
 
       {items.length > 0 ? (
-        <div className="mb-6 rounded border border-line bg-white p-4">
-          <p className="text-sm font-semibold text-ink">Launch blockers</p>
+        <PanelShell className="mb-6" title="Launch blockers">
           <ul className="mt-3 space-y-2">
             {items.map((item) => (
               <li key={item.area} className="rounded border border-line bg-cloud p-3 text-sm">
@@ -374,12 +377,11 @@ export function AdminConsole() {
               </li>
             ))}
           </ul>
-        </div>
+        </PanelShell>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded border border-line bg-white p-4">
-          <p className="text-sm font-semibold text-ink">Admin operator chat</p>
+        <PanelShell title="Admin operator chat">
           <select
             className="mt-3 w-full rounded border border-line bg-cloud px-3 py-2 text-sm"
             value={adminProvider}
@@ -394,18 +396,17 @@ export function AdminConsole() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
-          <button type="button" className="mt-2 rounded bg-ink px-4 py-2 text-sm font-semibold text-white" onClick={sendAdminMessage}>
+          <Button type="button" className="mt-2" variant="dark" onClick={sendAdminMessage}>
             Send
-          </button>
+          </Button>
           {reply ? (
             <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-cloud p-3 text-xs leading-5 text-graphite">
               {reply}
             </pre>
           ) : null}
-        </div>
+        </PanelShell>
 
-        <div className="rounded border border-line bg-white p-4 text-sm text-graphite">
-          <p className="font-semibold text-ink">API quick checks</p>
+        <PanelShell title="API quick checks" className="text-sm text-graphite">
           <ul className="mt-3 list-inside list-disc space-y-2 text-xs leading-5">
             <li>
               <a className="text-signal underline" href="/api/admin/supabase/overview" target="_blank" rel="noreferrer">
@@ -433,33 +434,24 @@ export function AdminConsole() {
               </a>
             </li>
           </ul>
-          <button
+          <Button
             type="button"
-            className="mt-4 rounded border border-line px-4 py-2 text-sm font-semibold text-graphite"
+            className="mt-4"
+            variant="secondary"
             onClick={loadOverview}
           >
             Refresh all
-          </button>
-        </div>
+          </Button>
+        </PanelShell>
       </div>
     </section>
   );
 }
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="rounded border border-line bg-white p-4">
-      <p className="text-sm font-semibold text-ink">{title}</p>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
+  return <PanelShell title={title}>{children}</PanelShell>;
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded border border-line bg-white p-4">
-      <p className="text-xs font-semibold uppercase text-steel">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
-    </div>
-  );
+  return <MetricTile label={label} value={value} size="hero" />;
 }

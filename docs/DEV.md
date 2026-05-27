@@ -24,6 +24,25 @@ Optional overrides:
 
 **Never set `BOOTRISE_DEV_AUTH_BYPASS=1` in production.** Middleware disables bypass when `NODE_ENV=production`.
 
+## AI chat / fix (separate from Supabase auth)
+
+If you see **"BootRise is not configured for this workspace"**, that means the **AI API key** is missing — not Supabase login.
+
+| Engine | Env variable | Get a key |
+| --- | --- | --- |
+| BootRise (default) | `NVIDIA_API_KEY` | [NVIDIA Build](https://build.nvidia.com/) |
+| ChatGPT | `OPENAI_API_KEY` | OpenAI dashboard |
+
+Add to `.env.local` and restart `npm run dev`:
+
+```env
+NVIDIA_API_KEY=nvapi-...
+# or
+OPENAI_API_KEY=sk-...
+```
+
+Without either key, **chat still works** in offline mode (deterministic answers). Full AI code review and enhanced replies need a key.
+
 ## Admin routes in dev
 
 Add your dev email to admin allowlist:

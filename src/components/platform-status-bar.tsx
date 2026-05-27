@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatusPill } from "@/components/status-pill";
+import { PanelShell } from "@/components/ui/panel-shell";
 
 interface ProviderHealth {
   provider: "bootrise" | "openai";
@@ -53,9 +54,8 @@ export function PlatformStatusBar({ variant, provider, storage }: PlatformStatus
   const activeProvider = provider === "openai" ? openai : bootrise;
 
   return (
-    <div className="rounded border border-line bg-white px-4 py-3">
+    <PanelShell title="Platform status" className="py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-semibold uppercase text-steel">Platform status</p>
         {loading ? <StatusPill label="Checking" /> : null}
         {!loading && activeProvider ? (
           <StatusPill
@@ -103,6 +103,6 @@ export function PlatformStatusBar({ variant, provider, storage }: PlatformStatus
           {openai?.connected ? ` · ChatGPT configured` : null}
         </p>
       ) : null}
-    </div>
+    </PanelShell>
   );
 }

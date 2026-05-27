@@ -33,7 +33,9 @@ export default function SignInPage() {
     const supabase = getSupabaseBrowser();
     if (!supabase) {
       setStatus("error");
-      setMessage("Supabase is not configured. Use dev bypass (see docs/DEV.md) or set Supabase env vars.");
+      setMessage(
+        "Supabase is not configured. Enable dev bypass in .env.local (see docs/DEV.md) and restart npm run dev, or add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
+      );
       return;
     }
     setStatus("loading");
@@ -79,16 +81,32 @@ export default function SignInPage() {
         <div className="mb-6 rounded-xl border border-signal/25 bg-signal/5 p-4">
           <p className="text-sm font-medium text-ink">Development mode</p>
           <p className="mt-1 text-xs text-steel">
-            Auth bypass is on. No password — open the workspace directly.
+            Signed in as <strong>dev@bootrise.local</strong> — no Supabase or password needed.
           </p>
           <Link
             href="/"
             className="mt-3 flex w-full items-center justify-center rounded-xl bg-signal px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-signal-bright"
           >
-            Continue as dev user
+            Open workspace
           </Link>
         </div>
-      ) : null}
+      ) : (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-ink">Local dev without Supabase</p>
+          <p className="mt-1 text-xs leading-relaxed text-steel">
+            Create <code className="text-graphite">.env.local</code> in the project root with{" "}
+            <code className="text-graphite">BOOTRISE_DEV_AUTH_BYPASS=1</code> and{" "}
+            <code className="text-graphite">NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS=1</code>, then restart{" "}
+            <code className="text-graphite">npm run dev</code>. See <strong>docs/DEV.md</strong>.
+          </p>
+          <Link
+            href="/"
+            className="mt-3 block text-center text-sm font-semibold text-signal"
+          >
+            Try workspace anyway →
+          </Link>
+        </div>
+      )}
 
       <form className="space-y-4" onSubmit={sendMagicLink}>
         <label className="block text-sm font-medium text-graphite">
@@ -137,6 +155,19 @@ export default function SignInPage() {
           {message}
         </p>
       ) : null}
+
+      <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        {[
+          { title: "Connect", detail: "Import GitHub repos with full or key-file modes." },
+          { title: "Control layer", detail: "Scope lock, patch guard, and approval before any edit lands." },
+          { title: "Ship safely", detail: "Verify in sandbox, then export or open a draft PR." }
+        ].map((card) => (
+          <div key={card.title} className="rounded-xl border border-line bg-cloud/40 px-4 py-3 text-left">
+            <p className="text-xs font-semibold text-ink">{card.title}</p>
+            <p className="mt-1 text-[11px] leading-5 text-steel">{card.detail}</p>
+          </div>
+        ))}
+      </div>
 
       <Link
         href="/"

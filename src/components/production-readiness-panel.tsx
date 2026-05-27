@@ -1,10 +1,7 @@
 import { getProductionReadinessReport } from "@/lib/admin/readiness";
-
-const toneByStatus = {
-  ready: "bg-signal text-white",
-  partial: "bg-amber-50 text-caution",
-  missing: "bg-red-50 text-critical"
-};
+import { StatusPill } from "@/components/status-pill";
+import { MetricTile } from "@/components/ui/metric-tile";
+import { PanelShell } from "@/components/ui/panel-shell";
 
 export async function ProductionReadinessPanel() {
   const report = await getProductionReadinessReport();
@@ -19,24 +16,20 @@ export async function ProductionReadinessPanel() {
             Production ready: {report.productionReady ? "Yes" : "No — complete P0 areas and disable dev bypass."}
           </p>
         </div>
-        <div className="rounded border border-line bg-white px-4 py-3">
-          <p className="text-xs font-semibold uppercase text-steel">Readiness score</p>
-          <p className="mt-1 text-2xl font-semibold text-ink">{report.score}%</p>
-        </div>
+        <MetricTile label="Readiness score" value={`${report.score}%`} size="hero" />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {report.items.map((item) => (
-          <article className="rounded border border-line bg-white p-4" key={item.area}>
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="text-base font-semibold text-ink">{item.area}</h3>
-              <span className={`rounded px-2 py-1 text-xs font-semibold ${toneByStatus[item.status]}`}>
-                {item.status}
-              </span>
-            </div>
+          <PanelShell title={item.area} key={item.area} action={
+            <StatusPill
+              label={item.status}
+              tone={item.status === "ready" ? "passed" : item.status === "partial" ? "medium" : "failed"}
+            />
+          }>
             <p className="mt-3 text-sm leading-6 text-graphite">{item.summary}</p>
             <p className="mt-4 text-sm font-semibold text-steel">{item.nextStep}</p>
-          </article>
+          </PanelShell>
         ))}
       </div>
     </section>
