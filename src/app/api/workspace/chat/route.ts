@@ -14,12 +14,14 @@ import {
 import {
   buildCodeContextBlock,
   buildCodeReviewSystemPrompt,
+  classifyRepoPath,
   formatFilesThinkingDetail,
   isBroadReviewMessage,
   isProductCodeReviewQuestion,
   isRepoOverviewQuestion,
   selectRelevantFiles,
-  type LoadedFileSnippet
+  type LoadedFileSnippet,
+  type RepoArea
 } from "@/lib/workspace/workspace-code-context";
 import { buildRepoOverviewReply } from "@/lib/workspace/repo-overview";
 import {
@@ -279,10 +281,11 @@ export async function POST(request: Request) {
     });
   }
 
-  if (loadedFiles.length > 0 && isNavigationHudWorkRequest(message)) {
-    const handoff = buildNavigationHudHandoff({
+  if (loadedFiles.length > 0 && isProjectWorkRequest(message)) {
+    const handoff = buildArchitectureGuideHandoff({
       message,
       files: loadedFiles,
+      productName: context.projectBrief?.productName,
       chatControl,
       shouldAutoRun: shouldAutoRunFixFromChat(message)
     });
@@ -631,12 +634,17 @@ function shouldUseFastRepoReview(
   return fileCount >= 80 || mode === "fast";
 }
 
-function isNavigationHudWorkRequest(message: string): boolean {
+function isProjectWorkRequest(message: string): boolean {
   const n = message.toLowerCase();
-  const mentionsHud = /\b(hud|navigation hud|nav hud|turn card|turn cards|lane guidance|maneuver|eta strip|driving mode)\b/.test(n);
-  const asksWork =
-    /\b(fix|work on|make it ready|prepare a plan|plan to fix|update|improve|polish|make.*better|ready)\b/.test(n);
-  return mentionsHud && asksWork;
+  if (isRepoOverviewQuestion(message)) return false;
+  if (isBroadReviewMessage(message) && !/\b(fix|implement|build|update|improve|plan to fix|make it ready)\b/.test(n)) {
+    return false;
+  }
+  return (
+    /\b(fix|implement|build|add|update|improve|polish|refactor|make it ready|work on|prepare a plan|plan to fix|ship|upgrade)\b/.test(
+      n
+    ) || /\b(what should|what can|best (next|case|thing)|where is headed|architecture guide|roadmap)\b/.test(n)
+  );
 }
 
 function shouldAutoRunFixFromChat(message: string): boolean {
@@ -645,38 +653,49 @@ function shouldAutoRunFixFromChat(message: string): boolean {
   return /\b(fix|make it ready|go ahead|work on|update|improve)\b/.test(n);
 }
 
-function buildNavigationHudHandoff(input: {
+function buildArchitectureGuideHandoff(input: {
   message: string;
   files: LoadedFileSnippet[];
+  productName?: string;
   chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
   shouldAutoRun: boolean;
 }) {
-  const targets = selectHudTargetFiles(input.files);
+  const focus = inferArchitectureFocus(input.message, input.files);
+  const targets = selectWorkTargetFiles(input.message, input.files, focus);
+  const targetList = targets.slice(0, 8);
+  const projectName = input.productName?.trim() || "this project";
   const fixRequest = [
-    "Improve the mobile navigation HUD readiness and reduce coupling risk.",
-    "Focus on app/mobile/src/screens/MapScreen.tsx and navigation HUD components.",
-    "Make the displayed turn card, lane guidance, ETA/status strip, and map controls clearer without changing auth, billing, env, backend SQL, or unrelated product surfaces.",
-    "Respect existing Reanimated v4, Gesture Handler, Mapbox MarkerView, and safe-area rules."
+    `User request: ${input.message.trim()}`,
+    `Architecture focus: ${focus.label}.`,
+    targetList.length ? `Start with these files: ${targetList.join(", ")}.` : "Start by selecting the smallest relevant source files.",
+    "Keep the patch scoped, preserve existing product behavior, and do not touch auth, billing, env files, migrations, or unrelated surfaces without explicit approval.",
+    "Return a patch plan, diff preview, risk notes, and verification commands."
   ].join(" ");
 
   const reply = [
-    "HUD FIX HANDOFF",
+    "ARCHITECTURE GUIDE HANDOFF",
     "",
-    "I will stop repeating the broad repo review and treat this as a scoped mobile navigation task.",
+    `I will treat this as scoped architecture work for ${projectName}, not another broad repo review.`,
     "",
-    "Highest-priority scope:",
-    "1. Map/HUD shell: reduce visual clutter around the active navigation state.",
-    "2. Turn card: make next maneuver, distance, and secondary instruction easier to scan.",
-    "3. Lane guidance: keep it visible only when meaningful, with clearer empty/unknown states.",
-    "4. ETA/status strip: separate live trip truth from debug/developer details.",
-    "5. Verification: run mobile-focused lint/type checks or at least component-level static checks after patch proposal.",
+    `Best path: ${focus.label}`,
+    focus.guidance,
+    "",
+    "How BootRise will move:",
+    "1. Confirm the smallest valuable outcome for the user.",
+    "2. Lock the impacted files and protect forbidden zones.",
+    "3. Propose or run the controlled Fix pipeline only after approval or clear fix wording.",
+    "4. Verify with the most local checks for the touched app area.",
+    "5. Keep the chat output concise: plan, files, diff, risks, next action.",
     "",
     "Likely files:",
-    ...targets.slice(0, 10).map((path) => `- ${path}`),
+    ...(targetList.length ? targetList.map((path) => `- ${path}`) : ["- No exact files selected yet; BootRise will ask for scope before editing."]),
+    "",
+    "Recommended build cases:",
+    ...focus.buildCases.map((item) => `- ${item}`),
     "",
     input.shouldAutoRun
-      ? "I’m starting the controlled Fix pipeline now because your request asks to fix/update the HUD."
-      : "I prepared the scoped Fix request. Use the action below to run the controlled Fix pipeline when you approve it."
+      ? "I am starting the controlled Fix pipeline now because your wording clearly asks BootRise to make the change."
+      : "I prepared the scoped Fix request. Use the action below when you approve BootRise to work on the files."
   ].join("\n");
 
   return {
@@ -685,20 +704,20 @@ function buildNavigationHudHandoff(input: {
     discoveryQuestions: [],
     featureAdvice: [],
     suggestedActions: input.shouldAutoRun
-      ? ["Review proposed HUD patches", "Open Fix panel", "Run sandbox verify after approval"]
-      : ["Approve and run HUD fix", "Open Fix panel", "Switch to Deep for more reasoning"],
+      ? ["Review proposed patches", "Open Fix panel", "Run sandbox verify after approval"]
+      : ["Approve and run scoped fix", "Open Fix panel", "Switch to Deep for more reasoning"],
     thinkingSteps: [
       {
         id: "intent",
-        label: "Detect HUD fix intent",
+        label: "Detect project work intent",
         status: "done" as const,
         detail: input.message.slice(0, 90)
       },
       {
         id: "scope",
-        label: "Lock mobile navigation scope",
+        label: "Pick architecture focus",
         status: "done" as const,
-        detail: targets.slice(0, 4).join(", ")
+        detail: focus.label
       },
       {
         id: "handoff",
@@ -710,7 +729,7 @@ function buildNavigationHudHandoff(input: {
     fileActivity: targets.slice(0, 12).map((path) => ({
       path,
       status: "planned" as const,
-      detail: "HUD/navigation fix candidate"
+      detail: `${focus.label} candidate`
     })),
     fixRequest,
     triggerFix: input.shouldAutoRun,
@@ -718,27 +737,169 @@ function buildNavigationHudHandoff(input: {
   };
 }
 
-function selectHudTargetFiles(files: LoadedFileSnippet[]): string[] {
-  const preferred = [
-    "app/mobile/src/screens/MapScreen.tsx",
-    "app/mobile/src/components/navigation/TurnCard.tsx",
-    "app/mobile/src/components/navigation/TurnInstructionCard.tsx",
-    "app/mobile/src/components/navigation/LaneGuidance.tsx",
-    "app/mobile/src/components/navigation/LaneGuidanceBar.tsx",
-    "app/mobile/src/components/navigation/NavigationStatusStrip.tsx",
-    "app/mobile/src/components/navigation/SpeedIndicator.tsx",
-    "app/mobile/src/components/navigation/ManeuverIcon.tsx",
-    "app/mobile/src/navigation/navBannerFromStep.ts",
-    "app/mobile/src/navigation/navStepsFromDirections.ts"
-  ];
+type ArchitectureFocus = {
+  label: string;
+  area: RepoArea | "cross-app";
+  query: string;
+  guidance: string;
+  buildCases: string[];
+  preferredPaths: string[];
+};
+
+function inferArchitectureFocus(message: string, files: LoadedFileSnippet[]): ArchitectureFocus {
+  const n = message.toLowerCase();
+  const matches = ARCHITECTURE_FOCUSES.find((focus) => focus.patterns.some((pattern) => pattern.test(n)));
+  if (matches) return matches;
+
+  const selected = selectRelevantFiles(message, files, 10);
+  const areaCounts = selected.reduce<Record<RepoArea, number>>((acc, file) => {
+    const area = classifyRepoPath(file.path);
+    acc[area] = (acc[area] ?? 0) + 1;
+    return acc;
+  }, {} as Record<RepoArea, number>);
+  const topArea = (Object.entries(areaCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as RepoArea | undefined) ?? "other";
+  return AREA_FALLBACK_FOCUSES[topArea] ?? AREA_FALLBACK_FOCUSES.other;
+}
+
+function selectWorkTargetFiles(message: string, files: LoadedFileSnippet[], focus: ArchitectureFocus): string[] {
   const byPath = new Set(files.map((f) => f.path));
-  const matched = preferred.filter((path) => byPath.has(path));
+  const matched = focus.preferredPaths.filter((path) => byPath.has(path));
   if (matched.length >= 4) return matched;
-  const fallback = selectRelevantFiles("navigation hud turn card lane guidance eta strip map screen", files, 12).map(
-    (f) => f.path
-  );
+  const fallback = selectRelevantFiles(`${message} ${focus.query}`, files, 12).map((f) => f.path);
   return Array.from(new Set([...matched, ...fallback]));
 }
+
+const ARCHITECTURE_FOCUSES: Array<ArchitectureFocus & { patterns: RegExp[] }> = [
+  {
+    label: "Mobile navigation and map experience",
+    area: "mobile",
+    patterns: [/\b(hud|navigation|nav hud|turn card|lane guidance|maneuver|eta strip|mapbox|route|reroute|driving mode)\b/],
+    query: "mobile navigation hud map screen route eta lane guidance turn card",
+    guidance: "Prioritize driver safety, glanceability, route truth, and Mapbox/native constraints before visual polish.",
+    buildCases: [
+      "Fix active trip HUD readability before adding new map features.",
+      "Separate debug/developer state from driver-facing navigation state.",
+      "Use narrow mobile checks because navigation touches many shared components."
+    ],
+    preferredPaths: [
+      "app/mobile/src/screens/MapScreen.tsx",
+      "app/mobile/src/components/navigation/TurnCard.tsx",
+      "app/mobile/src/components/navigation/TurnInstructionCard.tsx",
+      "app/mobile/src/components/navigation/LaneGuidance.tsx",
+      "app/mobile/src/components/navigation/LaneGuidanceBar.tsx",
+      "app/mobile/src/components/navigation/NavigationStatusStrip.tsx",
+      "app/mobile/src/navigation/navBannerFromStep.ts"
+    ]
+  },
+  {
+    label: "Backend API and data ownership",
+    area: "backend",
+    patterns: [/\b(backend|api|fastapi|endpoint|route|admin route|server|database|db|ownership|rls)\b/],
+    query: "backend api route auth ownership service tests",
+    guidance: "Start with route ownership, auth behavior, response shape, and rollback risk before changing business logic.",
+    buildCases: [
+      "Add or tighten route-level auth and smoke coverage around high-risk endpoints.",
+      "Keep schema and migration work separate unless the user explicitly approves it.",
+      "Verify with focused backend tests before broader app checks."
+    ],
+    preferredPaths: [
+      "app/backend/main.py",
+      "app/backend/middleware/auth.py",
+      "app/backend/routes/admin.py",
+      "app/backend/routes/admin_metrics.py",
+      "app/backend/routes/navigation.py",
+      "app/backend/routes/places.py"
+    ]
+  },
+  {
+    label: "Frontend driver portal",
+    area: "frontend",
+    patterns: [/\b(frontend|web|driver portal|driver app|vite|dashboard|landing|react web)\b/],
+    query: "frontend driver app portal react components",
+    guidance: "Align web behavior with the mobile product surface while keeping shared concepts consistent.",
+    buildCases: [
+      "Consolidate duplicated product affordances across web and mobile.",
+      "Improve one user flow at a time before redesigning whole pages.",
+      "Run frontend build or lint after UI changes."
+    ],
+    preferredPaths: [
+      "app/frontend/src/App.jsx",
+      "app/frontend/src/pages/DriverApp/DriverApp.jsx",
+      "app/frontend/src/pages/DriverApp/components/BadgesGrid.tsx",
+      "app/frontend/src/pages/DriverApp/components/CarOnboarding.tsx"
+    ]
+  },
+  {
+    label: "Security, auth, and payments",
+    area: "backend",
+    patterns: [/\b(security|auth|login|jwt|payment|stripe|webhook|secret|admin|billing)\b/],
+    query: "security auth payment webhook admin middleware tests",
+    guidance: "Treat this as expanded-approval work: prove ownership, secret handling, and rollback before editing.",
+    buildCases: [
+      "Review findings first, then patch the smallest exploitable issue.",
+      "Avoid changing env, migrations, or payment behavior without explicit approval.",
+      "Run security and backend auth tests after any patch."
+    ],
+    preferredPaths: [
+      "app/backend/middleware/auth.py",
+      "app/backend/routes/admin.py",
+      "app/backend/routes/auth.py",
+      "app/backend/routes/stripe.py",
+      "app/backend/webhooks.py"
+    ]
+  },
+  {
+    label: "Verification and deployment readiness",
+    area: "tests",
+    patterns: [/\b(test|tests|ci|build|deploy|verification|sandbox|safe to pr|safe to deploy|eas|release)\b/],
+    query: "tests ci build deploy verification package workflow",
+    guidance: "Map checks to touched surfaces instead of relying on one root command for a monorepo.",
+    buildCases: [
+      "Add per-app verification commands for backend, frontend, and mobile.",
+      "Make Safe to PR reflect actual commands and known skipped checks.",
+      "Keep release or EAS changes behind the existing wrapper rules."
+    ],
+    preferredPaths: [
+      ".github/workflows/eas-update.yml",
+      ".github/workflows/loadtest-k6.yml",
+      "app/backend/pytest.ini",
+      "app/frontend/package.json",
+      "app/mobile/package.json"
+    ]
+  }
+];
+
+const AREA_FALLBACK_FOCUSES: Record<RepoArea, ArchitectureFocus> = {
+  mobile: ARCHITECTURE_FOCUSES[0],
+  backend: ARCHITECTURE_FOCUSES[1],
+  frontend: ARCHITECTURE_FOCUSES[2],
+  tests: ARCHITECTURE_FOCUSES[4],
+  docs: {
+    label: "Project brain and durable architecture guidance",
+    area: "docs",
+    query: "docs runbook architecture agents project brain",
+    guidance: "Turn durable architecture decisions into reusable project guidance so BootRise does not rediscover them every turn.",
+    buildCases: [
+      "Promote stable runbook rules into project memory.",
+      "Keep generated planning separate from source documentation.",
+      "Use docs to guide future fix scope, not to bypass patch review."
+    ],
+    preferredPaths: ["AGENTS.md", "README.md", "app/backend/README.md", "app/docs/LAUNCH_READINESS_RUNBOOK.md"]
+  },
+  config: ARCHITECTURE_FOCUSES[4],
+  other: {
+    label: "Cross-app architecture planning",
+    area: "cross-app",
+    query: "architecture product workflow source files",
+    guidance: "Start with the smallest product outcome, then let Project Brain choose files by module and blast radius.",
+    buildCases: [
+      "Ask one clarifying question if the requested outcome is not testable.",
+      "Prefer a scoped Fix run over a broad rewrite.",
+      "Use Project Brain and review findings to recommend the next highest-value build step."
+    ],
+    preferredPaths: ["AGENTS.md", "README.md"]
+  }
+};
 
 function runFastRepoReview(input: {
   message: string;

@@ -873,7 +873,12 @@ export function UserWorkspace() {
       void importFromGithub();
       return;
     }
-    if (lower.includes("approve and run hud fix") || lower.includes("review proposed hud patches")) {
+    if (
+      lower.includes("approve and run hud fix") ||
+      lower.includes("approve and run scoped fix") ||
+      lower.includes("review proposed hud patches") ||
+      lower.includes("review proposed patches")
+    ) {
       setContextTab("fix");
       setActiveStep("fix");
       void runFixReport(fixRequest);
