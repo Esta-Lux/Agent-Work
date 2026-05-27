@@ -5,6 +5,7 @@ import { classifyTaskIntent } from "@/lib/ai/task-intent";
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 /** Stronger default for code review, planning, and multi-file reasoning (NVIDIA API catalog). */
 const DEFAULT_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5";
+const DEFAULT_TIMEOUT_MS = 45_000;
 
 interface PlannerJson {
   interpretedGoal?: string;
@@ -125,20 +126,34 @@ async function callNvidiaChat({
   const key = process.env.NVIDIA_API_KEY?.trim();
   if (!key) throw new Error("NVIDIA_API_KEY is not configured.");
 
-  const response = await fetch(NVIDIA_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: getNvidiaModel(),
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.2,
-      top_p: 0.9
-    })
-  });
+  const controller = new AbortController();
+  const timeoutMs = getLlmTimeoutMs();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(NVIDIA_CHAT_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: getNvidiaModel(),
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.2,
+        top_p: 0.9
+      })
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`BootRise engine timed out after ${Math.round(timeoutMs / 1000)}s. Try Deep/Premium later or narrow the request.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const data = (await response.json().catch(() => null)) as {
     error?: { message?: string };
@@ -159,6 +174,11 @@ async function callNvidiaChat({
     "";
   if (!text) throw new Error("NVIDIA returned no message content.");
   return text;
+}
+
+function getLlmTimeoutMs(): number {
+  const value = Number(process.env.BOOTRISE_LLM_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
 }
 
 function buildPlannerPrompt(request: string, repo: RepoIntelligenceSnapshot): string {

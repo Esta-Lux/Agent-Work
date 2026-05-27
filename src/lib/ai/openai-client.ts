@@ -4,6 +4,7 @@ import { classifyTaskIntent } from "@/lib/ai/task-intent";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_TIMEOUT_MS = 45_000;
 
 export interface OpenAIPlannerResult {
   plan: ChangePlan;
@@ -152,18 +153,32 @@ async function callOpenAIText({ prompt, maxOutputTokens }: { prompt: string; max
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
-  const response = await fetch(OPENAI_RESPONSES_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: getOpenAIModel(),
-      input: prompt,
-      max_output_tokens: maxOutputTokens
-    })
-  });
+  const controller = new AbortController();
+  const timeoutMs = getLlmTimeoutMs();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: getOpenAIModel(),
+        input: prompt,
+        max_output_tokens: maxOutputTokens
+      })
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`ChatGPT timed out after ${Math.round(timeoutMs / 1000)}s. Try a narrower request or switch engines.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const data = await response.json().catch(() => null);
 
@@ -178,6 +193,11 @@ async function callOpenAIText({ prompt, maxOutputTokens }: { prompt: string; max
   }
 
   return outputText.trim();
+}
+
+function getLlmTimeoutMs(): number {
+  const value = Number(process.env.BOOTRISE_LLM_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
 }
 
 function extractOutputText(data: unknown): string {

@@ -104,6 +104,7 @@ interface WorkspaceIssue {
 
 const EMPTY_FILES = "[]";
 const FIX_REQUEST_PLACEHOLDER = /^Describe the change you want/i;
+const FIX_REQUEST_TIMEOUT_MS = 95_000;
 
 const DEFAULT_BRIEF: ProjectBrief = {
   productName: "",
@@ -875,13 +876,16 @@ export function UserWorkspace() {
     }
     if (
       lower.includes("approve and run hud fix") ||
-      lower.includes("approve and run scoped fix") ||
-      lower.includes("review proposed hud patches") ||
-      lower.includes("review proposed patches")
+      lower.includes("approve and run scoped fix")
     ) {
       setContextTab("fix");
       setActiveStep("fix");
       void runFixReport(fixRequest);
+      return;
+    }
+    if (lower.includes("review proposed hud patches") || lower.includes("review proposed patches")) {
+      setContextTab("fix");
+      setActiveStep("fix");
       return;
     }
     if (lower.includes("fix and report") || lower.includes("run fix")) {
@@ -1015,6 +1019,15 @@ export function UserWorkspace() {
     );
   }
 
+  function createTimeoutSignal(ms: number): { signal: AbortSignal; clear: () => void } {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), ms);
+    return {
+      signal: controller.signal,
+      clear: () => window.clearTimeout(timeout)
+    };
+  }
+
   async function runFixReport(requestOverride?: string) {
     if (parsedFiles.length === 0) {
       raiseIssue({ scope: "fix", message: "Import or paste code before running Fix and report.", actionLabel: "Open Connect", actionTab: "connect" });
@@ -1033,16 +1046,32 @@ export function UserWorkspace() {
     setActivityDetail("Server-side scope lock, patch guard, and diff preview");
 
     let pipelineIndex = 0;
+    const startedAt = Date.now();
     setFixPipelineProgress(0);
     const pipelineTimer = window.setInterval(() => {
       pipelineIndex = Math.min(pipelineIndex + 1, FIX_PIPELINE_STEPS.length - 1);
+      if (pipelineIndex >= FIX_PIPELINE_STEPS.length - 1 && Date.now() - startedAt > 18_000) {
+        setLiveThinking(
+          FIX_PIPELINE_STEPS.map((step, index) => ({
+            ...step,
+            status: index < FIX_PIPELINE_STEPS.length - 1 ? ("done" as const) : ("active" as const),
+            detail:
+              index === FIX_PIPELINE_STEPS.length - 1
+                ? "Waiting on server response. BootRise will time out instead of staying stale."
+                : step.detail
+          }))
+        );
+        return;
+      }
       setFixPipelineProgress(pipelineIndex);
     }, 700);
 
+    const timeoutSignal = createTimeoutSignal(FIX_REQUEST_TIMEOUT_MS);
     try {
       const files = parseFiles();
       const response = await workspaceFetch("/api/workspace/fix", {
         method: "POST",
+        signal: timeoutSignal.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request,
@@ -1095,10 +1124,21 @@ export function UserWorkspace() {
         }
       ]);
     } catch (caught) {
-      raiseIssue({ scope: "fix", message: caught instanceof Error ? caught.message : "Fix workflow failed.", actionLabel: "Review Fix", actionTab: "fix" });
+      const timedOut = timeoutSignal.signal.aborted;
+      raiseIssue({
+        scope: "fix",
+        message: timedOut
+          ? "Fix workflow timed out while waiting for the AI engine. Narrow the request or switch engines; BootRise cleared the stale pipeline state."
+          : caught instanceof Error
+            ? caught.message
+            : "Fix workflow failed.",
+        actionLabel: "Review Fix",
+        actionTab: "fix"
+      });
       setStatus("Blocked");
     } finally {
       window.clearInterval(pipelineTimer);
+      timeoutSignal.clear();
       setLiveThinking([]);
       setOperationBusy(false);
       setActivityDetail(null);
@@ -1524,7 +1564,7 @@ export function UserWorkspace() {
             ))}
           </div>
 
-          <div className="border-t border-line bg-cloud/50 p-4">
+          <div className="border-t border-line bg-gradient-to-b from-white via-cloud/40 to-signal/5 p-4">
             <AgentLiveBar
               busy={busy}
               status={operationBusy ? status : chatBusy ? "Thinking" : status}
@@ -1533,7 +1573,7 @@ export function UserWorkspace() {
               activeFile={liveActiveFile}
               totalFiles={loadedFilePaths.length}
             />
-            <div className="mb-2 mt-3 flex flex-wrap gap-2">
+            <div className="mb-3 mt-3 flex flex-wrap gap-2">
               {[
                 { label: "What can you do?", msg: "What can you do?" },
                 { label: "List project issues", msg: REVIEW_ISSUES_PROMPT },
@@ -1546,7 +1586,7 @@ export function UserWorkspace() {
                   key={q.label}
                   type="button"
                   disabled={chatBusy}
-                  className={`${secondaryBtn} rounded-full border-signal/20 bg-white px-3 py-1 text-xs text-ink`}
+                  className="rounded-full border border-signal/15 bg-white/85 px-3 py-1.5 text-xs font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-signal/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
                     if ("action" in q && q.action === "sandbox") {
                       void runSandboxVerify();
@@ -1572,36 +1612,51 @@ export function UserWorkspace() {
                 }}
               />
             ) : null}
-            <div className="flex gap-2">
-              <textarea
-                className="min-h-[44px] flex-1 resize-none rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink"
-                placeholder="Ask BootRise… paste a GitHub URL, describe a fix, or plan your next milestone"
-                rows={2}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
+            <div className="rounded-[1.35rem] border border-signal/15 bg-white p-2 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white">
+              <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-signal">Ask BootRise</p>
+                  <p className="text-xs text-steel">Architecture guide, scoped fixes, review, and verification.</p>
+                </div>
+                <span className="rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                  {chatBusy ? "Working" : "Ready"}
+                </span>
+              </div>
+              <div className="flex gap-2 rounded-[1rem] border border-line bg-cloud/70 p-2 focus-within:border-signal/35 focus-within:bg-white focus-within:ring-4 focus-within:ring-signal/10">
+                <textarea
+                  className="min-h-[58px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm leading-6 text-ink outline-none placeholder:text-steel/70"
+                  placeholder="Describe the outcome: fix navigation HUD, harden backend auth, plan deployment checks..."
+                  rows={2}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (chatInput.trim()) {
+                        void sendChat(chatInput.trim());
+                        setChatInput("");
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={chatBusy || !chatInput.trim()}
+                  className="self-end rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-ink/20 transition hover:-translate-y-0.5 hover:bg-signal disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                  onClick={() => {
                     if (chatInput.trim()) {
                       void sendChat(chatInput.trim());
                       setChatInput("");
                     }
-                  }
-                }}
-              />
-              <button
-                type="button"
-                disabled={chatBusy}
-                className={`${primaryBtn} self-end px-5`}
-                onClick={() => {
-                  if (chatInput.trim()) {
-                    void sendChat(chatInput.trim());
-                    setChatInput("");
-                  }
-                }}
-              >
-                {chatBusy ? "Thinking…" : "Send"}
-              </button>
+                  }}
+                >
+                  {chatBusy ? "Thinking" : "Send"}
+                </button>
+              </div>
+              <div className="flex items-center justify-between px-2 pt-2 text-[11px] text-steel">
+                <span>Enter sends · Shift Enter adds a line</span>
+                <span>{chatInput.length > 0 ? `${chatInput.length} chars` : "Scope first, then Fix"}</span>
+              </div>
             </div>
           </div>
         </div>
