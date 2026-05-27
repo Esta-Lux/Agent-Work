@@ -15,14 +15,19 @@ export function buildAgentCoordination(input: {
   regressionGuard: RegressionGuardResult;
   stopReason: string | null;
   patchesCount: number;
+  securityBlockerCount?: number;
+  graphSummary?: string;
+  reviewFindingCount?: number;
 }): AgentCoordinationSummary {
   const decisions: AgentDecision[] = [
     leadArchitectDecision(input.contextGate, input.scopeContract),
+    graphPlannerDecision(input.graphSummary),
+    reviewerDecision(input.reviewFindingCount),
     builderDecision(input.scopeContract, input.patchGuard, input.patchesCount),
-    securityDecision(input.contextGate, input.scopeContract, input.patchGuard),
+    securityDecision(input.contextGate, input.scopeContract, input.patchGuard, input.securityBlockerCount),
     qaDecision(input.regressionGuard),
     runtimeDecision(input.regressionGuard),
-    deploymentDecision(input.stopReason, input.patchGuard, input.regressionGuard)
+    deploymentDecision(input.stopReason, input.patchGuard, input.regressionGuard, input.securityBlockerCount)
   ];
   const blockers = decisions.filter((d) => d.blocksPatch).map((d) => d.finding);
   const userApprovalRequired = [
@@ -45,7 +50,10 @@ export function buildAgentCoordination(input: {
     canPatch,
     canApply,
     safeToPr: canApply,
-    safeToDeploy: canApply && input.contextGate.sensitiveAreas.length === 0,
+    safeToDeploy:
+      canApply &&
+      input.contextGate.sensitiveAreas.length === 0 &&
+      (input.securityBlockerCount ?? 0) === 0,
     userApprovalRequired: Array.from(new Set(userApprovalRequired)),
     blockers,
     decisions
@@ -89,10 +97,35 @@ function builderDecision(
   };
 }
 
+function graphPlannerDecision(graphSummary?: string): AgentDecision {
+  return {
+    agent: "graph_planner",
+    severity: "info",
+    blocksPatch: false,
+    finding: graphSummary ?? "Repo graph not built yet — import files to enable Brain v2 context expansion.",
+    recommendedFix: "Use Architecture tab to inspect module hubs before large cross-cutting fixes."
+  };
+}
+
+function reviewerDecision(reviewFindingCount?: number): AgentDecision {
+  const count = reviewFindingCount ?? 0;
+  return {
+    agent: "reviewer",
+    severity: count > 3 ? "warning" : "info",
+    blocksPatch: false,
+    finding:
+      count > 0
+        ? `RepoReviewer-style pass produced ${count} prioritized finding(s) — address highest priority before wide patches.`
+        : "No structured review findings yet — run chat review or Security scan.",
+    recommendedFix: "Pick one P1 finding and run Fix with a file-specific scope."
+  };
+}
+
 function securityDecision(
   contextGate: ContextGateDecision,
   scopeContract: ScopeContract,
-  patchGuard: PatchGuardResult
+  patchGuard: PatchGuardResult,
+  securityBlockerCount?: number
 ): AgentDecision {
   const forbidden = patchGuard.forbiddenTouched.length > 0;
   const riskyOutOfScope = patchGuard.outOfScopeFiles.filter((path) =>
@@ -107,9 +140,11 @@ function securityDecision(
       ? `Forbidden files touched: ${patchGuard.forbiddenTouched.join(", ")}.`
       : riskyOutOfScope.length > 0
         ? `Sensitive out-of-scope files touched: ${riskyOutOfScope.join(", ")}.`
-      : sensitive
-        ? `Sensitive scope detected: ${Array.from(new Set([...contextGate.sensitiveAreas, ...scopeContract.requiresApprovalFor])).join(", ")}.`
-        : "No sensitive auth, billing, env, or migration touch detected.",
+        : (securityBlockerCount ?? 0) > 0
+          ? `Security Center reports ${securityBlockerCount} deployment blocker(s) (Semgrep + BootRise rules).`
+          : sensitive
+            ? `Sensitive scope detected: ${Array.from(new Set([...contextGate.sensitiveAreas, ...scopeContract.requiresApprovalFor])).join(", ")}.`
+            : "No sensitive auth, billing, env, or migration touch detected.",
     recommendedFix: forbidden
       ? "Remove forbidden edits or ask the user to explicitly expand scope."
       : "Resolve identity, ownership, and secrets server-side before approval."
@@ -143,9 +178,11 @@ function runtimeDecision(regressionGuard: RegressionGuardResult): AgentDecision 
 function deploymentDecision(
   stopReason: string | null,
   patchGuard: PatchGuardResult,
-  regressionGuard: RegressionGuardResult
+  regressionGuard: RegressionGuardResult,
+  securityBlockerCount?: number
 ): AgentDecision {
-  const blocked = Boolean(stopReason) || patchGuard.blocked || !regressionGuard.passed;
+  const blocked =
+    Boolean(stopReason) || patchGuard.blocked || !regressionGuard.passed || (securityBlockerCount ?? 0) > 0;
   return {
     agent: "deployment",
     severity: blocked ? "block" : "info",

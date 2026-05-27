@@ -49,6 +49,10 @@ OPENAI_API_KEY=sk-...
 
 Without either key, **chat still works** in offline mode (deterministic answers). Full AI code review and enhanced replies need a key.
 
+## GitHub import / push
+
+See **[docs/GITHUB_APP.md](./GITHUB_APP.md)** for `GITHUB_APP_CLIENT_ID`, private key, and installation setup. Check `GET /api/github/status` after restart.
+
 ## Admin routes in dev
 
 Add your dev email to admin allowlist:

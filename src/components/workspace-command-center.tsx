@@ -4,6 +4,7 @@ import { CommandCard } from "@/components/ui/command-card";
 import { ModelModePill } from "@/components/ui/model-mode-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/button";
+import type { DeploymentReadinessResult } from "@/lib/security/types";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export function WorkspaceCommandCenter({
@@ -12,6 +13,8 @@ export function WorkspaceCommandCenter({
   creditsRemaining,
   modelMode,
   securityBlockers,
+  deployReadinessStatus,
+  liveSafeToDeploy,
   brainSummary,
   nextAction
 }: {
@@ -20,6 +23,8 @@ export function WorkspaceCommandCenter({
   creditsRemaining: number | null;
   modelMode: string;
   securityBlockers: number;
+  deployReadinessStatus?: DeploymentReadinessResult["status"] | null;
+  liveSafeToDeploy?: boolean;
   brainSummary?: { files: number; modules: number; stale: number } | null;
   nextAction: {
     label: string;
@@ -31,6 +36,20 @@ export function WorkspaceCommandCenter({
   const control = report?.controlLayer;
   const safeToPr = report?.safeToPr?.status === "yes";
   const scopeLocked = Boolean(control?.scopeContract);
+  const safeToDeploy = control
+    ? control.agentCoordination.safeToDeploy
+    : deployReadinessStatus != null || securityBlockers > 0
+      ? Boolean(liveSafeToDeploy) && deployReadinessStatus !== "blocked" && securityBlockers === 0
+      : false;
+  const deployLabel = control
+    ? safeToDeploy
+      ? "Candidate"
+      : "Blocked"
+    : deployReadinessStatus != null || securityBlockers > 0
+      ? safeToDeploy
+        ? "Candidate"
+        : "Blocked"
+      : "Run scan";
 
   return (
     <div className="mb-6 rounded-2xl border border-line bg-gradient-to-br from-white via-white to-signal/5 p-6 shadow-sm">
@@ -74,7 +93,12 @@ export function WorkspaceCommandCenter({
         />
         <CommandCard
           title="Safe to deploy"
-          value={control?.agentCoordination.safeToDeploy ? "Candidate" : "Blocked"}
+          value={deployLabel}
+          hint={
+            deployReadinessStatus && !control
+              ? deployReadinessStatus.replace(/_/g, " ")
+              : undefined
+          }
         />
         <CommandCard
           title="Credits"

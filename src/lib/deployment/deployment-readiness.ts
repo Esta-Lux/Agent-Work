@@ -1,10 +1,17 @@
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
-import { runSecurityScan } from "@/lib/security/security-scan";
+import { runDeterministicSecurityScan } from "@/lib/security/security-scan";
+import { runSemgrepScan } from "@/lib/security/semgrep-runner";
 import { computeSecurityScore } from "@/lib/security/security-score";
 import type { DeploymentReadinessResult } from "@/lib/security/types";
+import { hasGithubApiCredentials } from "@/lib/github/github-config";
 
 export function evaluateDeploymentReadiness(files: SourceFileInput[]): DeploymentReadinessResult {
-  const findings = runSecurityScan(files);
+  const semgrep = runSemgrepScan(files);
+  const byId = new Map<string, ReturnType<typeof runDeterministicSecurityScan>[number]>();
+  for (const f of [...runDeterministicSecurityScan(files), ...semgrep.findings]) {
+    byId.set(f.id, f);
+  }
+  const findings = [...byId.values()];
   const critical = findings.filter((f) => f.severity === "critical");
   const high = findings.filter((f) => f.severity === "high");
   const blockers = findings.filter((f) => f.blocksDeployment || f.severity === "critical");
@@ -28,8 +35,8 @@ export function evaluateDeploymentReadiness(files: SourceFileInput[]): Deploymen
   if (!process.env.SUPABASE_URL?.trim()) {
     missingProductionItems.push("SUPABASE_URL in deployment environment");
   }
-  if (!process.env.GITHUB_TOKEN?.trim()) {
-    missingProductionItems.push("GITHUB_TOKEN for automated draft PRs (optional)");
+  if (!hasGithubApiCredentials()) {
+    missingProductionItems.push("GitHub App (GITHUB_APP_ID + private key) or GITHUB_TOKEN for draft PRs (optional)");
   }
 
   const score = computeSecurityScore(findings);

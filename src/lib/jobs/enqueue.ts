@@ -2,7 +2,8 @@ import type { JobType } from "@/lib/jobs/job-types";
 import { saveJob, updateJobStatus } from "@/lib/jobs/status-store";
 import { indexProjectFiles } from "@/lib/project-brain/file-indexer";
 import { buildModuleIndex } from "@/lib/project-brain/module-indexer";
-import { runSecurityScan } from "@/lib/security/security-scan";
+import { runDeterministicSecurityScan } from "@/lib/security/security-scan";
+import { runSemgrepScan } from "@/lib/security/semgrep-runner";
 import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { chargeCredits } from "@/lib/usage/credit-store";
@@ -64,7 +65,11 @@ async function runJobAsync(
       });
     }
     if (input.type === "security.scan") {
-      runSecurityScan(files);
+      const byId = new Map<string, ReturnType<typeof runDeterministicSecurityScan>[number]>();
+      for (const f of [...runDeterministicSecurityScan(files), ...runSemgrepScan(files).findings]) {
+        byId.set(f.id, f);
+      }
+      void [...byId.values()];
       const scanAction = "basic_security_scan";
       void chargeCredits({
         orgId: input.orgId,

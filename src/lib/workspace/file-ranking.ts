@@ -118,6 +118,16 @@ function isHudOrNavigationReview(message: string): boolean {
   return /\b(hud|heads-up|navigat|turn card|map screen|while driving|driving mode|eta strip|maneuver)\b/.test(n);
 }
 
+export function isRepoOverviewMessage(message: string): boolean {
+  const n = message.toLowerCase();
+  if (/\b(fix|implement|patch|refactor|broken)\b/.test(n)) return false;
+  return (
+    /\b(what is this repo|what's this repo|what is this (codebase|project)|tell me about (this |the )?repo|describe (this |the )?repo|about this (repo|codebase)|overview of)\b/.test(
+      n
+    ) || (/\bgithub\.com\//.test(n) && /\b(what|about|describe|explain)\b/.test(n))
+  );
+}
+
 export function classifyRepoPath(path: string): RepoArea {
   const p = path.toLowerCase().replace(/\\/g, "/");
   if (isTestPath(p)) return "tests";
@@ -144,7 +154,7 @@ export function isTestPath(path: string): boolean {
 function scoreFile(
   path: string,
   message: string,
-  options: { wantsTests: boolean; excludeTests: boolean; broadReview: boolean; hudNav: boolean }
+  options: { wantsTests: boolean; excludeTests: boolean; broadReview: boolean; hudNav: boolean; overview?: boolean }
 ): number {
   const pathLower = path.toLowerCase();
   const area = classifyRepoPath(path);
@@ -197,6 +207,14 @@ function scoreFile(
   if (pathLower.endsWith("agents.md")) score += 8;
   if (pathLower.endsWith("readme.md") && !pathLower.includes("node_modules")) score += 3;
 
+  if (options.overview) {
+    if (area === "docs") score += 40;
+    if (/readme|agents\.md|prd|architecture|application_overview|getting_started/i.test(pathLower)) score += 50;
+    if (pathLower.endsWith("package.json") || pathLower.endsWith("app.json")) score += 25;
+    if (area === "mobile" && pathLower.includes("mapscreen")) score -= 15;
+    if (pathLower.includes("photoreportmarkers") || pathLower.includes("incidentreport")) score -= 20;
+  }
+
   return score;
 }
 
@@ -204,11 +222,13 @@ type ScoredFile = { file: LoadedFileSnippet; score: number; area: RepoArea };
 
 function rankFiles(message: string, files: LoadedFileSnippet[]): ScoredFile[] {
   const n = message.toLowerCase();
+  const overview = isRepoOverviewMessage(n);
   const options = {
     wantsTests: wantsTestContext(n),
-    excludeTests: excludesTests(n),
+    excludeTests: excludesTests(n) || overview,
     broadReview: isBroadCodebaseReview(n),
-    hudNav: isHudOrNavigationReview(n)
+    hudNav: isHudOrNavigationReview(n),
+    overview
   };
 
   return files
@@ -262,6 +282,19 @@ export function selectRelevantFiles(message: string, files: LoadedFileSnippet[],
   const hudNav = isHudOrNavigationReview(n);
   const broadReview = isBroadCodebaseReview(n);
   const excludeTests = excludesTests(n);
+  const overview = isRepoOverviewMessage(n);
+
+  if (overview) {
+    return pickWithQuotas(ranked, maxFiles, {
+      docs: Math.min(18, maxFiles - 6),
+      config: 6,
+      backend: 6,
+      mobile: 4,
+      frontend: 4,
+      tests: 0,
+      other: 2
+    });
+  }
 
   if (hudNav) {
     return pickWithQuotas(ranked, maxFiles, {

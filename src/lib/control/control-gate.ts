@@ -3,6 +3,7 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 import { buildScopeContract } from "@/lib/control/scope-contract";
 import { buildContextPlan } from "@/lib/control/context-governor";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
 import { runPatchGuard } from "@/lib/control/patch-guard";
 import { buildRepositoryMap } from "@/lib/control/repo-map";
 import { buildTokenWasteSummary, evaluateTokenBudget } from "@/lib/control/token-waste-guard";
@@ -13,6 +14,7 @@ import type { ControlLayerSummary } from "@/lib/control/types";
 import { recordControlEvent } from "@/lib/control/control-telemetry";
 import { evaluateContextGate } from "@/lib/control/context-gate";
 import { buildAgentCoordination } from "@/lib/control/agent-coordination";
+import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
 
 function estimateUsd(chars: number): number {
   const tokens = chars / 4;
@@ -29,6 +31,7 @@ export async function runControlGate(input: {
   orgId?: string;
   blastRadius?: string[];
   assumptionsApproved?: boolean;
+  reviewFindingCount?: number;
 }): Promise<ControlLayerSummary> {
   const scopeContract = buildScopeContract({
     request: input.request,
@@ -43,10 +46,12 @@ export async function runControlGate(input: {
     assumptionsApproved: input.assumptionsApproved
   });
 
+  const taskIntent = classifyTaskIntent(input.request);
   const contextPlan = await buildContextPlan(input.request, input.files, {
     projectId: input.projectId,
     repositoryId: input.repositoryId,
-    orgId: input.orgId
+    orgId: input.orgId,
+    taskIntent
   });
   const repositoryMap = buildRepositoryMap(input.files);
   const patchGuard = runPatchGuard({
@@ -100,13 +105,17 @@ export async function runControlGate(input: {
     stopReason = regressionGuard.summary;
   }
 
+  const deploymentReadiness = evaluateDeploymentReadiness(input.files);
   const agentCoordination = buildAgentCoordination({
     contextGate,
     scopeContract,
     patchGuard,
     regressionGuard,
     stopReason,
-    patchesCount: input.patches.length
+    patchesCount: input.patches.length,
+    graphSummary: contextPlan.repoGraphSummary,
+    securityBlockerCount: deploymentReadiness.blockers.length,
+    reviewFindingCount: input.reviewFindingCount
   });
 
   const canApprove =

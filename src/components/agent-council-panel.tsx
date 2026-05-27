@@ -1,8 +1,10 @@
-import type { ControlLayerSummary } from "@/lib/control/types";
+import type { AgentCoordinationSummary, ControlLayerSummary } from "@/lib/control/types";
 import { StatusPill } from "@/components/ui/status-pill";
 
 const AGENT_LABELS: Record<string, string> = {
   lead_architect: "Lead Architect",
+  graph_planner: "Graph Planner (Brain v2)",
+  reviewer: "Repo Reviewer",
   builder: "Builder Agent",
   security: "Security Agent",
   qa: "QA Agent",
@@ -10,16 +12,26 @@ const AGENT_LABELS: Record<string, string> = {
   deployment: "Deployment Agent"
 };
 
-export function AgentCouncilPanel({ control }: { control?: ControlLayerSummary }) {
-  if (!control) {
-    return <p className="text-sm text-steel">Run a fix to see the agent council coordination summary.</p>;
+export function AgentCouncilPanel({
+  control,
+  liveCoordination
+}: {
+  control?: ControlLayerSummary;
+  liveCoordination?: AgentCoordinationSummary;
+}) {
+  const coordination = control?.agentCoordination ?? liveCoordination;
+  if (!coordination) {
+    return <p className="text-sm text-steel">Import code, run Security scan or chat review, or run Fix to see agent council.</p>;
   }
 
-  const decisions = control.agentCoordination.decisions;
+  const decisions = coordination.decisions;
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-graphite">{control.agentCoordination.leadSummary}</p>
+      <p className="text-sm text-graphite">{coordination.leadSummary}</p>
+      {!control && liveCoordination ? (
+        <p className="text-xs text-steel">Live preview from Security Center and review findings — run Fix for patch-level gates.</p>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2">
         {decisions.map((d) => (
           <div key={d.agent} className="rounded-lg border border-line bg-white p-3">

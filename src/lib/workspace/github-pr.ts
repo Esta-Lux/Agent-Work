@@ -1,4 +1,5 @@
 import { parseGithubOwnerRepo } from "@/lib/workspace/github-inspector";
+import { resolveGithubApiToken } from "@/lib/github/github-api-auth";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export interface DraftPullRequestResult {
@@ -8,9 +9,13 @@ export interface DraftPullRequestResult {
   title: string;
 }
 
-function githubHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) throw new Error("GITHUB_TOKEN is required to open a draft PR. Add it to Agent-Work/.env.");
+async function requireGithubHeaders(): Promise<Record<string, string>> {
+  const token = await resolveGithubApiToken();
+  if (!token) {
+    throw new Error(
+      "GitHub credentials required for draft PRs. Set GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY, or GITHUB_TOKEN in .env.local."
+    );
+  }
   return {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
@@ -62,7 +67,7 @@ export async function createDraftPullRequest(input: {
   const parsed = parseGithubOwnerRepo(input.remoteUrl);
   if (!parsed) throw new Error("Invalid GitHub URL.");
 
-  const headers = githubHeaders();
+  const headers = await requireGithubHeaders();
   const owner = parsed.owner;
   const repo = parsed.repo;
 

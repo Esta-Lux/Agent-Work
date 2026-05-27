@@ -1,4 +1,6 @@
 import type { ChangePlan, RepoIntelligenceSnapshot, RiskLevel, VerificationKind } from "@/lib/types/core";
+import { isWorkIntent } from "@/lib/control/context-gate";
+import { isRepoOverviewQuestion } from "@/lib/workspace/repo-overview";
 
 export function createInitialChangePlan(request: string, repo: RepoIntelligenceSnapshot): ChangePlan {
   const impactedFiles = inferImpactedFiles(request, repo);
@@ -54,9 +56,10 @@ export function createInitialChangePlan(request: string, repo: RepoIntelligenceS
 }
 
 function interpretGoal(request: string): string {
-  return request.trim().length > 0
-    ? `Safely implement: ${request.trim()}`
-    : "Safely evolve the repository with an approved refactor.";
+  const trimmed = request.trim();
+  if (!trimmed) return "Understand the repository and recommend safe next steps.";
+  if (isRepoOverviewQuestion(trimmed) || !isWorkIntent(trimmed)) return trimmed;
+  return `Safely implement: ${trimmed}`;
 }
 
 function inferImpactedFiles(request: string, repo: RepoIntelligenceSnapshot): string[] {

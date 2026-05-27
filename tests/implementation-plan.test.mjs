@@ -7,7 +7,8 @@ describe("security scan", () => {
     const findings = runSecurityScan([
       {
         path: "src/components/app.tsx",
-        content: "const key = process.env.SUPABASE_SERVICE_ROLE_KEY"
+        content:
+          "import { createClient } from '@supabase/supabase-js';\nconst supabase = createClient(url, 'sb_secret_abcdefghijklmnopqrstuvwxyz');"
       }
     ]);
     assert.ok(findings.some((f) => f.severity === "critical"));

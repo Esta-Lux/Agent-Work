@@ -5,10 +5,13 @@ import { buildTokenWasteSummary, evaluateTokenBudget } from "@/lib/control/token
 import { buildContextPlan } from "@/lib/control/context-governor";
 import { evaluateContextGate, userApprovedAssumptions } from "@/lib/control/context-gate";
 import { buildAgentCoordination } from "@/lib/control/agent-coordination";
+import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
 import { createInitialChangePlan } from "@/lib/planning/planner";
 import { buildRepoIntelligenceSnapshot } from "@/lib/intelligence/repo-intelligence";
 import { getFailedAttemptCount, buildTaskKey } from "@/lib/control/task-session";
 import type { TaskContextPack } from "@/lib/control/types";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
+import { buildSeniorArchitectBrief } from "@/lib/ai/senior-architect";
 
 export async function buildTaskContextPack(input: {
   request: string;
@@ -18,9 +21,11 @@ export async function buildTaskContextPack(input: {
   repositoryId?: string;
   assumptionsApproved?: boolean;
   targetFiles?: string[];
+  reviewFindingCount?: number;
 }): Promise<TaskContextPack> {
   const repo = buildRepoIntelligenceSnapshot(input.files);
   const plan = createInitialChangePlan(input.request, repo);
+  const taskIntent = classifyTaskIntent(input.request);
   const assumptionsApproved =
     Boolean(input.assumptionsApproved) || userApprovedAssumptions(input.request);
 
@@ -34,7 +39,8 @@ export async function buildTaskContextPack(input: {
   const contextPlan = await buildContextPlan(input.request, input.files, {
     projectId: input.projectId,
     repositoryId: input.repositoryId,
-    orgId: input.orgId
+    orgId: input.orgId,
+    taskIntent
   });
 
   const scopeContract = buildScopeContract({
@@ -49,7 +55,15 @@ export async function buildTaskContextPack(input: {
   const tokenBudget = evaluateTokenBudget(contextPlan.estimatedChars);
 
   const brainSnapshot = await loadBrainSnapshot(input.orgId, input.projectId, input.request);
+  const architectBrief = buildSeniorArchitectBrief({
+    request: input.request,
+    taskIntent,
+    brainRules: brainSnapshot?.rules,
+    moduleNames: brainSnapshot?.moduleNames,
+    scopeLockMessage: scopeContract.scopeLockMessage
+  });
 
+  const deploymentReadiness = evaluateDeploymentReadiness(input.files);
   const agentCoordination = buildAgentCoordination({
     contextGate,
     scopeContract,
@@ -71,7 +85,10 @@ export async function buildTaskContextPack(input: {
       executedCommands: []
     },
     stopReason: null,
-    patchesCount: 0
+    patchesCount: 0,
+    graphSummary: contextPlan.repoGraphSummary,
+    securityBlockerCount: deploymentReadiness.blockers.length,
+    reviewFindingCount: input.reviewFindingCount
   });
 
   const taskKey = buildTaskKey(input.repositoryId ?? input.projectId, input.request);
@@ -112,7 +129,15 @@ export async function buildTaskContextPack(input: {
     brainSnapshot,
     canProceed,
     stopReason,
-    assumptionsApproved: contextGate.status === "proceed_with_assumptions"
+    assumptionsApproved: contextGate.status === "proceed_with_assumptions",
+    taskIntent: {
+      kind: taskIntent.kind,
+      depth: taskIntent.depth,
+      seniorArchitectMode: taskIntent.seniorArchitectMode,
+      summary: taskIntent.summary,
+      suggestedMode: taskIntent.suggestedMode
+    },
+    architectBrief
   };
 }
 
@@ -146,5 +171,6 @@ export function formatContextPackSummary(pack: TaskContextPack): string {
     pack.brainSnapshot && (pack.brainSnapshot.rules.length > 0 || pack.brainSnapshot.fileHints.length > 0)
       ? ` · Brain: ${pack.brainSnapshot.rules.length} rules, ${pack.brainSnapshot.fileHints.length} file hints`
       : "";
-  return `Context: deep ${deep}, reference ${ref}, excluded ${excl} of ${pack.contextPlan.totalFilesInCorpus}${brain}. Confidence ${Math.round(pack.contextGate.confidence * 100)}%.`;
+  const intent = pack.taskIntent ? ` · ${pack.taskIntent.summary}` : "";
+  return `Context: deep ${deep}, reference ${ref}, excluded ${excl} of ${pack.contextPlan.totalFilesInCorpus}${brain}${intent}. Confidence ${Math.round(pack.contextGate.confidence * 100)}%.`;
 }

@@ -19,6 +19,7 @@ import {
 } from "@/lib/workspace/pending-fix-store";
 import { buildPlainEnglishFromReport } from "@/lib/workspace/plain-english";
 import { generateRealPatches } from "@/lib/workspace/real-patches";
+import { isFixLoopV2Enabled, runIssuePatchLoop } from "@/lib/fix/issue-patch-loop";
 import { computeSafeToPr } from "@/lib/workspace/safe-to-pr";
 import { createPreviewSession } from "@/lib/infrastructure/control-plane";
 import { startDevPreview } from "@/lib/workspace/preview-dev-runner";
@@ -132,18 +133,40 @@ export async function createPendingFixPlan(
 
   let patches: ProposedPatch[] = [];
   let patchSource = "none";
+  let fixLoopMeta: WorkspaceFixReport["fixLoop"];
   if (contextGate.status === "proceed_with_assumptions" || assumptionsApproved) {
-    const generated = await generateRealPatches({
-      provider,
-      request,
-      files,
-      plan,
-      orgId,
-      projectId,
-      repositoryId
-    });
-    patches = generated.patches;
-    patchSource = generated.source;
+    if (isFixLoopV2Enabled()) {
+      const loop = await runIssuePatchLoop({
+        provider,
+        request,
+        files,
+        plan,
+        orgId,
+        projectId,
+        repositoryId
+      });
+      patches = loop.patches;
+      patchSource = loop.refined ? `${loop.source}+loop` : loop.source;
+      fixLoopMeta = {
+        enabled: true,
+        iterations: loop.iterations,
+        refined: loop.refined,
+        stopReason: loop.stopReason,
+        gitDiscipline: loop.gitDiscipline
+      };
+    } else {
+      const generated = await generateRealPatches({
+        provider,
+        request,
+        files,
+        plan,
+        orgId,
+        projectId,
+        repositoryId
+      });
+      patches = generated.patches;
+      patchSource = generated.source;
+    }
   }
 
   const pendingFixId = createPendingFixId();
@@ -193,11 +216,15 @@ export async function createPendingFixPlan(
     patchSource,
     pendingFixId,
     approvalStatus: "pending_approval",
-    controlLayer
+    controlLayer,
+    fixLoop: fixLoopMeta
   });
   const agentSummary = controlLayer.agentCoordination.leadSummary;
   if (!report.guidanceForBuilder.includes(agentSummary)) {
     report.guidanceForBuilder = [agentSummary, ...report.guidanceForBuilder];
+  }
+  if (fixLoopMeta?.stopReason && !report.guidanceForBuilder.includes(fixLoopMeta.stopReason)) {
+    report.guidanceForBuilder.push(`Fix loop: ${fixLoopMeta.stopReason}`);
   }
 
   return {
@@ -362,6 +389,8 @@ async function buildReportFromPatches(input: {
   sandboxPassed?: boolean;
   devPreviewStatus?: string;
   controlLayer?: ControlLayerSummary;
+  fixLoop?: WorkspaceFixReport["fixLoop"];
+  sandboxSessionId?: string | null;
 }): Promise<WorkspaceFixReport> {
   const diff = createDiffPreviewFromPatches(input.plan.id, input.patches, input.plan.risk.reasons);
   const execution = createDryRunExecutionResult(input.plan);
@@ -398,7 +427,9 @@ async function buildReportFromPatches(input: {
     previewSessionId: input.previewSessionId ?? null,
     previewUrl: input.previewUrl ?? null,
     devPreviewStatus: input.devPreviewStatus ?? null,
-    controlLayer: input.controlLayer
+    controlLayer: input.controlLayer,
+    fixLoop: input.fixLoop,
+    sandboxSessionId: input.sandboxSessionId ?? null
   };
 
   report.plainEnglishSummary = buildPlainEnglishFromReport(report);

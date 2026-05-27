@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { hasGithubTokenSync, resolveGithubApiToken } from "@/lib/github/github-api-auth";
 
 const FULL_IMPORT_MAX_BYTES = 2_000_000;
 
@@ -40,7 +41,7 @@ const SKIP_EXTENSIONS = new Set([
 ]);
 
 export function hasGithubToken(): boolean {
-  return Boolean(process.env.GITHUB_TOKEN?.trim());
+  return hasGithubTokenSync();
 }
 
 export function formatGithubApiError(status: number, body?: string): Error {
@@ -50,13 +51,13 @@ export function formatGithubApiError(status: number, body?: string): Error {
       return new Error(
         hasGithubToken()
           ? "GitHub API rate limit exceeded. Wait a few minutes or use a token with higher limits."
-          : "GitHub API rate limit exceeded (no GITHUB_TOKEN). Add GITHUB_TOKEN to Agent-Work/.env — BootRise will use zipball import when possible."
+          : "GitHub API rate limit exceeded. Configure GITHUB_APP_* (installation token) or GITHUB_TOKEN in .env.local."
       );
     }
     return new Error(
       hasGithubToken()
         ? `GitHub denied access (${status}). Check token scopes for this repo.`
-        : `GitHub denied access (${status}). Add GITHUB_TOKEN in .env for private repos or higher limits.`
+        : `GitHub denied access (${status}). Configure GitHub App or GITHUB_TOKEN for private repos.`
     );
   }
   return new Error(`GitHub request failed (${status})${body ? `: ${body.slice(0, 120)}` : ""}.`);
@@ -78,7 +79,7 @@ function stripZipRootPrefix(entryPath: string): string | null {
 }
 
 async function downloadRepoZip(owner: string, repo: string, branch: string): Promise<Uint8Array> {
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = await resolveGithubApiToken();
   const ua = { "User-Agent": "BootRise-Workspace" };
 
   const codeloadUrl = `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/${encodeURIComponent(branch)}`;
@@ -124,7 +125,7 @@ export async function importGithubFromArchive(input: {
   try {
     entries = unzipSync(zipBytes);
   } catch {
-    throw new Error("Could not unzip repository archive. Try again or add GITHUB_TOKEN.");
+    throw new Error("Could not unzip repository archive. Try again or configure GitHub credentials.");
   }
 
   const files: SourceFileInput[] = [];

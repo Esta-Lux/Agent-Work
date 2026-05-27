@@ -11,8 +11,9 @@ import { scanLoggingLeaks } from "@/lib/security/logging-leak-scanner";
 import { scanDeploymentConfig } from "@/lib/security/deployment-config-scanner";
 import { scanDependencies } from "@/lib/security/dependency-scanner";
 import { computeSecurityScore } from "@/lib/security/security-score";
+import { runSemgrepScan } from "@/lib/security/semgrep-runner";
 
-export function runSecurityScan(files: SourceFileInput[]): SecurityFinding[] {
+export function runDeterministicSecurityScan(files: SourceFileInput[]): SecurityFinding[] {
   const { findings, add } = createFindingCollector();
   const ctx = { files, add };
 
@@ -29,10 +30,34 @@ export function runSecurityScan(files: SourceFileInput[]): SecurityFinding[] {
   return findings;
 }
 
+/** Deterministic BootRise scanners only (sync). */
+export function runSecurityScan(files: SourceFileInput[]): SecurityFinding[] {
+  return runDeterministicSecurityScan(files);
+}
+
+export async function runSecurityScanFull(files: SourceFileInput[]): Promise<{
+  findings: SecurityFinding[];
+  score: number;
+  semgrep: { ran: boolean; skippedReason?: string; count: number };
+}> {
+  const deterministic = runDeterministicSecurityScan(files);
+  const semgrep = runSemgrepScan(files);
+  const byId = new Map<string, SecurityFinding>();
+  for (const f of [...deterministic, ...semgrep.findings]) {
+    byId.set(f.id, f);
+  }
+  const findings = [...byId.values()];
+  return {
+    findings,
+    score: computeSecurityScore(findings),
+    semgrep: { ran: semgrep.ran, skippedReason: semgrep.skippedReason, count: semgrep.findings.length }
+  };
+}
+
 export function runSecurityScanWithScore(files: SourceFileInput[]): {
   findings: SecurityFinding[];
   score: number;
 } {
-  const findings = runSecurityScan(files);
+  const findings = runDeterministicSecurityScan(files);
   return { findings, score: computeSecurityScore(findings) };
 }

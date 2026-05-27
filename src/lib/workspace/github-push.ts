@@ -1,5 +1,6 @@
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { parseGithubOwnerRepo } from "@/lib/workspace/github-inspector";
+import { resolveGithubApiToken } from "@/lib/github/github-api-auth";
 
 export interface GithubPushResult {
   branch: string;
@@ -12,9 +13,13 @@ export interface GithubPushResult {
 const MAX_FILES_PER_PUSH = Number(process.env.BOOTRISE_GITHUB_PUSH_MAX_FILES ?? "500");
 const INLINE_BLOB_MAX = 900_000;
 
-function githubHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) throw new Error("GITHUB_TOKEN is required for automated push. Add it to Agent-Work/.env.");
+async function requireGithubHeaders(): Promise<Record<string, string>> {
+  const token = await resolveGithubApiToken();
+  if (!token) {
+    throw new Error(
+      "GitHub credentials required for push. Set GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY (and install the app), or GITHUB_TOKEN in .env.local."
+    );
+  }
   return {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
@@ -32,7 +37,7 @@ export async function pushFilesToGithub(input: {
   const parsed = parseGithubOwnerRepo(input.remoteUrl);
   if (!parsed) throw new Error("Invalid GitHub URL.");
 
-  const headers = githubHeaders();
+  const headers = await requireGithubHeaders();
   const owner = parsed.owner;
   const repo = parsed.repo;
   const baseBranch = input.baseBranch || "main";

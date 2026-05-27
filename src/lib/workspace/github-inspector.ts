@@ -1,3 +1,12 @@
+import { githubApiHeaders } from "@/lib/github/github-api-auth";
+import {
+  extractGithubRepoUrl,
+  parseGithubOwnerRepo,
+  shouldInspectGithubRepo as shouldInspectGithubRepoUrl
+} from "@/lib/workspace/github-url";
+
+export { extractGithubRepoUrl, parseGithubOwnerRepo, shouldInspectGithubRepo } from "@/lib/workspace/github-url";
+
 export interface GithubRepoInsight {
   url: string;
   owner: string;
@@ -15,27 +24,8 @@ export interface GithubRepoInsight {
   fetchError?: string;
 }
 
-export function extractGithubRepoUrl(message: string): string | null {
-  const match = message.match(/https?:\/\/github\.com\/[\w.-]+\/[\w.-]+/i);
-  return match ? match[0].replace(/\.git$/, "").replace(/\/$/, "") : null;
-}
-
-export function shouldInspectGithubRepo(message: string): boolean {
-  const normalized = message.toLowerCase();
-  if (!extractGithubRepoUrl(message)) return false;
-  if (normalized.includes("download bundle")) return false;
-  if (normalized.includes("push steps") && normalized.includes("github")) return false;
-  return true;
-}
-
 export function isGithubReviewIntent(message: string): boolean {
-  return shouldInspectGithubRepo(message);
-}
-
-export function parseGithubOwnerRepo(url: string): { owner: string; repo: string } | null {
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/i);
-  if (!match) return null;
-  return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
+  return shouldInspectGithubRepoUrl(message);
 }
 
 export async function inspectGithubRepo(url: string): Promise<GithubRepoInsight> {
@@ -60,12 +50,7 @@ export async function inspectGithubRepo(url: string): Promise<GithubRepoInsight>
   }
 
   const { owner, repo } = parsed;
-  const token = process.env.GITHUB_TOKEN?.trim();
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "BootRise-Workspace"
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const headers = await githubApiHeaders();
 
   try {
     const metaRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
@@ -211,7 +196,7 @@ function buildBootriseNotes(paths: string[], stackHints: string[], isPrivate: bo
   const notes = [
     "BootRise persists imports to `.bootrise/repos/{repositoryId}` — re-import only writes changed files.",
     isPrivate
-      ? "Private repo: ensure GITHUB_TOKEN is set; canonical store survives browser refresh."
+      ? "Private repo: configure GitHub App or GITHUB_TOKEN on the server; canonical store survives browser refresh."
       : "Public metadata loaded. Full imports sync to server-side repo store for incremental updates."
   ];
   if (paths.length > 100) notes.push(`Large codebase (${paths.length}+ tracked paths) — start with one module at a time.`);
@@ -226,7 +211,7 @@ export function formatGithubReviewReply(insight: GithubRepoInsight): string {
       `**GitHub** — ${insight.owner}/${insight.repo}`,
       insight.fetchError,
       "",
-      "Next: add `GITHUB_TOKEN` in server `.env` for private repos, or use **Connect repo** to import key files."
+      "Next: complete GitHub App setup (docs/GITHUB_APP.md) or GITHUB_TOKEN in .env.local for private repos."
     ].join("\n");
   }
 

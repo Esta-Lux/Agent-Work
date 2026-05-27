@@ -12,6 +12,16 @@ BootRise is the **supervisor** for AI coding in large codebases — not another 
 6. **Safe-to-PR** — requires sandbox proof after approve  
 7. **Agent council** — structured decisions (Lead, Builder, Security, QA, Runtime, Deployment)
 
+## Senior architect mode
+
+BootRise classifies each request (`src/lib/ai/task-intent.ts`) into **explain**, **review**, **fix**, **architecture**, **deep_dive**, or **security**, with a **context depth** tier (`light` / `standard` / `deep`).
+
+- **Context governor** caps deep-read files and chars per file from the depth tier — fewer tokens on simple questions, wider context on audits and architecture work.
+- **Chat** injects a short **architect brief** (product tradeoffs, scope lock, Brain rules) before the model sees excerpts; excerpts use `buildEfficientModelContext` (deep-read paths only, not the whole corpus).
+- **Fix / patches / planners** use the same intent when selecting files and when building NVIDIA/OpenAI planner JSON.
+
+Reply **"proceed with assumptions"** or use the UI button when the context gate needs clarification — scope lock still applies.
+
 ## AI routing
 
 | Tier | Engine | When |

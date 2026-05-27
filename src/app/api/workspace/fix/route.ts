@@ -8,6 +8,7 @@ import { recordAudit } from "@/lib/admin/audit-log";
 import { createPendingFixPlan } from "@/lib/workspace/workspace-fix.server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { buildContextPlan } from "@/lib/control/context-governor";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
 import { getFailedAttemptCount } from "@/lib/control/task-session";
 
 export const runtime = "nodejs";
@@ -66,10 +67,12 @@ export async function POST(request: Request) {
       }
     }
 
+    const taskIntent = classifyTaskIntent(userRequest, { mode: body?.mode });
     const contextPlan = await buildContextPlan(userRequest, files, {
       orgId,
       projectId,
-      repositoryId
+      repositoryId,
+      taskIntent
     });
     const failedAttempts = repositoryId ? getFailedAttemptCount(repositoryId, userRequest) : 0;
 

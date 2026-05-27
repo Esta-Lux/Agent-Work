@@ -6,18 +6,31 @@ import {
   selectReviewBatches
 } from "@/lib/workspace/file-ranking";
 import { getReviewConfig, shouldUseMultiPassReview } from "@/lib/workspace/review-config";
+import { classifyTaskIntent, type TaskIntent } from "@/lib/ai/task-intent";
+import { getContextDepthBudget } from "@/lib/ai/senior-architect";
 import { buildInjectedContextRules } from "@/lib/control/context-rules";
 import type { ContextPlan, ContextFileEntry } from "@/lib/control/types";
+import { buildRepoGraph, expandPathsWithRepoGraph } from "@/lib/intelligence/repo-graph";
 
 const CHARS_PER_TOKEN = 4;
+const graphCache = new Map<string, ReturnType<typeof buildRepoGraph>>();
 
 export async function buildContextPlan(
   request: string,
   files: SourceFileInput[],
-  options?: { projectId?: string; repositoryId?: string; orgId?: string }
+  options?: {
+    projectId?: string;
+    repositoryId?: string;
+    orgId?: string;
+    taskIntent?: TaskIntent;
+    mode?: string;
+  }
 ): Promise<ContextPlan> {
   const config = getReviewConfig();
-  const useMulti = shouldUseMultiPassReview(files.length, request, config);
+  let taskIntent = options?.taskIntent ?? classifyTaskIntent(request, { mode: options?.mode });
+  const depthBudget = getContextDepthBudget(taskIntent.depth);
+  const useMulti =
+    taskIntent.preferMultiPass && shouldUseMultiPassReview(files.length, request, config);
 
   let deepPaths = new Set<string>();
   const referencePaths = new Set<string>();
@@ -28,7 +41,8 @@ export async function buildContextPlan(
       for (const file of batch) deepPaths.add(file.path);
     }
   } else {
-    for (const file of selectRelevantFiles(request, files, config.singleMaxFiles)) {
+    const maxDeep = Math.min(depthBudget.maxDeepFiles, config.singleMaxFiles);
+    for (const file of selectRelevantFiles(request, files, maxDeep)) {
       deepPaths.add(file.path);
     }
   }
@@ -36,6 +50,28 @@ export async function buildContextPlan(
   const ranked = selectRelevantFiles(request, files, Math.min(80, files.length));
   for (const file of ranked) {
     if (!deepPaths.has(file.path)) referencePaths.add(file.path);
+  }
+
+  let repoGraphSummary: string | undefined;
+  const repoId = options?.repositoryId ?? options?.projectId;
+  if (repoId && files.length >= 24 && deepPaths.size > 0) {
+    const cacheKey = `${repoId}:${files.length}`;
+    let graph = graphCache.get(cacheKey);
+    if (!graph) {
+      graph = buildRepoGraph(repoId, files);
+      graphCache.set(cacheKey, graph);
+    }
+    repoGraphSummary = graph.summary;
+    const allPathSet = new Set(files.map((f) => f.path));
+    for (const extra of expandPathsWithRepoGraph(deepPaths, graph, allPathSet, 12)) {
+      if (!deepPaths.has(extra)) referencePaths.add(extra);
+    }
+    if (graph.hubFiles.length) {
+      const hubNote = `Graph hubs: ${graph.hubFiles.slice(0, 3).join(", ")}`;
+      if (!taskIntent.summary.includes("Graph hubs")) {
+        taskIntent = { ...taskIntent, summary: `${taskIntent.summary} · ${hubNote}` };
+      }
+    }
   }
 
   const rules = await buildInjectedContextRules({
@@ -76,7 +112,6 @@ export async function buildContextPlan(
         mode: "deep_read",
         reason: "Task-relevant — full excerpt sent to model"
       });
-      estimatedChars += Math.min(file.content.length, config.charsPerFile);
       continue;
     }
     if (referencePaths.has(file.path)) {
@@ -85,7 +120,6 @@ export async function buildContextPlan(
         mode: "reference",
         reason: "Dependency / module context — path indexed, light or no excerpt"
       });
-      estimatedChars += 400;
       continue;
     }
     const area = classifyRepoPath(file.path);
@@ -97,6 +131,16 @@ export async function buildContextPlan(
         : `Outside scope (${area}) — saves tokens`
     });
   }
+
+  const referenceCharEstimate = reference.length * 400;
+  const cappedDeepEstimate = Math.min(
+    deepRead.reduce((sum, entry) => {
+      const file = files.find((f) => f.path === entry.path);
+      return sum + Math.min(file?.content.length ?? 0, depthBudget.maxCharsPerFile);
+    }, 0),
+    depthBudget.totalBudget
+  );
+  estimatedChars = rules.charEstimate + cappedDeepEstimate + referenceCharEstimate;
 
   const estimatedTokens = Math.round(estimatedChars / CHARS_PER_TOKEN);
   const confidence = deepRead.length >= 3 ? 0.85 : deepRead.length >= 1 ? 0.65 : 0.4;
@@ -112,7 +156,8 @@ export async function buildContextPlan(
     rules.projectRules.length > 0 ? `Injected ${rules.projectRules.length} rules file(s).` : null,
     rules.ledgerDecisions.length > 0 ? `Injected ${rules.ledgerDecisions.length} ledger decision(s).` : null,
     `Token estimate: ~${(estimatedTokens / 1000).toFixed(1)}k · Confidence: ${Math.round(confidence * 100)}%.`,
-    useMulti ? "Multi-pass review enabled for large repo." : "Single-pass context selection."
+    taskIntent.seniorArchitectMode ? "Senior architect mode: tradeoffs and scope before code." : null,
+    useMulti ? "Multi-pass selection for large repo." : `Depth tier: ${taskIntent.depth}.`
   ]
     .filter(Boolean)
     .join(" ");
@@ -126,7 +171,8 @@ export async function buildContextPlan(
     estimatedChars,
     estimatedTokens,
     confidence,
-    summary
+    summary,
+    repoGraphSummary
   };
 }
 

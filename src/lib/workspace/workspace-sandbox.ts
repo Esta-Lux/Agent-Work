@@ -11,6 +11,10 @@ import {
 } from "@/lib/workspace/monorepo-verify";
 import { readRepoFiles, resolveRepoFiles, syncRepoFiles } from "@/lib/workspace/repo-store";
 import { runVisualSmoke } from "@/lib/workspace/visual-smoke";
+import {
+  runSupervisedVerifyComplete,
+  runSupervisedVerifyPrep
+} from "@/lib/sandbox/sandbox-supervisor";
 
 export interface SandboxVerifyResult {
   repositoryId: string;
@@ -25,7 +29,8 @@ export async function runWorkspaceSandboxVerify(
   files: SourceFileInput[],
   repositoryId: string
 ): Promise<SandboxVerifyResult> {
-  const sessionId = `sandbox_${Date.now()}`;
+  const supervised = await runSupervisedVerifyPrep(repositoryId, files);
+  const sessionId = supervised.sessionId ?? `sandbox_${Date.now()}`;
   const canonical = resolveRepoFiles(repositoryId, files);
   syncRepoFiles(repositoryId, canonical, { snapshotLabel: "skip" });
 
@@ -105,6 +110,9 @@ export async function runWorkspaceSandboxVerify(
     (c) => c.exitCode !== 0 && (c.label.includes("Python") || c.label.includes("Visual smoke"))
   );
   await upsertSandboxPool({ activeSandboxes: 0, queuedJobs: 0 });
+
+  const passed = !hardFail && !failed;
+  runSupervisedVerifyComplete(supervised.sessionId, passed);
 
   return {
     repositoryId,

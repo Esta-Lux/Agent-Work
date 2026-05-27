@@ -78,6 +78,9 @@ export function TaskContextPackPanel(input: {
       {summary ? <p className="mt-2 text-xs font-medium text-ink">{summary}</p> : null}
       {pack ? (
         <div className="mt-3 space-y-2 text-xs text-graphite">
+          {pack.taskIntent ? (
+            <p className="font-medium text-ink">{pack.taskIntent.summary}</p>
+          ) : null}
           <p>
             Gate: {pack.contextGate.status.replace(/_/g, " ")} · {Math.round(pack.contextGate.confidence * 100)}%
             confidence

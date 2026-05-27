@@ -1,4 +1,6 @@
 import type { ChangePlan, RepoIntelligenceSnapshot, RiskLevel, WorkerDomain } from "@/lib/types/core";
+import { BOOTRISE_SENIOR_ARCHITECT_CONTRACT } from "@/lib/ai/senior-architect";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-5.5";
@@ -202,6 +204,7 @@ function extractOutputText(data: unknown): string {
 }
 
 function buildPlannerPrompt(request: string, repo: RepoIntelligenceSnapshot): string {
+  const intent = classifyTaskIntent(request);
   const repoContext = {
     files: repo.files.slice(0, 80),
     symbols: repo.symbols.slice(0, 120),
@@ -209,8 +212,11 @@ function buildPlannerPrompt(request: string, repo: RepoIntelligenceSnapshot): st
     architectureMemory: repo.architectureMemory
   };
 
-  return `You are BootRise's principal engineering planner.
+  return `${BOOTRISE_SENIOR_ARCHITECT_CONTRACT}
+
+You are BootRise's principal engineering planner.
 Return only strict JSON. No markdown.
+Task framing: ${intent.summary}
 Create a safe, approval-gated software change plan for this user request:
 ${request}
 

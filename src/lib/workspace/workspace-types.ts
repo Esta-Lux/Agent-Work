@@ -3,6 +3,7 @@ import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
 import type { SafeToPrVerdict } from "@/lib/workspace/safe-to-pr";
 import type { createVerificationSummary } from "@/lib/verification/verification-summary";
 import type { ChatControlSummary, ControlLayerSummary } from "@/lib/control/types";
+import type { ReviewFinding } from "@/lib/workspace/review-findings";
 
 export type { RepoHealthSummary, SafeToPrVerdict };
 
@@ -62,6 +63,16 @@ export interface WorkspaceFixReport {
   previewUrl?: string | null;
   devPreviewStatus?: string | null;
   controlLayer?: ControlLayerSummary;
+  /** Phase 2 — SWE-agent/Aider supervised patch loop metadata */
+  fixLoop?: {
+    enabled: boolean;
+    iterations: number;
+    refined: boolean;
+    stopReason: string | null;
+    gitDiscipline: string[];
+  };
+  /** Phase 2 — OpenHands-style sandbox session id when lifecycle enabled */
+  sandboxSessionId?: string | null;
 }
 
 export interface WorkspaceChatContext {
@@ -98,6 +109,7 @@ export interface WorkspaceChatResult {
   plainEnglishSummary?: string;
   chatControl?: ChatControlSummary | null;
   reviewCoverage?: string;
+  reviewFindings?: ReviewFinding[];
 }
 
 export const FIX_PIPELINE_STEPS: ThinkingStep[] = [

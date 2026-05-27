@@ -1,7 +1,7 @@
 "use client";
 
 import { extractPlainEnglishSection, formatUserFacingMessage, parseStructuredMessage, stripMarkdownForUser } from "@/lib/format-user-message";
-import type { FileActivity, ThinkingStep } from "@/lib/workspace/workspace-types";
+import type { DiscoveryQuestion, FileActivity, ThinkingStep } from "@/lib/workspace/workspace-types";
 
 export interface WorkspaceChatMessageProps {
   role: "user" | "assistant";
@@ -10,6 +10,7 @@ export interface WorkspaceChatMessageProps {
   thinkingSteps?: ThinkingStep[];
   fileActivity?: FileActivity[];
   suggestedActions?: string[];
+  discoveryQuestions?: DiscoveryQuestion[];
   plainEnglishSummary?: string;
   onAction?: (action: string) => void;
 }
@@ -21,6 +22,7 @@ export function WorkspaceChatMessage({
   thinkingSteps,
   fileActivity,
   suggestedActions,
+  discoveryQuestions,
   plainEnglishSummary,
   onAction
 }: WorkspaceChatMessageProps) {
@@ -53,6 +55,20 @@ export function WorkspaceChatMessage({
       </div>
 
       {thinkingSteps && thinkingSteps.length > 0 ? <ThinkingPanel steps={thinkingSteps} /> : null}
+
+      {discoveryQuestions && discoveryQuestions.length > 0 ? (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold uppercase text-amber-900">Clarifications needed</p>
+          <ul className="mt-2 space-y-2">
+            {discoveryQuestions.map((q) => (
+              <li key={q.id} className="text-sm text-amber-950">
+                <p className="font-medium">{q.prompt}</p>
+                {q.whyItMatters ? <p className="mt-0.5 text-xs text-amber-800">{q.whyItMatters}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {sections.length > 0 ? (
         <div className="space-y-3">

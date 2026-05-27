@@ -12,6 +12,13 @@ export { buildRepoSchemaIndex } from "@/lib/control/repo-schema-index";
 export { buildInjectedContextRules } from "@/lib/control/context-rules";
 export { buildScopeContract } from "@/lib/control/scope-contract";
 export { buildContextPlan } from "@/lib/control/context-governor";
+export { classifyTaskIntent } from "@/lib/ai/task-intent";
+export {
+  buildSeniorArchitectBrief,
+  buildEfficientModelContext,
+  getContextDepthBudget,
+  BOOTRISE_SENIOR_ARCHITECT_CONTRACT
+} from "@/lib/ai/senior-architect";
 export { buildRepositoryMap } from "@/lib/control/repo-map";
 export {
   buildTokenWasteSummary,

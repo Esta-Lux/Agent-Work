@@ -5,6 +5,7 @@ import {
   hasGithubToken,
   importGithubFromArchive
 } from "@/lib/workspace/github-archive-import";
+import { githubApiHeaders } from "@/lib/github/github-api-auth";
 
 const DEFAULT_IMPORT_PATHS = [
   "README.md",
@@ -21,21 +22,11 @@ export interface GithubBranch {
   protected: boolean;
 }
 
-function githubHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "BootRise-Workspace"
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
-}
-
 export async function listGithubBranches(remoteUrl: string): Promise<{ branches: GithubBranch[]; defaultBranch: string }> {
   const parsed = parseGithubOwnerRepo(remoteUrl);
   if (!parsed) throw new Error("Invalid GitHub URL.");
 
-  const headers = githubHeaders();
+  const headers = await githubApiHeaders();
   try {
     const metaRes = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, { headers });
     if (!metaRes.ok) {
@@ -125,15 +116,15 @@ export async function importGithubFiles(input: {
     if (!hasGithubToken()) {
       throw caught instanceof Error
         ? caught
-        : new Error("Archive import failed. Add GITHUB_TOKEN to .env for private repos.");
+        : new Error("Archive import failed. Configure GitHub App or GITHUB_TOKEN in .env.local for private repos.");
     }
   }
 
   if (mode === "full" && hasGithubToken()) {
-    return { ...(await importGithubRepoFullApi(parsed.owner, parsed.repo, branch, githubHeaders())), source: "api" };
+    return { ...(await importGithubRepoFullApi(parsed.owner, parsed.repo, branch, await githubApiHeaders())), source: "api" };
   }
 
-  const headers = githubHeaders();
+  const headers = await githubApiHeaders();
   const files: SourceFileInput[] = [];
   const imported: string[] = [];
   const skipped: string[] = [];
@@ -151,7 +142,7 @@ export async function importGithubFiles(input: {
   if (files.length === 0) {
     throw archiveError instanceof Error
       ? archiveError
-      : new Error("No files could be imported. Add GITHUB_TOKEN for private repos or pick different paths.");
+      : new Error("No files could be imported. Configure GitHub App or GITHUB_TOKEN for private repos or pick different paths.");
   }
 
   return { files, branch, imported, skipped, mode: "key", source: "api" };

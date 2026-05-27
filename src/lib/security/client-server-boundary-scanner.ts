@@ -1,8 +1,15 @@
 import type { FileScanContext } from "@/lib/security/scan-context";
+import { isClientBundlePath, containsLikelySecretValue } from "@/lib/security/scan-path-utils";
 
 export function scanClientServerBoundary({ files, add }: FileScanContext): void {
   for (const { path, content } of files) {
-    if (/createClient\([^)]*serviceRole|service_role/i.test(content) && /components|app\/(?!api)/.test(path)) {
+    if (!isClientBundlePath(path)) continue;
+
+    const usesServiceRole =
+      /createClient\([^)]*service[_-]?role/i.test(content) ||
+      (/service[_-]?role/i.test(content) && /supabase/i.test(content) && containsLikelySecretValue(content));
+
+    if (usesServiceRole) {
       add({
         severity: "critical",
         category: "secret",

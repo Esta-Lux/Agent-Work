@@ -2,6 +2,8 @@
 
 import { StatusPill } from "@/components/status-pill";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
+import { MonacoDiffViewer } from "@/components/monaco-diff-viewer";
+import { useState } from "react";
 
 export function PlanApprovalPanel({
   patches,
@@ -20,6 +22,10 @@ export function PlanApprovalPanel({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const activePreviewPath = previewPath ?? patches[0]?.path ?? null;
+  const preview = patches.find((p) => p.path === activePreviewPath) ?? patches[0];
+
   if (patches.length === 0) {
     return (
       <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
@@ -42,15 +48,29 @@ export function PlanApprovalPanel({
 
       <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto">
         {patches.map((p) => (
-          <li key={p.path} className="rounded border border-line bg-white px-3 py-2 text-xs">
-            <p className="font-semibold text-ink">{p.path}</p>
-            <p className="text-graphite">{p.summary}</p>
-            <p className="mt-1 font-mono text-[10px] text-steel">
-              {p.before.length} → {p.after.length} chars
-            </p>
+          <li key={p.path}>
+            <button
+              type="button"
+              onClick={() => setPreviewPath(p.path)}
+              className={`w-full rounded border px-3 py-2 text-left text-xs ${
+                activePreviewPath === p.path ? "border-signal bg-signal/5" : "border-line bg-white"
+              }`}
+            >
+              <p className="font-semibold text-ink">{p.path}</p>
+              <p className="text-graphite">{p.summary}</p>
+              <p className="mt-1 font-mono text-[10px] text-steel">
+                {p.before.length} → {p.after.length} chars
+              </p>
+            </button>
           </li>
         ))}
       </ul>
+      {preview ? (
+        <div className="mt-3">
+          <p className="mb-1 text-xs font-semibold text-steel">Patch preview</p>
+          <MonacoDiffViewer path={preview.path} before={preview.before} after={preview.after} height={240} />
+        </div>
+      ) : null}
 
       <div className="mt-4 flex gap-2">
         <button

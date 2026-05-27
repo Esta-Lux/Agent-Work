@@ -20,6 +20,13 @@ export function ChatControlBanner({
         {control.brainRulesCount ? ` · Brain: ${control.brainRulesCount} rules` : ""}
         {control.brainFileHintsCount ? `, ${control.brainFileHintsCount} file hints` : ""}
       </p>
+      {control.taskIntent ? (
+        <p className="mt-1 text-ink">
+          {control.taskIntent.summary}
+          {control.taskIntent.seniorArchitectMode ? " · Senior architect framing" : ""}
+          {control.taskIntent.suggestedMode !== "fast" ? ` · Suggested mode: ${control.taskIntent.suggestedMode}` : ""}
+        </p>
+      ) : null}
       <p className="mt-1 text-graphite">{control.contextPlan.summary}</p>
       <p className="mt-1 text-steel">{control.tokenWaste.message}</p>
       {control.contextGate.questions.length > 0 ? (

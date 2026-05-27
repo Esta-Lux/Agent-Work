@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { assertCreditsAvailable, chargeCredits } from "@/lib/usage/credit-store";
 import { estimateCreditsForAction } from "@/lib/usage/credit-pricing";
-import { runSecurityScanWithScore } from "@/lib/security/security-scan";
+import { runSecurityScanFull } from "@/lib/security/security-scan";
 import { appendLedgerEvent } from "@/lib/workspace/living-ledger-timeline";
 import { addArchitectureMemory } from "@/lib/project-brain/memory-updater";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
@@ -22,8 +22,8 @@ export async function POST(request: Request) {
     const action = "basic_security_scan";
     const estimatedCredits = estimateCreditsForAction(action);
     await assertCreditsAvailable(ctx.orgId, action, estimatedCredits);
-    const { findings, score } = runSecurityScanWithScore(body.files);
-    const criticalCount = findings.filter((f) => f.severity === "critical").length;
+    const { findings, score, semgrep } = await runSecurityScanFull(body.files);
+    const criticalCount = findings.filter((f) => f.severity === "critical" || f.blocksDeployment).length;
     if (body.projectId) {
       void appendLedgerEvent(
         body.projectId,
@@ -57,7 +57,8 @@ export async function POST(request: Request) {
       findings,
       criticalCount,
       score,
-      estimatedCredits
+      estimatedCredits,
+      semgrep
     });
   });
 }

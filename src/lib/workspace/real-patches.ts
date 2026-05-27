@@ -4,6 +4,7 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 import { buildContextPlan } from "@/lib/control/context-governor";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
 
 const MAX_FILES_IN_PROMPT = 10;
 const MAX_CHARS_PER_FILE = 6000;
@@ -44,10 +45,12 @@ async function selectTargetFiles(
   const byPath = new Map(files.map((f) => [f.path, f]));
   const planned = plan.impact.files.filter((p) => byPath.has(p)).map((p) => byPath.get(p)!);
 
+  const taskIntent = classifyTaskIntent(request);
   const contextPlan = await buildContextPlan(request, files, {
     orgId: scope?.orgId,
     projectId: scope?.projectId,
-    repositoryId: scope?.repositoryId
+    repositoryId: scope?.repositoryId,
+    taskIntent
   });
   const deepRead = contextPlan.deepRead
     .map((entry) => byPath.get(entry.path))

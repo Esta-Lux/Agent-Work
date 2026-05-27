@@ -1,4 +1,6 @@
 import type { ChangePlan, RepoIntelligenceSnapshot, RiskLevel, WorkerDomain } from "@/lib/types/core";
+import { BOOTRISE_SENIOR_ARCHITECT_CONTRACT } from "@/lib/ai/senior-architect";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
 
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 /** Stronger default for code review, planning, and multi-file reasoning (NVIDIA API catalog). */
@@ -160,14 +162,18 @@ async function callNvidiaChat({
 }
 
 function buildPlannerPrompt(request: string, repo: RepoIntelligenceSnapshot): string {
+  const intent = classifyTaskIntent(request);
   const repoContext = {
     files: repo.files.slice(0, 80),
     symbols: repo.symbols.slice(0, 120),
     dependencies: repo.dependencies.slice(0, 120)
   };
 
-  return `You are BootRise's principal engineering planner on NVIDIA NIM.
+  return `${BOOTRISE_SENIOR_ARCHITECT_CONTRACT}
+
+You are BootRise's principal engineering planner on NVIDIA NIM.
 Return only strict JSON. No markdown.
+Task framing: ${intent.summary}
 Create a safe, approval-gated software change plan for: ${request}
 
 Repository intelligence:

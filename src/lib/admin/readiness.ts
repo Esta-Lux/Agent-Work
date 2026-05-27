@@ -78,7 +78,7 @@ export async function getProductionReadinessReport(): Promise<ReadinessReport> {
       area: "Draft PR hardening",
       status: "ready",
       summary: "POST /api/workspace/github/pr derives patched files and PR body from server pending fix only.",
-      nextStep: "Ensure GITHUB_TOKEN is set in production for automated draft PRs."
+      nextStep: "Configure GitHub App (GITHUB_APP_ID + private key) or GITHUB_TOKEN for automated draft PRs."
     },
     {
       area: "Pending fix persistence",

@@ -9,6 +9,8 @@ import type { ChatControlSummary, ContextPlan } from "@/lib/control/types";
 import { getFailedAttemptCount } from "@/lib/control/task-session";
 import { buildInjectedContextRules } from "@/lib/control/context-rules";
 import { evaluateContextGate, isWorkIntent } from "@/lib/control/context-gate";
+import { classifyTaskIntent } from "@/lib/ai/task-intent";
+import { buildSeniorArchitectBrief } from "@/lib/ai/senior-architect";
 
 export async function runChatControlGate(input: {
   request: string;
@@ -17,34 +19,39 @@ export async function runChatControlGate(input: {
   projectId?: string;
   orgId?: string;
   assumptionsApproved?: boolean;
+  mode?: string;
 }): Promise<ChatControlSummary> {
   const repo = buildRepoIntelligenceSnapshot(input.files);
   const plan = createInitialChangePlan(input.request, repo);
   const projectId = input.projectId ?? input.repositoryId;
   const orgId = input.orgId;
+  const taskIntent = classifyTaskIntent(input.request, { mode: input.mode });
 
-  const contextPlan = await buildContextPlan(input.request, input.files, {
-    projectId,
-    repositoryId: input.repositoryId,
-    orgId
-  });
-
-  let brainRulesCount = 0;
-  let brainFileHintsCount = 0;
+  let brainRules: string[] = [];
+  let brainModules: string[] = [];
+  let brainDecisions: string[] = [];
   if (orgId && projectId) {
     try {
       const { retrieveProjectBrainContext } = await import("@/lib/project-brain/memory-retriever");
       const brain = await retrieveProjectBrainContext({
         orgId,
         projectId,
-        request: { taskText: input.request, maxItems: 6 }
+        request: { taskText: input.request, maxItems: 8 }
       });
-      brainRulesCount = brain.rules.length;
-      brainFileHintsCount = brain.fileHints.length;
+      brainRules = brain.rules;
+      brainModules = brain.modules.map((m) => m.name);
+      brainDecisions = brain.decisions;
     } catch {
       /* optional */
     }
   }
+
+  const contextPlan = await buildContextPlan(input.request, input.files, {
+    projectId,
+    repositoryId: input.repositoryId,
+    orgId,
+    taskIntent
+  });
 
   const repositoryMap = buildRepositoryMap(input.files);
   const scopeContract = buildScopeContract({
@@ -71,9 +78,15 @@ export async function runChatControlGate(input: {
     ? getFailedAttemptCount(input.repositoryId, input.request)
     : 0;
 
+  const isReadOnlyReview =
+    !isWorkIntent(input.request) &&
+    /\b(review|audit|issues?|risks?|gaps?|list all|architecture|overview)\b/i.test(input.request);
+
   let stopReason: string | null = null;
-  if (!tokenBudget.allowed) {
+  if (!tokenBudget.allowed && !isReadOnlyReview) {
     stopReason = tokenBudget.reason;
+  } else if (!tokenBudget.allowed && isReadOnlyReview) {
+    stopReason = null;
   } else if (failedPatchAttempts >= 2) {
     stopReason = `Stopped after ${failedPatchAttempts} failed patch attempts on this task — narrow scope before more chat spend.`;
   } else if (input.request.trim().length < 8) {
@@ -96,8 +109,23 @@ export async function runChatControlGate(input: {
     failedPatchAttempts,
     scopePreview: scopeContract.scopeLockMessage,
     assumptionsApproved: contextGate.status === "proceed_with_assumptions",
-    brainRulesCount,
-    brainFileHintsCount
+    brainRulesCount: brainRules.length,
+    brainFileHintsCount: contextPlan.deepRead.length,
+    taskIntent: {
+      kind: taskIntent.kind,
+      depth: taskIntent.depth,
+      seniorArchitectMode: taskIntent.seniorArchitectMode,
+      summary: taskIntent.summary,
+      suggestedMode: taskIntent.suggestedMode
+    },
+    architectBriefPreview: buildSeniorArchitectBrief({
+      request: input.request,
+      taskIntent,
+      brainRules,
+      moduleNames: brainModules,
+      decisions: brainDecisions,
+      scopeLockMessage: scopeContract.scopeLockMessage
+    }).slice(0, 600)
   };
 }
 

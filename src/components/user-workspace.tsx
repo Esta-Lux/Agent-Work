@@ -6,6 +6,7 @@ import { ArchitectureMapPanel } from "@/components/architecture-map-panel";
 import { DiffReportPanel } from "@/components/diff-report-panel";
 import { DeviceStreamPanel } from "@/components/device-stream-panel";
 import { WebContainerPreview } from "@/components/webcontainer-preview";
+import { GithubConnectionStatus } from "@/components/github-connection-status";
 import { PersonaSelector } from "@/components/persona-selector";
 import { PlanApprovalPanel } from "@/components/plan-approval-panel";
 import { ControlLayerPanel } from "@/components/control-layer-panel";
@@ -16,6 +17,16 @@ import { WebPreviewPanel } from "@/components/web-preview-panel";
 import { WorkspaceLivingLedger } from "@/components/workspace-living-ledger";
 import { ProjectBrainPanel } from "@/components/project-brain-panel";
 import { SecurityPanel } from "@/components/security-panel";
+import { MonacoCodeEditor } from "@/components/monaco-code-editor";
+import { ReviewFindingsPanel } from "@/components/review-findings-panel";
+import { RepoGraphPanel } from "@/components/repo-graph-panel";
+import {
+  fromSecurityFindings,
+  mergeReviewFindings,
+  type ReviewFinding
+} from "@/lib/workspace/review-findings";
+import { buildWorkspaceAgentPreview } from "@/lib/control/workspace-agent-preview";
+import type { DeploymentReadinessResult } from "@/lib/security/types";
 import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
 import { WorkspaceCommandCenter } from "@/components/workspace-command-center";
 import { BlockedStateCard } from "@/components/blocked-state-card";
@@ -47,6 +58,7 @@ import {
 import { StatusPill } from "@/components/status-pill";
 import {
   FIX_PIPELINE_STEPS,
+  type DiscoveryQuestion,
   type FileActivity,
   type ProjectBrief,
   type RepoHealthSummary,
@@ -61,6 +73,7 @@ interface ChatMessage {
   thinkingSteps?: ThinkingStep[];
   fileActivity?: FileActivity[];
   suggestedActions?: string[];
+  discoveryQuestions?: DiscoveryQuestion[];
   plainEnglishSummary?: string;
 }
 
@@ -70,9 +83,12 @@ interface ChatApiResponse {
   thinkingSteps?: ThinkingStep[];
   fileActivity?: FileActivity[];
   suggestedActions?: string[];
+  discoveryQuestions?: DiscoveryQuestion[];
   triggerFix?: boolean;
   plainEnglishSummary?: string;
   chatControl?: ChatControlSummary | null;
+  reviewFindings?: ReviewFinding[];
+  reviewCoverage?: string;
   error?: string;
 }
 
@@ -163,11 +179,16 @@ export function UserWorkspace() {
   const [devPreviewStatus, setDevPreviewStatus] = useState<string | null>(null);
   const [previewFramework, setPreviewFramework] = useState<string | null>(null);
   const [lastChatControl, setLastChatControl] = useState<ChatControlSummary | null>(null);
+  const [lastReviewFindings, setLastReviewFindings] = useState<ReviewFinding[]>([]);
+  const [lastReviewCoverage, setLastReviewCoverage] = useState<string | null>(null);
   const [assumptionsApproved, setAssumptionsApproved] = useState(false);
   const [premiumApproved, setPremiumApproved] = useState(false);
   const [runtimeRefreshToken, setRuntimeRefreshToken] = useState(0);
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
   const [securityBlockers, setSecurityBlockers] = useState(0);
+  const [deployReadinessStatus, setDeployReadinessStatus] = useState<DeploymentReadinessResult["status"] | null>(
+    null
+  );
   const [brainStats, setBrainStats] = useState<{ files: number; modules: number; stale: number } | null>(null);
   const [workspaceIssue, setWorkspaceIssue] = useState<WorkspaceIssue | null>(null);
 
@@ -178,6 +199,24 @@ export function UserWorkspace() {
       return [];
     }
   }, [filesInput]);
+
+  const activeFilePath = selectedFilePath ?? parsedFiles[0]?.path ?? null;
+
+  const liveAgentCoordination = useMemo(() => {
+    if (parsedFiles.length === 0) return undefined;
+    return buildWorkspaceAgentPreview({
+      securityBlockerCount: securityBlockers,
+      reviewFindingCount: lastReviewFindings.length,
+      graphSummary: lastChatControl?.contextPlan?.repoGraphSummary,
+      deployBlocked: deployReadinessStatus === "blocked"
+    });
+  }, [
+    parsedFiles.length,
+    securityBlockers,
+    lastReviewFindings.length,
+    lastChatControl?.contextPlan?.repoGraphSummary,
+    deployReadinessStatus
+  ]);
 
   const isWorking = /Thinking|Fix pipeline|Importing|Sandbox|Saving|Loading/.test(status);
 
@@ -1127,6 +1166,8 @@ export function UserWorkspace() {
       const data = (await response.json()) as ChatApiResponse;
       if (!response.ok) throw new Error(data.error ?? "Chat failed.");
       if (data.chatControl) setLastChatControl(data.chatControl);
+      if (data.reviewFindings?.length) setLastReviewFindings(data.reviewFindings);
+      if (data.reviewCoverage) setLastReviewCoverage(data.reviewCoverage);
 
       const assistantMessage: ChatMessage = {
         role: "assistant",
@@ -1135,6 +1176,7 @@ export function UserWorkspace() {
         thinkingSteps: data.thinkingSteps,
         fileActivity: data.fileActivity?.slice(0, 12),
         suggestedActions: data.suggestedActions,
+        discoveryQuestions: data.discoveryQuestions,
         plainEnglishSummary: data.plainEnglishSummary
       };
 
@@ -1359,6 +1401,8 @@ export function UserWorkspace() {
         creditsRemaining={creditsRemaining}
         modelMode={provider === "openai" ? "Premium" : `BootRise ${modelMode}`}
         securityBlockers={securityBlockers}
+        deployReadinessStatus={deployReadinessStatus}
+        liveSafeToDeploy={liveAgentCoordination?.safeToDeploy}
         brainSummary={brainStats}
         nextAction={{ ...nextAction, disabled: busy }}
       />
@@ -1449,6 +1493,7 @@ export function UserWorkspace() {
                 thinkingSteps={message.thinkingSteps}
                 fileActivity={message.fileActivity}
                 suggestedActions={message.suggestedActions}
+                discoveryQuestions={message.discoveryQuestions}
                 plainEnglishSummary={message.plainEnglishSummary}
                 onAction={handleChatAction}
               />
@@ -1613,9 +1658,10 @@ export function UserWorkspace() {
                 >
                   {busy ? "Working…" : importMode === "full" ? "Import repo into workspace" : "Import key files"}
                 </button>
+                <GithubConnectionStatus />
                 <p className="mt-3 text-xs leading-5 text-steel">
                   Full import loads all text source files from the repo (skips node_modules, images, and huge binaries).
-                  Key import is 7 manifests for a fast skim. Add GITHUB_TOKEN in server .env for private repos.
+                  Key import is 7 manifests for a fast skim.
                 </p>
                 <div className="mt-4 border-t border-line pt-4">
                   <p className="text-xs font-semibold text-ink">Project</p>
@@ -1683,17 +1729,17 @@ export function UserWorkspace() {
                         <p className="mb-2 text-xs text-steel">{parsedFiles.length} file(s) — select to preview</p>
                         <FileTreeExplorer
                           files={parsedFiles}
-                          selectedPath={selectedFilePath ?? parsedFiles[0]?.path ?? null}
+                          selectedPath={activeFilePath}
                           onSelect={setSelectedFilePath}
                           maxTreeHeight="min(40vh, 280px)"
                         />
                       </>
                     )}
-                    {selectedFilePath ? (
-                      <textarea
-                        className="mt-3 min-h-[min(36vh,320px)] w-full resize-y rounded-lg border border-line bg-cloud p-2 font-mono text-[11px] leading-4"
-                        value={parsedFiles.find((f) => f.path === selectedFilePath)?.content ?? ""}
-                        onChange={(e) => updateFileContent(selectedFilePath, e.target.value)}
+                    {activeFilePath ? (
+                      <MonacoCodeEditor
+                        path={activeFilePath}
+                        value={parsedFiles.find((f) => f.path === activeFilePath)?.content ?? ""}
+                        onChange={(value) => updateFileContent(activeFilePath, value)}
                       />
                     ) : null}
                     <input
@@ -1756,6 +1802,23 @@ export function UserWorkspace() {
                   repositoryId={repositoryId}
                   blastRootSymbol={report?.plan.impact.files[0] ?? null}
                 />
+                <RepoGraphPanel files={parsedFiles} repositoryId={repositoryId} />
+                {lastReviewFindings.length > 0 ? (
+                  <div className="mt-4 border-t border-line pt-4">
+                    <p className="mb-2 text-xs font-semibold uppercase text-steel">Prioritized review findings</p>
+                    <ReviewFindingsPanel
+                      findings={lastReviewFindings}
+                      coverage={lastReviewCoverage ?? undefined}
+                      onRunFix={(f) => {
+                        const scope = f.paths[0]
+                          ? `Fix ${f.title} in ${f.paths[0]}`
+                          : `Fix: ${f.title}`;
+                        setFixRequest(scope);
+                        goToStep("fix");
+                      }}
+                    />
+                  </div>
+                ) : null}
               </Panel>
             ) : null}
 
@@ -1770,7 +1833,10 @@ export function UserWorkspace() {
                   files={parsedFiles}
                 />
                 <Panel title="Agent council">
-                  <AgentCouncilPanel control={report?.controlLayer} />
+                  <AgentCouncilPanel
+                    control={report?.controlLayer}
+                    liveCoordination={report?.controlLayer ? undefined : liveAgentCoordination}
+                  />
                 </Panel>
                 {report?.controlLayer && !report.controlLayer.canApprove ? (
                   <BlockedStateCard
@@ -1810,7 +1876,15 @@ export function UserWorkspace() {
                   filesJson={filesInput}
                   projectId={projectId ?? undefined}
                   creditsRemaining={creditsRemaining}
-                  onScanComplete={(critical) => setSecurityBlockers(critical)}
+                  onScanComplete={(result) => {
+                    setSecurityBlockers(result.criticalCount);
+                    setDeployReadinessStatus(result.readiness?.status ?? null);
+                    if (result.findings.length > 0) {
+                      setLastReviewFindings((prev) =>
+                        mergeReviewFindings(prev, fromSecurityFindings(result.findings))
+                      );
+                    }
+                  }}
                 />
               </Panel>
             ) : null}
@@ -2021,7 +2095,7 @@ export function UserWorkspace() {
                     Push approved patches to GitHub
                   </button>
                 ) : (
-                  <p className="mb-2 text-xs text-steel">Approve a plan before automated GitHub push (requires GITHUB_TOKEN).</p>
+                  <p className="mb-2 text-xs text-steel">Approve a plan before automated GitHub push (requires GitHub App or GITHUB_TOKEN).</p>
                 )}
                 <button
                   type="button"

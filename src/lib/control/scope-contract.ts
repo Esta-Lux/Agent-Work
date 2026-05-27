@@ -2,6 +2,8 @@ import type { ChangePlan } from "@/lib/types/core";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { isTestPath } from "@/lib/workspace/file-ranking";
 import type { ScopeContract, ControlTaskType } from "@/lib/control/types";
+import { isWorkIntent } from "@/lib/control/context-gate";
+import { isRepoOverviewQuestion } from "@/lib/workspace/repo-overview";
 
 const DEFAULT_FORBIDDEN = [
   "**/.env*",
@@ -15,10 +17,13 @@ const SENSITIVE_ZONES = ["auth", "billing", "payment", "stripe", "migration", "s
 
 export function inferTaskType(request: string): ControlTaskType {
   const n = request.toLowerCase();
+  if (isRepoOverviewQuestion(request) || (!isWorkIntent(request) && /\b(what|explain|describe|how does|why)\b/.test(n))) {
+    return "review";
+  }
   if (/\b(refactor|restructure|rewrite)\b/.test(n)) return "refactor";
   if (/\b(add|new feature|implement|build)\b/.test(n)) return "feature";
   if (/\b(fix|bug|broken|wrong|not working|error)\b/.test(n)) return "bug_fix";
-  return "bug_fix";
+  return "review";
 }
 
 export function inferDiffBudget(taskType: ControlTaskType, request: string): {
@@ -80,13 +85,15 @@ export function buildScopeContract(input: {
   const apiImpact = inferApiImpact(planFiles, patchFiles);
   const affectedUserFlow = inferAffectedFlow(input.request, planFiles);
 
-  const scopeLockMessage = [
-    `Task locked as ${taskType.replace("_", " ")}: "${input.plan.intent.interpretedGoal.slice(0, 120)}".`,
-    `Likely flow: ${affectedUserFlow}.`,
-    `Allowed to edit: ${allowedSet.size} file(s) starting with ${primary}.`,
-    `Will not touch auth, billing, env, or migrations unless you approve scope expansion.`,
-    `Diff budget: max ${budget.maxFiles} files, ${budget.maxLines} lines, ${budget.maxNewDependencies} new dependency.`
-  ].join(" ");
+  const scopeLockMessage = !isWorkIntent(input.request)
+    ? `Read-only Q&A — BootRise will not lock patch scope until you run Fix with a concrete change. ${allowedSet.size > 0 ? `If you later fix code, likely starting files: ${primary}.` : "Describe one narrow change to open the controlled Fix pipeline."}`
+    : [
+        `Task locked as ${taskType.replace("_", " ")}: "${input.plan.intent.interpretedGoal.slice(0, 120)}".`,
+        `Likely flow: ${affectedUserFlow}.`,
+        `Allowed to edit: ${allowedSet.size} file(s) starting with ${primary}.`,
+        `Will not touch auth, billing, env, or migrations unless you approve scope expansion.`,
+        `Diff budget: max ${budget.maxFiles} files, ${budget.maxLines} lines, ${budget.maxNewDependencies} new dependency.`
+      ].join(" ");
 
   return {
     taskType,

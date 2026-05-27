@@ -15,6 +15,10 @@ export async function withWorkspaceAuth(request: Request, handler: WorkspaceHand
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    throw error;
+    console.error("[withWorkspaceAuth]", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error." },
+      { status: 500 }
+    );
   }
 }

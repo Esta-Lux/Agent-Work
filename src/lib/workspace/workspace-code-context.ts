@@ -11,10 +11,14 @@ export {
 } from "@/lib/workspace/file-ranking";
 
 import type { LoadedFileSnippet } from "@/lib/workspace/file-ranking";
+import { isRepoOverviewQuestion } from "@/lib/workspace/repo-overview";
+
+export { isRepoOverviewQuestion } from "@/lib/workspace/repo-overview";
 
 export function isProductCodeReviewQuestion(message: string): boolean {
   const n = message.toLowerCase();
   if (n.includes("what can you do") || n.includes("export bundle")) return false;
+  if (isRepoOverviewQuestion(message)) return false;
   return (
     n.includes("review") ||
     n.includes("issue") ||
@@ -25,15 +29,13 @@ export function isProductCodeReviewQuestion(message: string): boolean {
     n.includes("turn card") ||
     n.includes("hud") ||
     n.includes("navigat") ||
-    n.includes("snaproad") ||
-    n.includes("what is") ||
     n.includes("what's wrong") ||
     n.includes("how does") ||
     n.includes("ux") ||
-    n.includes("driver") ||
     n.includes("map screen") ||
     n.includes("gap") ||
-    n.includes("risk")
+    n.includes("risk") ||
+    (n.includes("driver") && /\b(review|fix|issue|wrong|broken)\b/.test(n))
   );
 }
 

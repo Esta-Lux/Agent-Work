@@ -17,8 +17,15 @@ import {
   formatFilesThinkingDetail,
   isBroadReviewMessage,
   isProductCodeReviewQuestion,
+  isRepoOverviewQuestion,
   type LoadedFileSnippet
 } from "@/lib/workspace/workspace-code-context";
+import { buildRepoOverviewReply } from "@/lib/workspace/repo-overview";
+import {
+  fromDeterministicFindings,
+  mergeReviewFindings,
+  formatReviewFindingsBlock
+} from "@/lib/workspace/review-findings";
 import { buildDeterministicRepoReview } from "@/lib/workspace/deterministic-repo-review";
 import { readRepoFiles, repoExists } from "@/lib/workspace/repo-store";
 import { runMultiPassCodeReview } from "@/lib/workspace/multi-pass-review";
@@ -39,6 +46,8 @@ import {
   selectChatContextFiles
 } from "@/lib/control/chat-control";
 import { buildRulesPromptBlock } from "@/lib/control/context-governor";
+import { buildEfficientModelContext } from "@/lib/ai/senior-architect";
+import type { ContextDepth } from "@/lib/ai/task-intent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,7 +100,8 @@ export async function POST(request: Request) {
       repositoryId,
       projectId,
       orgId,
-      assumptionsApproved
+      assumptionsApproved,
+      mode: body?.mode
     });
   }
 
@@ -146,24 +156,62 @@ export async function POST(request: Request) {
   };
 
   if (chatControl && !chatControl.canProceed) {
+      const budgetOnly =
+        chatControl.stopReason?.includes("Context budget exceeded") &&
+        loadedFiles.length > 0 &&
+        isProductCodeReviewQuestion(message);
+
+      if (budgetOnly) {
+        const review = runFastRepoReview({
+          message,
+          files: loadedFiles,
+          productName: context.projectBrief?.productName,
+          chatControl
+        });
+        void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
+        return NextResponse.json({
+          product: "BootRise",
+          provider,
+          connected: isProviderConfigured(provider),
+          model: "BootRise Fast",
+          setupHint: providerConfigured ? undefined : providerSetupHint,
+          chatControl,
+          ...review.result,
+          reply: `${chatControl.stopReason}\n\n${review.result.reply}`,
+          suggestedActions: [
+            "Run Fix on one finding",
+            "Narrow to app/mobile or app/backend for a deeper model pass",
+            'Reply "proceed with assumptions" for a scoped fix'
+          ]
+        });
+      }
+
       void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
+      const questions = chatControl.contextGate.questions;
       return NextResponse.json({
         product: "BootRise",
         provider,
         connected: isProviderConfigured(provider),
-        reply: chatControl.stopReason ?? "BootRise stopped this chat turn to protect your credits and scope.",
+        reply: [
+          chatControl.stopReason ?? "BootRise stopped this chat turn to protect your credits and scope.",
+          questions.length
+            ? `Clarifications needed:\n${questions.map((q, i) => `${i + 1}. ${q.question}`).join("\n")}`
+            : null
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         phase: "planning" as const,
-        discoveryQuestions: chatControl.contextGate.questions.map((q) => ({
+        discoveryQuestions: questions.map((q) => ({
           id: q.id,
           prompt: q.question,
           whyItMatters: q.whyItMatters
         })),
         featureAdvice: [],
         suggestedActions: [
-          "Answer the context questions above",
+          questions.length ? "Answer the context questions above" : null,
           'Reply "proceed with assumptions" to continue under scope lock',
           "Run Fix with a file-specific request"
-        ],
+        ].filter((s): s is string => Boolean(s)),
         thinkingSteps: [
           {
             id: "control",
@@ -181,6 +229,53 @@ export async function POST(request: Request) {
         fileActivity: [],
         chatControl
       });
+  }
+
+  if (loadedFiles.length > 0 && isRepoOverviewQuestion(message)) {
+    const overview = buildRepoOverviewReply({
+      message,
+      files: loadedFiles,
+      productName: context.projectBrief?.productName
+    });
+    void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
+    return NextResponse.json({
+      product: "BootRise",
+      provider,
+      connected: providerConfigured,
+      model: "BootRise Architect",
+      setupHint: providerConfigured ? undefined : providerSetupHint,
+      chatControl,
+      reply: overview.reply,
+      plainEnglishSummary: overview.reply.split("\n\n")[0]?.replace(/^WHAT THIS IS:\s*/i, "").trim(),
+      phase: "discovery" as const,
+      discoveryQuestions: [],
+      featureAdvice: [],
+      suggestedActions: [
+        "Ask about one subsystem (navigation, offers, Orion, backend API)",
+        "Open Project Brain to save product rules",
+        "Run Fix with a single scoped change when ready to edit code"
+      ],
+      thinkingSteps: [
+        {
+          id: "control",
+          label: "Senior architect overview",
+          status: "done" as const,
+          detail: overview.coverageSummary
+        },
+        {
+          id: "docs",
+          label: "Read product docs",
+          status: "done" as const,
+          detail: formatFilesThinkingDetail(overview.overviewFiles)
+        }
+      ],
+      fileActivity: overview.overviewFiles.slice(0, 12).map((f) => ({
+        path: f.path,
+        status: "analyzing" as const,
+        detail: "Product & architecture context"
+      })),
+      reviewCoverage: overview.coverageSummary
+    });
   }
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message)) {
@@ -321,6 +416,19 @@ function resolveChatFileCorpus(clientFiles: LoadedFileSnippet[], repositoryId?: 
   return clientFiles;
 }
 
+function buildStructuredReviewFindings(
+  message: string,
+  files: LoadedFileSnippet[],
+  productName?: string
+) {
+  const fast = buildDeterministicRepoReview({
+    message,
+    files,
+    projectName: productName
+  });
+  return mergeReviewFindings(fromDeterministicFindings(fast.findings));
+}
+
 async function runPrimaryCodeReview(input: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
@@ -348,12 +456,18 @@ async function runPrimaryCodeReview(input: {
       rulesBlock: rulesSuffix
     });
     const plainEnglishSummary = extractPlainEnglishSection(multi.reply) ?? undefined;
+    const reviewFindings = buildStructuredReviewFindings(input.message, input.files, input.productName);
+    const findingsBlock = formatReviewFindingsBlock(reviewFindings, 6);
+    const reply =
+      findingsBlock && !multi.reply.includes("PRIORITIZED FINDINGS")
+        ? `${normalizeAgentReply(multi.reply)}\n\n${findingsBlock}`
+        : normalizeAgentReply(multi.reply);
 
     return {
       model: multi.model,
       chatControl: input.chatControl,
       result: {
-        reply: normalizeAgentReply(multi.reply),
+        reply,
         plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
         phase: "review" as const,
         discoveryQuestions: [],
@@ -377,28 +491,45 @@ async function runPrimaryCodeReview(input: {
           status: "analyzing" as const,
           detail: multi.coverageSummary
         })),
-        reviewCoverage: multi.coverageSummary
+        reviewCoverage: multi.coverageSummary,
+        reviewFindings
       }
     };
   }
 
+  const depth = (input.chatControl?.taskIntent?.depth ?? "standard") as ContextDepth;
+  const efficient = input.chatControl
+    ? buildEfficientModelContext(input.files, input.chatControl.contextPlan, depth)
+    : null;
   const relevant = input.chatControl
     ? selectChatContextFiles(input.files, input.chatControl.contextPlan)
     : input.files.slice(0, config.singleMaxFiles);
 
-  const contextBlock = buildCodeContextBlock(relevant, {
-    maxCharsPerFile: config.charsPerFile,
-    totalBudget: config.singleCharBudget
-  });
-  const system = buildCodeReviewSystemPrompt(input.productName, input.persona) + rulesSuffix;
+  const contextBlock =
+    efficient?.block ||
+    buildCodeContextBlock(relevant, {
+      maxCharsPerFile: config.charsPerFile,
+      totalBudget: config.singleCharBudget
+    });
+  const architectBlock =
+    input.chatControl?.architectBriefPreview && input.chatControl.taskIntent?.seniorArchitectMode
+      ? `\n\n${input.chatControl.architectBriefPreview}\n`
+      : "";
+  const system = buildCodeReviewSystemPrompt(input.productName, input.persona) + architectBlock + rulesSuffix;
   const userPrompt = [
     `User question: ${input.message}`,
     "",
     input.chatControl
-      ? `BootRise context budget: ${input.chatControl.contextPlan.summary}`
+      ? [
+          `BootRise context: ${input.chatControl.contextPlan.summary}`,
+          input.chatControl.taskIntent ? `Task intent: ${input.chatControl.taskIntent.summary}` : null,
+          efficient ? `Excerpts: ${efficient.filesIncluded} files (~${Math.round(efficient.charsUsed / 1000)}k chars)` : null
+        ]
+          .filter(Boolean)
+          .join("\n")
       : null,
     "",
-    `Relevant source files (${relevant.length} of ${input.files.length} in corpus — governed by control layer):`,
+    `Relevant source files (${efficient?.filesIncluded ?? relevant.length} of ${input.files.length} in corpus — governed by control layer):`,
     contextBlock || "(no excerpts — ask user to re-import)",
     "",
     "Answer the user question directly. Use clear language throughout. Do not include a heading named Plain English."
@@ -414,6 +545,12 @@ async function runPrimaryCodeReview(input: {
   });
 
   const normalizedText = normalizeAgentReply(result.text);
+  const reviewFindings = buildStructuredReviewFindings(input.message, input.files, input.productName);
+  const findingsBlock = formatReviewFindingsBlock(reviewFindings, 6);
+  const reply =
+    findingsBlock && !normalizedText.includes("PRIORITIZED FINDINGS")
+      ? `${normalizedText}\n\n${findingsBlock}`
+      : normalizedText;
   const plainMatch = normalizedText.match(/##\s*Summary\s*([\s\S]*?)(?=##\s*Suggested|$)/i);
   const plainEnglishSummary = plainMatch?.[1]?.trim() ?? extractPlainEnglishSection(result.text) ?? undefined;
 
@@ -427,13 +564,13 @@ async function runPrimaryCodeReview(input: {
     model: result.model,
     chatControl: input.chatControl,
     result: {
-      reply: normalizedText,
+      reply,
       plainEnglishSummary: plainEnglishSummary ? sanitizeUserFacingText(plainEnglishSummary, 1200) : undefined,
       phase: "review" as const,
       discoveryQuestions: [],
       featureAdvice: [],
       suggestedActions: [
-        "Run Fix and report on a specific change",
+        "Run Fix on one finding",
         "Re-import full repo if navigation files are missing",
         "Export bundle"
       ],
@@ -458,7 +595,8 @@ async function runPrimaryCodeReview(input: {
           detail: input.provider === "openai" ? "ChatGPT" : "BootRise"
         }
       ],
-      fileActivity
+      fileActivity,
+      reviewFindings
     }
   };
 }
@@ -468,8 +606,9 @@ function shouldUseFastRepoReview(
   mode: WorkspaceChatRequest["mode"],
   fileCount: number
 ): boolean {
-  if (mode && mode !== "fast") return false;
-  return fileCount >= 80 && isBroadReviewMessage(message);
+  if (mode === "deep" || mode === "security" || mode === "premium") return false;
+  if (!isBroadReviewMessage(message)) return false;
+  return fileCount >= 80 || mode === "fast";
 }
 
 function runFastRepoReview(input: {
@@ -483,12 +622,15 @@ function runFastRepoReview(input: {
     files: input.files,
     projectName: input.productName
   });
+  const reviewFindings = mergeReviewFindings(fromDeterministicFindings(fast.findings));
+  const findingsBlock = formatReviewFindingsBlock(reviewFindings, 6);
+  const reply = findingsBlock ? `${fast.reply}\n\n${findingsBlock}` : fast.reply;
 
   return {
     model: "BootRise Fast",
     chatControl: input.chatControl,
     result: {
-      reply: fast.reply,
+      reply,
       phase: "review" as const,
       discoveryQuestions: [],
       featureAdvice: [],
@@ -523,7 +665,8 @@ function runFastRepoReview(input: {
         status: "analyzing" as const,
         detail: fast.coverageSummary
       })),
-      reviewCoverage: fast.coverageSummary
+      reviewCoverage: fast.coverageSummary,
+      reviewFindings
     }
   };
 }

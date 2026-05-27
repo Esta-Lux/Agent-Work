@@ -1,7 +1,7 @@
 "use client";
 
 import { StatusPill } from "@/components/status-pill";
-import { buildUnifiedDiff } from "@/lib/workspace/apply-patches";
+import { MonacoDiffViewer } from "@/components/monaco-diff-viewer";
 import type { WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 export function DiffReportPanel({ report }: { report: WorkspaceFixReport }) {
@@ -82,9 +82,9 @@ export function DiffReportPanel({ report }: { report: WorkspaceFixReport }) {
             <details key={file.path} className="rounded border border-line bg-cloud p-2">
               <summary className="cursor-pointer text-xs font-semibold text-ink">{file.path}</summary>
               {file.before != null && file.before !== file.after ? (
-                <pre className="mt-2 max-h-32 overflow-auto rounded bg-ink p-2 text-[11px] leading-4 text-white">
-                  {buildUnifiedDiff(file.before, file.after, file.path)}
-                </pre>
+                <div className="mt-2">
+                  <MonacoDiffViewer path={file.path} before={file.before} after={file.after} height={220} />
+                </div>
               ) : null}
               <p className="mt-2 text-[10px] font-semibold uppercase text-steel">After</p>
               <pre className="mt-1 max-h-40 overflow-auto rounded bg-ink p-2 text-[11px] leading-4 text-white">{file.after}</pre>

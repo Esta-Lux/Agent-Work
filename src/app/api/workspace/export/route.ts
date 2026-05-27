@@ -8,6 +8,7 @@ import { buildPullRequestBody, createDraftPullRequest } from "@/lib/workspace/gi
 import type { RepoHealthSummary } from "@/lib/reporting/repo-health";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { ChangePlan } from "@/lib/types/core";
+import { hasGithubApiCredentials } from "@/lib/github/github-config";
 
 export const runtime = "nodejs";
 
@@ -57,15 +58,15 @@ export async function POST(request: Request) {
     const wantsPr = body.createDraftPr !== false;
     const patchedPaths = body.report?.patches?.map((p) => p.path) ?? body.report?.fixed.map((f) => f.path);
 
-    if (!process.env.GITHUB_TOKEN?.trim()) {
+    if (!hasGithubApiCredentials()) {
       return NextResponse.json({
         product: "BootRise",
         mode: "github",
         bundle,
         status: "token-missing",
-        error: "GITHUB_TOKEN is required for automated push and draft PR.",
+        error: "GitHub App or GITHUB_TOKEN is required for automated push and draft PR.",
         pushSteps: [
-          "Add GITHUB_TOKEN to Agent-Work/.env with repo scope.",
+          "Configure GITHUB_APP_* in .env.local (docs/GITHUB_APP.md) or add GITHUB_TOKEN with repo scope.",
           "Re-run GitHub export with an approved fix report."
         ]
       }, { status: 400 });

@@ -30,6 +30,8 @@ describe("task context pack", () => {
     assert.ok(pack.contextPlan.deepRead.length >= 1);
     assert.ok(pack.scopeContract.allowedEditFiles.length >= 0);
     assert.match(formatContextPackSummary(pack), /Context:/);
+    assert.ok(pack.taskIntent);
+    assert.equal(pack.taskIntent.kind, "fix");
   });
 
   it("blocks when context exceeds budget", () => {

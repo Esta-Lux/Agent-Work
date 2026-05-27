@@ -40,6 +40,16 @@ export interface ContextPlan {
   estimatedTokens: number;
   confidence: number;
   summary: string;
+  /** Brain v2 repo graph one-liner for agent council graph_planner. */
+  repoGraphSummary?: string;
+}
+
+export interface TaskIntentSummary {
+  kind: string;
+  depth: string;
+  seniorArchitectMode: boolean;
+  summary: string;
+  suggestedMode: string;
 }
 
 export interface ChatControlSummary {
@@ -54,6 +64,8 @@ export interface ChatControlSummary {
   assumptionsApproved?: boolean;
   brainRulesCount?: number;
   brainFileHintsCount?: number;
+  taskIntent?: TaskIntentSummary;
+  architectBriefPreview?: string;
 }
 
 /** Serializable pack reused across chat, fix, and PR — proves what BootRise selected before spend. */
@@ -78,6 +90,8 @@ export interface TaskContextPack {
   canProceed: boolean;
   stopReason: string | null;
   assumptionsApproved: boolean;
+  taskIntent?: TaskIntentSummary;
+  architectBrief?: string;
 }
 
 export type ContextGateStatus = "proceed_with_assumptions" | "needs_clarification" | "blocked";
@@ -97,7 +111,15 @@ export interface ContextGateDecision {
   sensitiveAreas: string[];
 }
 
-export type AgentRole = "lead_architect" | "builder" | "security" | "qa" | "runtime_monitor" | "deployment";
+export type AgentRole =
+  | "lead_architect"
+  | "builder"
+  | "security"
+  | "qa"
+  | "runtime_monitor"
+  | "deployment"
+  | "reviewer"
+  | "graph_planner";
 
 export interface AgentDecision {
   agent: AgentRole;

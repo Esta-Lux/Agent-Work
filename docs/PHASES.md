@@ -52,5 +52,5 @@ BOOTRISE_WEBRTC_SIGNAL_URL=wss://your-farm.example/signal/{repositoryId}
 
 - Managed device farm provider wiring (URLs above)
 - Supabase Auth JWT for end-user RLS (policies ready; service role used today)
-- GitHub OAuth + installation tokens (push via GITHUB_TOKEN works today)
+- GitHub App installation tokens (`docs/GITHUB_APP.md`, `GET /api/github/status`) — PAT still supported as fallback
 - Cross-repo org graph (`004` adds single-repo registry; multi-repo edges are a later schema)
