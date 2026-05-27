@@ -18,6 +18,7 @@ import {
   isBroadReviewMessage,
   isProductCodeReviewQuestion,
   isRepoOverviewQuestion,
+  selectRelevantFiles,
   type LoadedFileSnippet
 } from "@/lib/workspace/workspace-code-context";
 import { buildRepoOverviewReply } from "@/lib/workspace/repo-overview";
@@ -275,6 +276,25 @@ export async function POST(request: Request) {
         detail: "Product & architecture context"
       })),
       reviewCoverage: overview.coverageSummary
+    });
+  }
+
+  if (loadedFiles.length > 0 && isNavigationHudWorkRequest(message)) {
+    const handoff = buildNavigationHudHandoff({
+      message,
+      files: loadedFiles,
+      chatControl,
+      shouldAutoRun: shouldAutoRunFixFromChat(message)
+    });
+    void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
+    return NextResponse.json({
+      product: "BootRise",
+      provider,
+      connected: providerConfigured,
+      model: "BootRise Control",
+      setupHint: providerConfigured ? undefined : providerSetupHint,
+      chatControl,
+      ...handoff
     });
   }
 
@@ -609,6 +629,115 @@ function shouldUseFastRepoReview(
   if (mode === "deep" || mode === "security" || mode === "premium") return false;
   if (!isBroadReviewMessage(message)) return false;
   return fileCount >= 80 || mode === "fast";
+}
+
+function isNavigationHudWorkRequest(message: string): boolean {
+  const n = message.toLowerCase();
+  const mentionsHud = /\b(hud|navigation hud|nav hud|turn card|turn cards|lane guidance|maneuver|eta strip|driving mode)\b/.test(n);
+  const asksWork =
+    /\b(fix|work on|make it ready|prepare a plan|plan to fix|update|improve|polish|make.*better|ready)\b/.test(n);
+  return mentionsHud && asksWork;
+}
+
+function shouldAutoRunFixFromChat(message: string): boolean {
+  const n = message.toLowerCase();
+  if (/\b(plan|prepare|review|audit|list|explain|how would)\b/.test(n)) return false;
+  return /\b(fix|make it ready|go ahead|work on|update|improve)\b/.test(n);
+}
+
+function buildNavigationHudHandoff(input: {
+  message: string;
+  files: LoadedFileSnippet[];
+  chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
+  shouldAutoRun: boolean;
+}) {
+  const targets = selectHudTargetFiles(input.files);
+  const fixRequest = [
+    "Improve the mobile navigation HUD readiness and reduce coupling risk.",
+    "Focus on app/mobile/src/screens/MapScreen.tsx and navigation HUD components.",
+    "Make the displayed turn card, lane guidance, ETA/status strip, and map controls clearer without changing auth, billing, env, backend SQL, or unrelated product surfaces.",
+    "Respect existing Reanimated v4, Gesture Handler, Mapbox MarkerView, and safe-area rules."
+  ].join(" ");
+
+  const reply = [
+    "HUD FIX HANDOFF",
+    "",
+    "I will stop repeating the broad repo review and treat this as a scoped mobile navigation task.",
+    "",
+    "Highest-priority scope:",
+    "1. Map/HUD shell: reduce visual clutter around the active navigation state.",
+    "2. Turn card: make next maneuver, distance, and secondary instruction easier to scan.",
+    "3. Lane guidance: keep it visible only when meaningful, with clearer empty/unknown states.",
+    "4. ETA/status strip: separate live trip truth from debug/developer details.",
+    "5. Verification: run mobile-focused lint/type checks or at least component-level static checks after patch proposal.",
+    "",
+    "Likely files:",
+    ...targets.slice(0, 10).map((path) => `- ${path}`),
+    "",
+    input.shouldAutoRun
+      ? "I’m starting the controlled Fix pipeline now because your request asks to fix/update the HUD."
+      : "I prepared the scoped Fix request. Use the action below to run the controlled Fix pipeline when you approve it."
+  ].join("\n");
+
+  return {
+    reply,
+    phase: input.shouldAutoRun ? ("building" as const) : ("planning" as const),
+    discoveryQuestions: [],
+    featureAdvice: [],
+    suggestedActions: input.shouldAutoRun
+      ? ["Review proposed HUD patches", "Open Fix panel", "Run sandbox verify after approval"]
+      : ["Approve and run HUD fix", "Open Fix panel", "Switch to Deep for more reasoning"],
+    thinkingSteps: [
+      {
+        id: "intent",
+        label: "Detect HUD fix intent",
+        status: "done" as const,
+        detail: input.message.slice(0, 90)
+      },
+      {
+        id: "scope",
+        label: "Lock mobile navigation scope",
+        status: "done" as const,
+        detail: targets.slice(0, 4).join(", ")
+      },
+      {
+        id: "handoff",
+        label: input.shouldAutoRun ? "Start Fix pipeline" : "Prepare approval handoff",
+        status: input.shouldAutoRun ? ("active" as const) : ("done" as const),
+        detail: input.shouldAutoRun ? "Auto-run requested by user wording" : "Waiting for user approval"
+      }
+    ],
+    fileActivity: targets.slice(0, 12).map((path) => ({
+      path,
+      status: "planned" as const,
+      detail: "HUD/navigation fix candidate"
+    })),
+    fixRequest,
+    triggerFix: input.shouldAutoRun,
+    reviewCoverage: input.chatControl?.contextPlan.summary
+  };
+}
+
+function selectHudTargetFiles(files: LoadedFileSnippet[]): string[] {
+  const preferred = [
+    "app/mobile/src/screens/MapScreen.tsx",
+    "app/mobile/src/components/navigation/TurnCard.tsx",
+    "app/mobile/src/components/navigation/TurnInstructionCard.tsx",
+    "app/mobile/src/components/navigation/LaneGuidance.tsx",
+    "app/mobile/src/components/navigation/LaneGuidanceBar.tsx",
+    "app/mobile/src/components/navigation/NavigationStatusStrip.tsx",
+    "app/mobile/src/components/navigation/SpeedIndicator.tsx",
+    "app/mobile/src/components/navigation/ManeuverIcon.tsx",
+    "app/mobile/src/navigation/navBannerFromStep.ts",
+    "app/mobile/src/navigation/navStepsFromDirections.ts"
+  ];
+  const byPath = new Set(files.map((f) => f.path));
+  const matched = preferred.filter((path) => byPath.has(path));
+  if (matched.length >= 4) return matched;
+  const fallback = selectRelevantFiles("navigation hud turn card lane guidance eta strip map screen", files, 12).map(
+    (f) => f.path
+  );
+  return Array.from(new Set([...matched, ...fallback]));
 }
 
 function runFastRepoReview(input: {

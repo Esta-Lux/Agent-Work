@@ -85,6 +85,7 @@ interface ChatApiResponse {
   suggestedActions?: string[];
   discoveryQuestions?: DiscoveryQuestion[];
   triggerFix?: boolean;
+  fixRequest?: string;
   plainEnglishSummary?: string;
   chatControl?: ChatControlSummary | null;
   reviewFindings?: ReviewFinding[];
@@ -872,6 +873,12 @@ export function UserWorkspace() {
       void importFromGithub();
       return;
     }
+    if (lower.includes("approve and run hud fix") || lower.includes("review proposed hud patches")) {
+      setContextTab("fix");
+      setActiveStep("fix");
+      void runFixReport(fixRequest);
+      return;
+    }
     if (lower.includes("fix and report") || lower.includes("run fix")) {
       setContextTab("fix");
       setActiveStep("fix");
@@ -1168,6 +1175,11 @@ export function UserWorkspace() {
       if (data.chatControl) setLastChatControl(data.chatControl);
       if (data.reviewFindings?.length) setLastReviewFindings(data.reviewFindings);
       if (data.reviewCoverage) setLastReviewCoverage(data.reviewCoverage);
+      if (data.fixRequest) {
+        setFixRequest(data.fixRequest);
+        setActiveStep("fix");
+        setContextTab("fix");
+      }
 
       const assistantMessage: ChatMessage = {
         role: "assistant",
@@ -1198,8 +1210,9 @@ export function UserWorkspace() {
       setStatus("Ready");
 
       if (data.triggerFix && hasCode) {
-        setFixRequest(message);
-        await runFixReport(message);
+        const request = data.fixRequest ?? message;
+        setFixRequest(request);
+        await runFixReport(request);
       }
     } catch (caught) {
       raiseIssue({ scope: "chat", message: caught instanceof Error ? caught.message : "Chat failed." });

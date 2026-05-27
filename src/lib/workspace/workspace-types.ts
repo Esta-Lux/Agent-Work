@@ -106,6 +106,8 @@ export interface WorkspaceChatResult {
   thinkingSteps: ThinkingStep[];
   fileActivity: FileActivity[];
   triggerFix?: boolean;
+  /** Pre-filled scoped request for the Fix panel; may or may not auto-run. */
+  fixRequest?: string;
   plainEnglishSummary?: string;
   chatControl?: ChatControlSummary | null;
   reviewCoverage?: string;
