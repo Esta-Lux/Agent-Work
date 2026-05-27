@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       lastReport?: WorkspaceProject["lastReport"];
       preferredProvider?: "bootrise" | "openai";
       githubUrl?: string | null;
+      repositoryId?: string | null;
     } | null;
 
     if (!body?.name?.trim() || !body.brief?.productName?.trim()) {
@@ -64,7 +65,8 @@ export async function POST(request: Request) {
         files: body.files,
         lastReport: body.lastReport ?? undefined,
         preferredProvider: body.preferredProvider,
-        githubUrl: body.githubUrl ?? null
+        githubUrl: body.githubUrl ?? null,
+        repositoryId: body.repositoryId ?? null
       },
       scope
     );

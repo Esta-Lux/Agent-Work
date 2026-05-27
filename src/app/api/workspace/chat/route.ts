@@ -15,9 +15,11 @@ import {
   buildCodeContextBlock,
   buildCodeReviewSystemPrompt,
   formatFilesThinkingDetail,
+  isBroadReviewMessage,
   isProductCodeReviewQuestion,
   type LoadedFileSnippet
 } from "@/lib/workspace/workspace-code-context";
+import { buildDeterministicRepoReview } from "@/lib/workspace/deterministic-repo-review";
 import { readRepoFiles, repoExists } from "@/lib/workspace/repo-store";
 import { runMultiPassCodeReview } from "@/lib/workspace/multi-pass-review";
 import { getReviewConfig, shouldUseMultiPassReview } from "@/lib/workspace/review-config";
@@ -70,7 +72,10 @@ export async function POST(request: Request) {
 
   const orgId = ctx.orgId;
   const userId = ctx.user.id;
-  const projectIdForUsage = body?.projectId?.trim() ?? body?.repositoryId?.trim() ?? "workspace-chat";
+  const repositoryId = body?.repositoryId?.trim() ?? undefined;
+  const loadedFiles = resolveChatFileCorpus(body?.loadedFiles ?? [], repositoryId);
+  const resolvedLoadedFilePaths = loadedFiles.length > 0 ? loadedFiles.map((file) => file.path) : body?.loadedFilePaths;
+  const projectIdForUsage = body?.projectId?.trim() ?? repositoryId ?? "workspace-chat";
   let modelRoute: Awaited<ReturnType<typeof assertModelRouteAllowed>>;
   try {
     modelRoute = await assertModelRouteAllowed({
@@ -78,8 +83,8 @@ export async function POST(request: Request) {
       requestedMode: body?.mode,
       taskType: isProductCodeReviewQuestion(message) ? "code_review" : "chat",
       requestText: message,
-      filePaths: body?.loadedFilePaths,
-      fileCount: body?.loadedFilePaths?.length ?? body?.loadedFiles?.length ?? 0,
+      filePaths: resolvedLoadedFilePaths,
+      fileCount: resolvedLoadedFilePaths?.length ?? loadedFiles.length,
       premiumApproved: requestedProvider === "openai" || body?.mode === "premium",
       orgId,
       userId,
@@ -100,15 +105,13 @@ export async function POST(request: Request) {
 
   const context: WorkspaceChatContext = {
     projectBrief: body?.projectBrief as ProjectBrief | undefined,
-    hasCode: body?.hasCode,
-    loadedFilePaths: body?.loadedFilePaths,
+    hasCode: body?.hasCode || loadedFiles.length > 0,
+    loadedFilePaths: resolvedLoadedFilePaths,
     lastReport: body?.lastReport ?? null,
     githubUrl: body?.githubUrl ?? extractGithubRepoUrl(message) ?? null,
     githubBranch: body?.githubBranch ?? null
   };
 
-  const loadedFiles = resolveChatFileCorpus(body?.loadedFiles ?? [], body?.repositoryId);
-  const repositoryId = body?.repositoryId?.trim() ?? undefined;
   const projectId = body?.projectId?.trim() ?? repositoryId;
 
   let chatControl = null;
@@ -156,20 +159,25 @@ export async function POST(request: Request) {
   }
 
   if (loadedFiles.length > 0 && isProductCodeReviewQuestion(message)) {
-    if (!providerConfigured) {
-      const offline = createWorkspaceChatResponse(message, context, { githubReview: undefined });
+    if (!providerConfigured || shouldUseFastRepoReview(message, body?.mode, loadedFiles.length)) {
+      const review = runFastRepoReview({
+        message,
+        files: loadedFiles,
+        productName: context.projectBrief?.productName,
+        chatControl
+      });
       void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
       return NextResponse.json({
         product: "BootRise",
         provider,
-        connected: false,
-        model: "BootRise (offline)",
-        setupHint: providerSetupHint,
-        chatControl,
-        ...offline,
-        reply: `${offline.reply}\n\n**AI engine offline:** ${providerSetupHint}`
+        connected: providerConfigured,
+        model: providerConfigured ? "BootRise Fast" : "BootRise offline review",
+        setupHint: providerConfigured ? undefined : providerSetupHint,
+        chatControl: review.chatControl ?? chatControl,
+        ...review.result
       });
     }
+
     try {
       assertKillSwitchAllowed("expensive_model");
       const review = await runPrimaryCodeReview({
@@ -180,7 +188,8 @@ export async function POST(request: Request) {
         provider,
         persona,
         chatControl,
-        projectId
+        projectId,
+        mode: body?.mode
       });
       void recordModelUsage(modelRoute, { orgId, userId, projectId: projectIdForUsage }, "succeeded");
       return NextResponse.json({
@@ -293,6 +302,7 @@ async function runPrimaryCodeReview(input: {
   persona: BootrisePersonaId;
   chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
   projectId?: string;
+  mode?: "fast" | "deep" | "security" | "premium";
 }) {
   const config = getReviewConfig();
   const rulesBlock = await buildChatRulesBlock({ files: input.files, projectId: input.projectId });
@@ -415,6 +425,71 @@ async function runPrimaryCodeReview(input: {
         }
       ],
       fileActivity
+    }
+  };
+}
+
+function shouldUseFastRepoReview(
+  message: string,
+  mode: WorkspaceChatRequest["mode"],
+  fileCount: number
+): boolean {
+  if (mode && mode !== "fast") return false;
+  return fileCount >= 80 && isBroadReviewMessage(message);
+}
+
+function runFastRepoReview(input: {
+  message: string;
+  files: LoadedFileSnippet[];
+  productName?: string;
+  chatControl: Awaited<ReturnType<typeof runChatControlGate>> | null;
+}) {
+  const fast = buildDeterministicRepoReview({
+    message: input.message,
+    files: input.files,
+    projectName: input.productName
+  });
+
+  return {
+    model: "BootRise Fast",
+    chatControl: input.chatControl,
+    result: {
+      reply: fast.reply,
+      phase: "review" as const,
+      discoveryQuestions: [],
+      featureAdvice: [],
+      suggestedActions: [
+        "Run Fix on one finding",
+        "Switch to Deep for model-backed review",
+        "Open Project Brain"
+      ],
+      thinkingSteps: [
+        {
+          id: "control",
+          label: "Chat control layer",
+          status: "done" as const,
+          detail: input.chatControl?.tokenWaste.message ?? "Context governed"
+        },
+        { id: "intent", label: "Understand request", status: "done" as const, detail: input.message.slice(0, 72) },
+        {
+          id: "files",
+          label: "Fast repo audit",
+          status: "done" as const,
+          detail: formatFilesThinkingDetail(fast.deepReadFiles)
+        },
+        {
+          id: "brain",
+          label: "Use Project Brain index",
+          status: "done" as const,
+          detail: fast.coverageSummary
+        }
+      ],
+      fileActivity: fast.deepReadFiles.slice(0, 24).map((f) => ({
+        path: f.path,
+        status: "analyzing" as const,
+        detail: fast.coverageSummary
+      })),
+      reviewCoverage: fast.coverageSummary
     }
   };
 }

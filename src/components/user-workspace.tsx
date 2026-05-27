@@ -298,7 +298,10 @@ export function UserWorkspace() {
     );
   }
 
-  async function analyzeWorkspace(files: Array<{ path: string; content: string }>) {
+  async function analyzeWorkspace(
+    files: Array<{ path: string; content: string }>,
+    ids?: { repositoryId?: string | null; projectId?: string | null }
+  ) {
     if (files.length === 0) {
       setRepoHealth(null);
       return;
@@ -307,10 +310,26 @@ export function UserWorkspace() {
       const res = await workspaceFetch("/api/workspace/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files })
+        body: JSON.stringify({
+          files,
+          repositoryId: ids?.repositoryId ?? repositoryId ?? undefined,
+          projectId: ids?.projectId ?? projectId ?? repositoryId ?? undefined
+        })
       });
-      const data = (await res.json()) as { health?: RepoHealthSummary; error?: string };
+      const data = (await res.json()) as {
+        health?: RepoHealthSummary;
+        projectBrain?: { projectId: string; filesIndexed: number; modules: number };
+        error?: string;
+      };
       if (res.ok && data.health) setRepoHealth(data.health);
+      if (res.ok && data.projectBrain) {
+        setProjectId(data.projectBrain.projectId);
+        setBrainStats({
+          files: data.projectBrain.filesIndexed,
+          modules: data.projectBrain.modules,
+          stale: 0
+        });
+      }
     } catch {
       /* non-blocking */
     }
@@ -373,7 +392,8 @@ export function UserWorkspace() {
           files,
           lastReport: report,
           preferredProvider: provider,
-          githubUrl: githubUrl || null
+          githubUrl: githubUrl || null,
+          repositoryId
         })
       });
       const data = (await response.json()) as {
@@ -418,6 +438,7 @@ export function UserWorkspace() {
           lastReport: WorkspaceFixReport | null;
           preferredProvider: "bootrise" | "openai";
           githubUrl: string | null;
+          repositoryId?: string | null;
         };
         error?: string;
       };
@@ -430,8 +451,9 @@ export function UserWorkspace() {
       setReport(p.lastReport);
       setProvider(p.preferredProvider);
       setGithubUrl(p.githubUrl ?? "");
+      setRepositoryId(p.repositoryId ?? null);
       setLastProjectSaved(p.id);
-      await analyzeWorkspace(p.files);
+      await analyzeWorkspace(p.files, { repositoryId: p.repositoryId ?? null, projectId: p.id });
       setStatus("Ready");
     } catch (caught) {
       raiseIssue({ scope: "global", message: caught instanceof Error ? caught.message : "Load failed." });
@@ -489,6 +511,7 @@ export function UserWorkspace() {
           remoteUrl: githubUrl.trim(),
           branch: githubBranch,
           repositoryId: repositoryId ?? undefined,
+          projectId: projectId ?? undefined,
           mode: importMode
         })
       });
@@ -502,12 +525,23 @@ export function UserWorkspace() {
         truncated?: boolean;
         skipped?: string[];
         canonicalStore?: { written: number; unchanged: number; totalFiles: number };
+        projectBrain?: { projectId: string; filesIndexed: number; filesSkipped: number; modules: number };
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Import failed");
+      const nextRepositoryId = data.repositoryId ?? repositoryId ?? `repo_${Date.now()}`;
+      const nextProjectId = data.projectBrain?.projectId ?? projectId ?? nextRepositoryId;
       setFilesInput(JSON.stringify(data.files ?? [], null, 2));
       if (data.branch) setGithubBranch(data.branch);
-      setRepositoryId(data.repositoryId ?? repositoryId ?? `repo_${Date.now()}`);
+      setRepositoryId(nextRepositoryId);
+      setProjectId(nextProjectId);
+      if (data.projectBrain) {
+        setBrainStats({
+          files: data.projectBrain.filesIndexed + data.projectBrain.filesSkipped,
+          modules: data.projectBrain.modules,
+          stale: 0
+        });
+      }
       if (!brief.productName.trim()) {
         const repoName = githubUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") ?? "Imported project";
         setBrief((b) => ({ ...b, productName: repoName, primaryWorkflow: b.primaryWorkflow || "Ship core user workflow" }));
@@ -525,11 +559,14 @@ export function UserWorkspace() {
       const storeNote = data.canonicalStore
         ? `\n\n_Canonical store: ${data.canonicalStore.totalFiles} files on disk (${data.canonicalStore.written} updated, ${data.canonicalStore.unchanged} unchanged)._`
         : "";
+      const brainNote = data.projectBrain
+        ? `\n\n_Project Brain: ${data.projectBrain.filesIndexed + data.projectBrain.filesSkipped} indexed file(s), ${data.projectBrain.modules} module(s)._`
+        : "";
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content: `Imported ${count} file(s) (${modeLabel}) from branch ${data.branch ?? githubBranch}.\n\n${sample}${more}${skipNote}${storeNote}\n\nOpen Files to browse the tree. Describe a real change before Fix and report.`,
+          content: `Imported ${count} file(s) (${modeLabel}) from branch ${data.branch ?? githubBranch}.\n\n${sample}${more}${skipNote}${storeNote}${brainNote}\n\nOpen Files or Project Brain to browse what BootRise indexed. Describe a real change before Fix and report.`,
           phase: "building",
           thinkingSteps: [
             { id: "gh1", label: "Connect GitHub", status: "done" },
@@ -541,7 +578,7 @@ export function UserWorkspace() {
       setLiveThinking((s) => s.map((step) => ({ ...step, status: "done" as const })));
       setSandboxPassed(false);
       setExportDone(false);
-      await analyzeWorkspace(data.files ?? []);
+      await analyzeWorkspace(data.files ?? [], { repositoryId: nextRepositoryId, projectId: nextProjectId });
       void recordLedger(
         "import",
         "Repository imported",
@@ -847,7 +884,9 @@ export function UserWorkspace() {
         entries.push({ path: relativePath.replace(/\\/g, "/"), content });
       }
       setFilesInput(JSON.stringify(entries, null, 2));
-      await analyzeWorkspace(entries);
+      const uploadProjectId = projectId ?? `proj_upload_${Date.now()}`;
+      setProjectId(uploadProjectId);
+      await analyzeWorkspace(entries, { projectId: uploadProjectId });
       setStatus("Ready");
     } catch (caught) {
       raiseIssue({ scope: "connect", message: caught instanceof Error ? caught.message : "Upload failed." });

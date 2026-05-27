@@ -13,6 +13,7 @@ export interface WorkspaceProject {
   lastReport: WorkspaceFixReport | null;
   preferredProvider: "bootrise" | "openai";
   githubUrl: string | null;
+  repositoryId?: string | null;
   orgId?: string;
   userId?: string;
   updatedAt: string;
@@ -49,6 +50,7 @@ function rowToProject(row: {
   last_report: WorkspaceFixReport | null;
   preferred_provider: "bootrise" | "openai";
   github_url: string | null;
+  repository_id?: string | null;
   org_id?: string | null;
   user_id?: string | null;
   created_at: string;
@@ -62,6 +64,7 @@ function rowToProject(row: {
     lastReport: row.last_report,
     preferredProvider: row.preferred_provider,
     githubUrl: row.github_url,
+    repositoryId: row.repository_id ?? undefined,
     orgId: row.org_id ?? undefined,
     userId: row.user_id ?? undefined,
     createdAt: row.created_at,
@@ -81,6 +84,7 @@ function projectToRow(project: WorkspaceProject, scope: ProjectScope) {
     last_report: project.lastReport,
     preferred_provider: project.preferredProvider,
     github_url: project.githubUrl,
+    repository_id: project.repositoryId ?? null,
     file_count: project.files.length,
     created_at: project.createdAt,
     updated_at: project.updatedAt
@@ -222,6 +226,7 @@ export async function saveProject(
     lastReport: input.lastReport !== undefined ? input.lastReport : existing?.lastReport ?? null,
     preferredProvider: input.preferredProvider ?? existing?.preferredProvider ?? "bootrise",
     githubUrl: input.githubUrl !== undefined ? input.githubUrl : existing?.githubUrl ?? null,
+    repositoryId: input.repositoryId !== undefined ? input.repositoryId : existing?.repositoryId ?? null,
     orgId: scope.orgId,
     userId: scope.userId,
     createdAt: existing?.createdAt ?? now,

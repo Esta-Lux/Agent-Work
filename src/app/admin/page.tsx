@@ -1,6 +1,8 @@
 import { requireAdmin } from "@/lib/auth/admin-auth";
 import { AdminConsole } from "@/components/admin-console";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   await requireAdmin();
 
