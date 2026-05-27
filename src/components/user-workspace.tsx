@@ -1406,9 +1406,9 @@ export function UserWorkspace() {
         brainSummary={brainStats}
         nextAction={{ ...nextAction, disabled: busy }}
       />
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-5 rounded-2xl border border-line bg-white/85 px-4 py-3 shadow-sm backdrop-blur">
         <PersonaSelector value={persona} onChange={setPersona} />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <EngineToggle
             provider={provider}
             onChange={handleProviderChange}
@@ -1433,26 +1433,6 @@ export function UserWorkspace() {
         />
       ) : null}
 
-      <div className="mb-6 hidden md:block">
-        <ProjectDashboard
-          projectName={projectName}
-          fileCount={loadedFilePaths.length}
-          githubUrl={githubUrl}
-          branch={githubBranch}
-          health={repoHealth}
-          sandboxPassed={sandboxPassed}
-          safeToPr={report?.safeToPr ?? null}
-          storage={projectStorage}
-          lastSaved={lastProjectSaved}
-        />
-      </div>
-
-      <WorkspaceStepRail
-        active={activeStep}
-        onChange={goToStep}
-        completed={stepCompleted}
-      />
-
       {providerHealthChecked && !providerConfigured ? (
         <Alert
           className="mt-4"
@@ -1472,14 +1452,40 @@ export function UserWorkspace() {
         </Alert>
       ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(360px,0.98fr)]">
+      <div className="mt-6 grid gap-5 xl:grid-cols-[290px_minmax(0,1fr)_minmax(380px,0.92fr)]">
+        <aside className="hidden xl:block">
+          <div className="sticky top-4 space-y-4">
+            <div className="rounded-2xl border border-line bg-white p-3 shadow-sm">
+              <WorkspaceStepRail active={activeStep} onChange={goToStep} completed={stepCompleted} />
+            </div>
+            <ProjectDashboard
+              projectName={projectName}
+              fileCount={loadedFilePaths.length}
+              githubUrl={githubUrl}
+              branch={githubBranch}
+              health={repoHealth}
+              sandboxPassed={sandboxPassed}
+              safeToPr={report?.safeToPr ?? null}
+              storage={projectStorage}
+              lastSaved={lastProjectSaved}
+            />
+            <div className="rounded-2xl border border-line bg-ink p-4 text-white shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">Operator focus</p>
+              <p className="mt-2 text-sm font-semibold">{nextAction.label}</p>
+              <p className="mt-1 text-xs leading-5 text-white/65">{nextAction.helper}</p>
+            </div>
+          </div>
+        </aside>
+        <div className="xl:hidden">
+          <WorkspaceStepRail active={activeStep} onChange={goToStep} completed={stepCompleted} />
+        </div>
         <div
           ref={chatPanelRef}
-          className="flex min-h-[min(72vh,720px)] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm"
+          className="flex min-h-[min(76vh,780px)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm"
         >
-          <div className="border-b border-line bg-gradient-to-r from-white to-cloud/50 px-5 py-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-signal">Agent conversation</p>
-            <p className="mt-0.5 text-sm text-steel">Ask questions while Fix or import runs — chat stays available</p>
+          <div className="border-b border-line bg-gradient-to-r from-white via-cloud/40 to-signal/10 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-signal">Agent Stream</p>
+            <p className="mt-0.5 text-sm text-steel">One live thread for plans, questions, findings, fixes, and verification.</p>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -1522,7 +1528,7 @@ export function UserWorkspace() {
                   key={q.label}
                   type="button"
                   disabled={chatBusy}
-                  className={`${secondaryBtn} rounded-full px-3 py-1 text-xs`}
+                  className={`${secondaryBtn} rounded-full border-signal/20 bg-white px-3 py-1 text-xs text-ink`}
                   onClick={() => {
                     if ("action" in q && q.action === "sandbox") {
                       void runSandboxVerify();
@@ -1582,7 +1588,7 @@ export function UserWorkspace() {
           </div>
         </div>
 
-        <div className="flex min-h-[min(72vh,720px)] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+        <div className="flex min-h-[min(76vh,780px)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm">
           <WorkspacePanelChrome
             activeStep={activeStep}
             contextTab={contextTab}

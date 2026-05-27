@@ -10,15 +10,22 @@ export function ChatControlBanner({
   onProceedWithAssumptions?: () => void;
 }) {
   const needsClarification = control.contextGate.status === "needs_clarification";
+  const confidence = Math.round(control.contextGate.confidence * 100);
 
   return (
-    <div className="mb-3 rounded-lg border border-line bg-cloud px-3 py-2 text-xs">
-      <p className="font-semibold text-signal">Control layer — context gate</p>
-      <p className="mt-1 text-ink">
-        Confidence: {Math.round(control.contextGate.confidence * 100)}% ·{" "}
-        {control.contextGate.status.replace(/_/g, " ")}
+    <div className="mb-3 overflow-hidden rounded-2xl border border-line bg-white text-xs shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-cloud/70 px-3 py-2">
+        <div>
+          <p className="font-semibold text-signal">Control layer — context gate</p>
+          <p className="mt-0.5 text-steel">BootRise is selecting context, rules, and edit scope before spending model tokens.</p>
+        </div>
+        <div className="rounded-full bg-ink px-3 py-1 font-semibold text-white">{confidence}% confidence</div>
+      </div>
+      <div className="px-3 py-2">
+      <p className="text-ink">
+        Status: <span className="font-semibold">{control.contextGate.status.replace(/_/g, " ")}</span>
         {control.brainRulesCount ? ` · Brain: ${control.brainRulesCount} rules` : ""}
-        {control.brainFileHintsCount ? `, ${control.brainFileHintsCount} file hints` : ""}
+        {control.brainFileHintsCount ? ` · ${control.brainFileHintsCount} file hints` : ""}
       </p>
       {control.taskIntent ? (
         <p className="mt-1 text-ink">
@@ -51,7 +58,8 @@ export function ChatControlBanner({
       {control.contextPlan.injectedRules.length > 0 ? (
         <p className="mt-1 text-steel">Rules injected: {control.contextPlan.injectedRules.join(", ")}</p>
       ) : null}
-      <p className="mt-1 text-[11px] text-steel">{control.scopePreview}</p>
+      <p className="mt-1 rounded-lg bg-cloud/70 px-2 py-1 text-[11px] text-steel">{control.scopePreview}</p>
+      </div>
     </div>
   );
 }

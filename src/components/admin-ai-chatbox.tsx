@@ -151,7 +151,7 @@ export function AdminAIChatbox() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-6">
+    <section className="p-0">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase text-steel">Admin AI Build Console</p>

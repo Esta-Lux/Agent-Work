@@ -37,10 +37,10 @@ export function WorkspaceChatMessage({
 
   return (
     <div
-      className={`rounded-xl text-sm leading-6 ${
+      className={`rounded-2xl text-sm leading-6 ${
         role === "user"
-          ? "ml-8 bg-ink px-4 py-3 text-white"
-          : "mr-4 border border-line bg-white px-4 py-3 text-graphite shadow-sm"
+          ? "ml-8 bg-ink px-4 py-3 text-white shadow-sm"
+          : "mr-4 border border-line bg-gradient-to-br from-white to-cloud/35 px-4 py-3 text-graphite shadow-sm"
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -48,7 +48,7 @@ export function WorkspaceChatMessage({
           {role === "user" ? "You" : "BootRise"}
         </p>
         {phase && role === "assistant" ? (
-          <span className="rounded-full bg-cloud px-2 py-0.5 text-[10px] font-semibold uppercase text-signal">
+          <span className="rounded-full border border-signal/20 bg-signal/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-signal">
             {phase}
           </span>
         ) : null}
@@ -57,7 +57,7 @@ export function WorkspaceChatMessage({
       {thinkingSteps && thinkingSteps.length > 0 ? <ThinkingPanel steps={thinkingSteps} /> : null}
 
       {discoveryQuestions && discoveryQuestions.length > 0 ? (
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-semibold uppercase text-amber-900">Clarifications needed</p>
           <ul className="mt-2 space-y-2">
             {discoveryQuestions.map((q) => (

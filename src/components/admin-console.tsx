@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AdminKillSwitches } from "@/components/admin-kill-switches";
 import { AdminControlHub } from "@/components/admin-control-hub";
+import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 import { Alert } from "@/components/ui/alert";
@@ -85,9 +86,6 @@ export function AdminConsole() {
     taskCosts?: { blendedTaskCost?: number };
     scenarioResults?: Array<{ label: string; users: number; grossMargin: number }>;
   } | null>(null);
-  const [message, setMessage] = useState("");
-  const [adminProvider, setAdminProvider] = useState<"bootrise" | "openai">("bootrise");
-  const [reply, setReply] = useState<string | null>(null);
   const [migrationSql, setMigrationSql] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading");
@@ -132,25 +130,6 @@ export function AdminConsole() {
     void loadOverview();
   }, [loadOverview]);
 
-  async function sendAdminMessage() {
-    if (!message.trim()) return;
-    setStatus("Thinking");
-    try {
-      const response = await fetch("/api/ai/admin-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message.trim(), model: adminProvider })
-      });
-      const data = (await response.json()) as { reply?: string; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Admin chat failed.");
-      setReply(data.reply ?? null);
-      setStatus("Ready");
-    } catch (caught) {
-      setReply(caught instanceof Error ? caught.message : "Admin chat failed.");
-      setStatus("Blocked");
-    }
-  }
-
   async function copyMigrationSql() {
     if (!migrationSql) return;
     await navigator.clipboard.writeText(migrationSql);
@@ -171,28 +150,28 @@ export function AdminConsole() {
   ];
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-6">
-      <div className="mb-6 rounded-2xl border border-signal/25 bg-gradient-to-br from-white to-signal/10 p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase text-signal">Phase 3+ — Enterprise (shipped)</p>
-        <p className="mt-1 text-sm text-graphite">
-          Run Supabase migrations 001–003. WebContainer, device streams, and cloud ledger/audit are live at{" "}
-          <code className="text-ink">/</code>.
-        </p>
-        <ul className="mt-3 grid gap-1 sm:grid-cols-2">
-          {phase3Complete.map((item) => (
-            <li key={item} className="text-xs text-graphite">
-              ✓ {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold uppercase text-steel">Operator control</p>
-          <h2 className="mt-1 text-2xl font-semibold text-ink">Platform overview</h2>
+    <section className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6">
+      <div className="mb-6 overflow-hidden rounded-[1.75rem] border border-line bg-[radial-gradient(circle_at_top_left,rgba(60,214,160,0.18),transparent_34%),linear-gradient(135deg,#ffffff,#f7fbfa)] shadow-sm">
+        <div className="grid gap-5 p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-signal">Operator control</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-ink">BootRise Command Ops</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-graphite">
+              One control room for readiness, kill switches, AI routing, Supabase, economics, audit, and deep QA.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-white/80 p-3">
+            <StatusPill label={status} />
+            <StatusPill label={readiness?.productionReady ? "Production ready" : "Launch blocked"} tone={readiness?.productionReady ? "passed" : "warning"} />
+          </div>
         </div>
-        <StatusPill label={status} />
+        <div className="grid gap-2 border-t border-line bg-white/70 px-6 py-4 md:grid-cols-2 xl:grid-cols-5">
+          {phase3Complete.map((item) => (
+            <div key={item} className="rounded-xl border border-line bg-cloud/50 px-3 py-2 text-xs font-medium text-graphite">
+              ✓ {item}
+            </div>
+          ))}
+        </div>
       </div>
 
       {loadError ? (
@@ -201,8 +180,21 @@ export function AdminConsole() {
         </Alert>
       ) : null}
 
-      <div className="mb-6">
+      <div className="mb-6 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
         <PlatformStatusBar variant="admin" storage={overview?.projects.storage} />
+        <PanelShell
+          title="Operator map"
+          eyebrow="Information architecture"
+          description="Overview → Control → Readiness → Data → Telemetry → Audit. The page is grouped like an ops console instead of one long settings scroll."
+        >
+          <div className="grid gap-2 text-xs sm:grid-cols-3">
+            {["Control", "Readiness", "Supabase", "Telemetry", "Economics", "Audit"].map((label) => (
+              <a key={label} href={`#${label.toLowerCase()}`} className="rounded-lg border border-line bg-cloud/50 px-3 py-2 font-semibold text-ink hover:bg-white">
+                {label}
+              </a>
+            ))}
+          </div>
+        </PanelShell>
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
@@ -217,20 +209,25 @@ export function AdminConsole() {
         />
       </div>
 
-      <div className="mb-6">
-        <AdminKillSwitches />
+      <div id="control" className="mb-6 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <PanelShell
+          title="Kill switches"
+          eyebrow="Control"
+          description="Immediate operator levers for models, GitHub, sandbox, premium escalation, and workspace size."
+        >
+          <AdminKillSwitches />
+        </PanelShell>
+        <PanelShell
+          title="Control hub — user workspace safety"
+          eyebrow="Live governance"
+          description="Scope locks, patch blocks, token estimates, and approval outcomes from the AI coding control layer."
+        >
+          <AdminControlHub />
+        </PanelShell>
       </div>
 
-      <PanelShell
-        className="mb-6"
-        title="Control hub — user workspace safety"
-        description="Scope locks, patch blocks, token estimates, and approval outcomes from the AI coding control layer."
-      >
-        <AdminControlHub />
-      </PanelShell>
-
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <Panel title="AI providers">
+      <div className="mb-6 grid gap-4 xl:grid-cols-[0.75fr_1fr_0.85fr]">
+        <Panel id="readiness" title="AI providers">
           <ul className="space-y-2">
             {providers.map((p) => (
               <li key={p.provider} className="rounded border border-line bg-cloud p-3 text-xs">
@@ -245,7 +242,7 @@ export function AdminConsole() {
           </ul>
         </Panel>
 
-        <Panel title="Supabase">
+        <Panel id="supabase" title="Supabase">
           {health ? (
             <div className="space-y-2 text-xs text-graphite">
               <p>{health.message}</p>
@@ -284,7 +281,7 @@ export function AdminConsole() {
           ) : null}
         </Panel>
 
-        <Panel title="Telemetry & economics">
+        <Panel id="telemetry" title="Telemetry & economics">
           {telemetry ? (
             <ul className="space-y-1 text-xs text-graphite">
               <li>Active sessions: {telemetry.summary.activeSessions}</li>
@@ -305,66 +302,39 @@ export function AdminConsole() {
         </Panel>
       </div>
 
-      {overview?.projects.recent && overview.projects.recent.length > 0 ? (
-        <PanelShell className="mb-6" title={`Recent projects (${overview.projects.storage})`}>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-line text-steel">
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Files</th>
-                  <th className="py-2 pr-4">Provider</th>
-                  <th className="py-2">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {overview.projects.recent.map((p) => (
-                  <tr key={p.id} className="border-b border-line/60 text-graphite">
-                    <td className="py-2 pr-4 font-semibold text-ink">{p.name}</td>
-                    <td className="py-2 pr-4">{p.fileCount}</td>
-                    <td className="py-2 pr-4">{p.provider}</td>
-                    <td className="py-2">{new Date(p.updatedAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </PanelShell>
-      ) : null}
+      <div id="audit" className="mb-6 grid gap-4 xl:grid-cols-2">
+        {overview?.projects.recent && overview.projects.recent.length > 0 ? (
+          <PanelShell title={`Recent projects (${overview.projects.storage})`} eyebrow="Workspaces">
+            <DataTable
+              headers={["Name", "Files", "Provider", "Updated"]}
+              rows={overview.projects.recent.map((p) => [
+                <span className="font-semibold text-ink" key="name">{p.name}</span>,
+                p.fileCount,
+                p.provider,
+                new Date(p.updatedAt).toLocaleString()
+              ])}
+            />
+          </PanelShell>
+        ) : null}
 
-      {telemetry && telemetry.recent.length > 0 ? (
-        <PanelShell className="mb-6" title="Recent sessions">
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-line text-steel">
-                  <th className="py-2 pr-4">Project</th>
-                  <th className="py-2 pr-4">Outcome</th>
-                  <th className="py-2 pr-4">Plan ms</th>
-                  <th className="py-2 pr-4">Cost</th>
-                  <th className="py-2">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {telemetry.recent.map((row) => (
-                  <tr key={row.id} className="border-b border-line/60 text-graphite">
-                    <td className="py-2 pr-4">{row.projectId}</td>
-                    <td className="py-2 pr-4">
-                      <StatusPill label={row.finalOutcome} tone={row.finalOutcome === "COMMITTED" ? "neutral" : "failed"} />
-                    </td>
-                    <td className="py-2 pr-4">{row.planningDurationMs}</td>
-                    <td className="py-2 pr-4">${row.tokenComputeCost.toFixed(3)}</td>
-                    <td className="py-2">{new Date(row.createdAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </PanelShell>
-      ) : null}
+        {telemetry && telemetry.recent.length > 0 ? (
+          <PanelShell title="Recent sessions" eyebrow="Audit trail">
+            <DataTable
+              headers={["Project", "Outcome", "Plan ms", "Cost", "When"]}
+              rows={telemetry.recent.map((row) => [
+                row.projectId,
+                <StatusPill key="outcome" label={row.finalOutcome} tone={row.finalOutcome === "COMMITTED" ? "neutral" : "failed"} />,
+                row.planningDurationMs,
+                `$${row.tokenComputeCost.toFixed(3)}`,
+                new Date(row.createdAt).toLocaleString()
+              ])}
+            />
+          </PanelShell>
+        ) : null}
+      </div>
 
       {items.length > 0 ? (
-        <PanelShell className="mb-6" title="Launch blockers">
+        <PanelShell id="readiness" className="mb-6" title="Launch blockers" eyebrow="Readiness">
           <ul className="mt-3 space-y-2">
             {items.map((item) => (
               <li key={item.area} className="rounded border border-line bg-cloud p-3 text-sm">
@@ -380,33 +350,12 @@ export function AdminConsole() {
         </PanelShell>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PanelShell title="Admin operator chat">
-          <select
-            className="mt-3 w-full rounded border border-line bg-cloud px-3 py-2 text-sm"
-            value={adminProvider}
-            onChange={(e) => setAdminProvider(e.target.value as "bootrise" | "openai")}
-          >
-            <option value="bootrise">BootRise</option>
-            <option value="openai">ChatGPT</option>
-          </select>
-          <textarea
-            className="mt-3 min-h-24 w-full rounded border border-line bg-cloud p-3 text-sm"
-            placeholder="Ask about readiness, Supabase, cost, or platform changes..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <Button type="button" className="mt-2" variant="dark" onClick={sendAdminMessage}>
-            Send
-          </Button>
-          {reply ? (
-            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-cloud p-3 text-xs leading-5 text-graphite">
-              {reply}
-            </pre>
-          ) : null}
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <PanelShell title="Admin operator copilot" eyebrow="AI ops">
+          <AdminAIChatbox />
         </PanelShell>
 
-        <PanelShell title="API quick checks" className="text-sm text-graphite">
+        <PanelShell title="API quick checks" eyebrow="Diagnostics" className="text-sm text-graphite">
           <ul className="mt-3 list-inside list-disc space-y-2 text-xs leading-5">
             <li>
               <a className="text-signal underline" href="/api/admin/supabase/overview" target="_blank" rel="noreferrer">
@@ -448,10 +397,43 @@ export function AdminConsole() {
   );
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return <PanelShell title={title}>{children}</PanelShell>;
+function Panel({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+  return (
+    <PanelShell id={id} title={title}>
+      {children}
+    </PanelShell>
+  );
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return <MetricTile label={label} value={value} size="hero" />;
+}
+
+function DataTable({ headers, rows }: { headers: string[]; rows: Array<Array<ReactNode>> }) {
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-line text-steel">
+            {headers.map((header) => (
+              <th key={header} className="py-2 pr-4 font-semibold">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index} className="border-b border-line/60 text-graphite">
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex} className="py-2 pr-4 align-top">
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

@@ -39,10 +39,10 @@ export function WorkspacePanelChrome({
         : STEP_LABELS[activeStep];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-gradient-to-r from-white to-cloud/40 px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-gradient-to-r from-ink via-ink to-graphite px-4 py-3 text-white">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-signal">Workspace panel</p>
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/50">Context Inspector</p>
+        <h2 className="text-base font-semibold text-white">{title}</h2>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -50,8 +50,8 @@ export function WorkspacePanelChrome({
           onClick={onOverview}
           className={`cursor-pointer rounded-xl border px-3 py-2 text-xs font-semibold transition ${
             contextTab === "overview"
-              ? "border-signal/40 bg-signal/10 text-signal"
-              : "border-line bg-white text-graphite hover:bg-cloud"
+              ? "border-white/30 bg-white/15 text-white"
+              : "border-white/10 bg-white/5 text-white/75 hover:bg-white/10"
           }`}
         >
           Overview

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 export function PanelShell({
+  id,
   title,
   eyebrow,
   description,
@@ -8,6 +9,7 @@ export function PanelShell({
   children,
   className = ""
 }: {
+  id?: string;
   title: string;
   eyebrow?: string;
   description?: string;
@@ -16,7 +18,7 @@ export function PanelShell({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-line bg-white p-4 shadow-sm ${className}`}>
+    <section id={id} className={`rounded-2xl border border-line bg-white p-4 shadow-sm ${className}`}>
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           {eyebrow ? <p className="text-xs font-semibold uppercase tracking-wide text-signal">{eyebrow}</p> : null}

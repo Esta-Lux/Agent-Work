@@ -82,17 +82,32 @@ export function SecurityPanel({
       "semgrep"
     )
   );
+  const blockerCount = readiness?.blockers.length ?? findings.filter((f) => f.blocksDeployment || f.severity === "critical").length;
+  const warningCount = readiness?.warnings.length ?? findings.filter((f) => f.severity !== "critical" && !f.blocksDeployment).length;
 
   return (
     <div className="space-y-4">
-      <button
-        type="button"
-        disabled={busy}
-        className="rounded-lg bg-signal px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        onClick={() => setConfirmOpen(true)}
-      >
-        {busy ? "Scanning…" : "Run security & deployment scan"}
-      </button>
+      <div className="rounded-2xl border border-line bg-gradient-to-br from-white to-cloud/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-signal">Security Center</p>
+            <p className="mt-1 text-sm text-graphite">BootRise rules plus optional Semgrep, merged into deploy readiness.</p>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-lg bg-signal px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            onClick={() => setConfirmOpen(true)}
+          >
+            {busy ? "Scanning…" : "Run scan"}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <SecurityStat label="Blockers" value={String(blockerCount)} />
+          <SecurityStat label="Warnings" value={String(warningCount)} />
+          <SecurityStat label="Findings" value={String(findings.length)} />
+        </div>
+      </div>
       <CreditConfirmDialog
         open={confirmOpen}
         action={SCAN_ACTION}
@@ -130,6 +145,11 @@ export function SecurityPanel({
           <ReviewFindingsPanel findings={prioritized} />
         </PanelSection>
       ) : null}
+      {!busy && findings.length === 0 ? (
+        <p className="rounded-xl border border-line bg-cloud/50 px-3 py-2 text-sm text-steel">
+          No findings loaded yet. Run a scan to calculate deploy blockers from the current workspace files.
+        </p>
+      ) : null}
       <PanelSection title="All findings">
         <ul className="space-y-2">
           {findings.map((f) => (
@@ -148,6 +168,15 @@ export function SecurityPanel({
           ))}
         </ul>
       </PanelSection>
+    </div>
+  );
+}
+
+function SecurityStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-white px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-steel">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
     </div>
   );
 }
