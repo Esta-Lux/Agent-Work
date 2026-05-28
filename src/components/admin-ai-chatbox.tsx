@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatUserFacingMessage } from "@/lib/format-user-message";
 
 type ChatModel = "bootrise" | "openai";
 
@@ -200,7 +201,9 @@ export function AdminAIChatbox() {
                 <div className="mb-2 text-xs font-semibold uppercase opacity-70">
                   {message.role === "user" ? "Admin" : message.model ?? "BootRise"}
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                <p className="whitespace-pre-wrap text-sm leading-6">
+                  {message.role === "assistant" ? formatUserFacingMessage(message.content) : message.content}
+                </p>
               </div>
             ))}
           </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { PanelShell } from "@/components/ui/panel-shell";
 import { StatusPill } from "@/components/status-pill";
 import { AdminProviderKeysPanel } from "@/components/admin-provider-keys-panel";
+import { formatUserFacingMessage } from "@/lib/format-user-message";
 
 type AgentMode = "chat" | "plan" | "fix";
 type InspectorTab = "plan" | "diff" | "verify" | "agents" | "trace" | "memory";
@@ -487,7 +488,9 @@ export function AdminAgentConsole() {
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-steel">
                 {turn.role === "user" ? "You" : turn.model ? `Agent · ${turn.model}` : "Agent"}
               </div>
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-5">{turn.content}</pre>
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-5">
+                {turn.role === "assistant" ? formatUserFacingMessage(turn.content) : turn.content}
+              </pre>
             </div>
           ))}
         </div>
