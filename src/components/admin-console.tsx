@@ -6,6 +6,7 @@ import { AdminControlHub } from "@/components/admin-control-hub";
 import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
 import { AdminAgentConsole } from "@/components/admin-agent-console";
 import { AdminDetectionsPanel } from "@/components/admin-detections-panel";
+import { AdminWorkspaceStatePanel } from "@/components/admin-workspace-state-panel";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 import { Alert } from "@/components/ui/alert";
@@ -351,6 +352,16 @@ export function AdminConsole() {
           </ul>
         </PanelShell>
       ) : null}
+
+      <PanelShell
+        id="workspace-state"
+        title="Workspace state"
+        eyebrow="User-section mirror"
+        description="Live read of user-section data: projects, pending fixes, runtime errors, sandbox runs, usage drilldown, jobs."
+        className="mb-6"
+      >
+        <AdminWorkspaceStatePanel />
+      </PanelShell>
 
       <PanelShell
         id="detections"

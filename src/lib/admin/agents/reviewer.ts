@@ -29,6 +29,8 @@ export interface ReviewerInput {
   memory: CodebaseMemorySnapshot;
   provider: LlmProviderId;
   providerChat?: ProviderChatFn;
+  onEvent?: (event: import("@/lib/admin/agent-tool-loop").ToolLoopEvent) => void;
+  isCancelled?: () => boolean;
 }
 
 export interface ReviewerOutput extends ReviewResult {
@@ -85,7 +87,11 @@ export async function runReviewerAgent(input: ReviewerInput): Promise<ReviewerOu
       maxSteps: 6,
       memory: input.memory,
       providerChat: input.providerChat,
-      onEvent: (event) => recordEvent(run, event)
+      isCancelled: input.isCancelled,
+      onEvent: (event) => {
+        recordEvent(run, event);
+        input.onEvent?.(event);
+      }
     });
 
     const review = parseReview(loop.finalMessage);

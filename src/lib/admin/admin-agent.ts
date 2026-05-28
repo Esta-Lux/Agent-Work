@@ -85,6 +85,7 @@ export interface AdminAgentFixInput extends AdminUserCtx {
   request: string;
   provider?: string;
   assumptionsApproved?: boolean;
+  streamId?: string;
 }
 
 export interface AdminAgentFixResult {
@@ -264,7 +265,8 @@ export async function runAdminAgentFix(input: AdminAgentFixInput): Promise<Admin
         orgId,
         request: input.request,
         provider,
-        files
+        files,
+        streamId: input.streamId
       });
       const persisted = await persistAdminPendingFix({
         files,

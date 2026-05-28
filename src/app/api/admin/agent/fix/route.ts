@@ -10,6 +10,7 @@ interface FixBody {
   provider?: string;
   assumptionsApproved?: boolean;
   orgId?: string;
+  streamId?: string;
 }
 
 export async function POST(request: Request) {
@@ -25,7 +26,8 @@ export async function POST(request: Request) {
         orgId: body?.orgId,
         request: text,
         provider: body?.provider,
-        assumptionsApproved: body?.assumptionsApproved
+        assumptionsApproved: body?.assumptionsApproved,
+        streamId: body?.streamId
       });
       return NextResponse.json({ product: "BootRise", ...result });
     } catch (error) {

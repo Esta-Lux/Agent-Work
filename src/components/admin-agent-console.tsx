@@ -8,7 +8,25 @@ import { StatusPill } from "@/components/status-pill";
 import { AdminProviderKeysPanel } from "@/components/admin-provider-keys-panel";
 
 type AgentMode = "chat" | "plan" | "fix";
-type InspectorTab = "plan" | "diff" | "verify" | "agents";
+type InspectorTab = "plan" | "diff" | "verify" | "agents" | "trace" | "memory";
+
+interface TraceEvent {
+  kind: string;
+  agent?: "planner" | "coder" | "reviewer";
+  payload: unknown;
+  at: string;
+}
+
+interface MemorySnapshot {
+  generatedAt: string;
+  repositoryId: string;
+  fileCount: number;
+  symbolCount: number;
+  topHubs: string[];
+  routeMap: Array<{ path: string; methods: string[]; file: string }>;
+  recentEdits: Array<{ path: string; summary?: string; appliedAt: string }>;
+  priorPlans: Array<{ goal: string; createdAt: string; files: string[] }>;
+}
 
 interface AgentRunSummary {
   id: string;
@@ -130,6 +148,11 @@ export function AdminAgentConsole() {
   const [agentRuns, setAgentRuns] = useState<AgentRunSummary[]>([]);
   const [pushPhrase, setPushPhrase] = useState("");
   const [pushPreview, setPushPreview] = useState<PushResponse | null>(null);
+  const [trace, setTrace] = useState<TraceEvent[]>([]);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [memory, setMemory] = useState<MemorySnapshot | null>(null);
+  const [memoryBusy, setMemoryBusy] = useState(false);
 
   const history = useMemo(
     () =>
@@ -180,6 +203,57 @@ export function AdminAgentConsole() {
     }
   }
 
+  const loadMemory = useCallback(async (refresh = false) => {
+    setMemoryBusy(true);
+    try {
+      const res = refresh
+        ? await fetch("/api/admin/agent/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refresh: true }) })
+        : await fetch("/api/admin/agent/memory");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Memory load failed." }))).error ?? "Memory load failed.");
+      const body = (await res.json()) as { snapshot?: MemorySnapshot };
+      if (body.snapshot) setMemory(body.snapshot);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Memory load failed.");
+    } finally {
+      setMemoryBusy(false);
+    }
+  }, []);
+
+  function openStream(id: string): EventSource {
+    const es = new EventSource(`/api/admin/agent/runs/stream?streamId=${encodeURIComponent(id)}`);
+    setStreaming(true);
+    es.addEventListener("agent", (event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent).data) as TraceEvent;
+        setTrace((prev) => (prev.length > 400 ? [...prev.slice(-300), payload] : [...prev, payload]));
+      } catch {
+        /* ignore */
+      }
+    });
+    es.addEventListener("ready", () => {
+      /* ready */
+    });
+    es.onerror = () => {
+      setStreaming(false);
+      es.close();
+    };
+    return es;
+  }
+
+  async function cancelRun() {
+    if (!streamId) return;
+    try {
+      await fetch("/api/admin/agent/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ streamId })
+      });
+      setStatus("Cancellation requested");
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   async function submit() {
     const message = input.trim();
     if (!message || busy) return;
@@ -224,25 +298,35 @@ export function AdminAgentConsole() {
         });
         setStatus(`Plan generated · ${data.fileCount} files considered`);
       } else {
-        const res = await fetch("/api/admin/agent/fix", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ request: message })
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Fix failed." }))).error ?? "Fix failed.");
-        const data = (await res.json()) as FixResponse;
-        setPendingFixId(data.pendingFixId);
-        setPendingStatus("pending_approval");
-        if (data.report.plan) setPlan(data.report.plan);
-        await loadDiff(data.pendingFixId);
-        await loadAgentRuns(data.pendingFixId);
-        setInspectorTab("diff");
-        appendTurn({
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          content: data.report.plainEnglishSummary ?? `Pending fix ${data.pendingFixId} created. Review the diff and approve or reject.`
-        });
-        setStatus(`Pending fix · ${data.pendingFixId.slice(0, 12)}…`);
+        const newStreamId = `stream-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        setStreamId(newStreamId);
+        setTrace([]);
+        setInspectorTab("trace");
+        const es = openStream(newStreamId);
+        try {
+          const res = await fetch("/api/admin/agent/fix", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ request: message, streamId: newStreamId })
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Fix failed." }))).error ?? "Fix failed.");
+          const data = (await res.json()) as FixResponse;
+          setPendingFixId(data.pendingFixId);
+          setPendingStatus("pending_approval");
+          if (data.report.plan) setPlan(data.report.plan);
+          await loadDiff(data.pendingFixId);
+          await loadAgentRuns(data.pendingFixId);
+          setInspectorTab("diff");
+          appendTurn({
+            id: `a-${Date.now()}`,
+            role: "assistant",
+            content: data.report.plainEnglishSummary ?? `Pending fix ${data.pendingFixId} created. Review the diff and approve or reject.`
+          });
+          setStatus(`Pending fix · ${data.pendingFixId.slice(0, 12)}…`);
+        } finally {
+          es.close();
+          setStreaming(false);
+        }
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Request failed.");
@@ -427,6 +511,11 @@ export function AdminAgentConsole() {
             <Button type="button" onClick={() => void submit()} disabled={busy || !input.trim()}>
               {mode === "chat" ? "Send" : mode === "plan" ? "Generate plan" : "Generate patches"}
             </Button>
+            {streaming && streamId ? (
+              <Button type="button" variant="secondary" onClick={() => void cancelRun()}>
+                Cancel run
+              </Button>
+            ) : null}
             {showActions ? (
               <>
                 <Button type="button" variant="secondary" onClick={() => void approve()} disabled={busy || pendingStatus !== "pending_approval"}>
@@ -474,20 +563,34 @@ export function AdminAgentConsole() {
         ) : null}
       </PanelShell>
 
-      <PanelShell title="Inspector" eyebrow="Plan · Diff · Verify · Agents">
-        <div className="mb-3 inline-flex overflow-hidden rounded-lg border border-line text-[11px]">
-          {(["plan", "diff", "verify", "agents"] as const).map((tab) => (
+      <PanelShell title="Inspector" eyebrow="Plan · Diff · Trace · Verify · Agents · Memory">
+        <div className="mb-3 inline-flex flex-wrap overflow-hidden rounded-lg border border-line text-[11px]">
+          {(["plan", "diff", "trace", "verify", "agents", "memory"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
-              onClick={() => setInspectorTab(tab)}
+              onClick={() => {
+                setInspectorTab(tab);
+                if (tab === "memory" && !memory) void loadMemory(false);
+              }}
               className={`px-3 py-1.5 font-semibold ${inspectorTab === tab ? "bg-ink text-white" : "bg-white text-graphite hover:bg-cloud"}`}
             >
-              {tab === "plan" ? "Plan" : tab === "diff" ? "Diff" : tab === "verify" ? "Verify" : "Agents"}
+              {tab === "plan" ? "Plan" : tab === "diff" ? "Diff" : tab === "trace" ? `Trace${trace.length ? ` · ${trace.length}` : ""}` : tab === "verify" ? "Verify" : tab === "agents" ? "Agents" : "Memory"}
             </button>
           ))}
         </div>
-        <Inspector tab={inspectorTab} plan={plan} diff={diff} pushPreview={pushPreview} agentRuns={agentRuns} />
+        <Inspector
+          tab={inspectorTab}
+          plan={plan}
+          diff={diff}
+          pushPreview={pushPreview}
+          agentRuns={agentRuns}
+          trace={trace}
+          streaming={streaming}
+          memory={memory}
+          memoryBusy={memoryBusy}
+          onRefreshMemory={() => void loadMemory(true)}
+        />
       </PanelShell>
     </div>
   );
@@ -498,14 +601,97 @@ function Inspector({
   plan,
   diff,
   pushPreview,
-  agentRuns
+  agentRuns,
+  trace,
+  streaming,
+  memory,
+  memoryBusy,
+  onRefreshMemory
 }: {
   tab: InspectorTab;
   plan: PlanPayload | null;
   diff: DiffResponse | null;
   pushPreview: PushResponse | null;
   agentRuns: AgentRunSummary[];
+  trace: TraceEvent[];
+  streaming: boolean;
+  memory: MemorySnapshot | null;
+  memoryBusy: boolean;
+  onRefreshMemory: () => void;
 }) {
+  if (tab === "trace") {
+    if (!streaming && trace.length === 0) {
+      return <p className="text-xs text-steel">Run Fix to see live planner/coder/reviewer events here.</p>;
+    }
+    return (
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center gap-2">
+          <StatusPill label={streaming ? "live" : "ended"} tone={streaming ? "pending" : "neutral"} />
+          <span className="text-steel">{trace.length} events</span>
+        </div>
+        <ol className="max-h-[440px] space-y-1 overflow-auto rounded border border-line bg-white p-2">
+          {trace.map((event, index) => (
+            <li key={`${event.at}-${index}`} className="border-b border-line/40 pb-1 last:border-b-0">
+              <div className="flex items-center justify-between text-[10px] text-steel">
+                <span>
+                  {event.agent ? <span className="mr-1 font-semibold text-ink">{event.agent}</span> : null}
+                  {event.kind}
+                </span>
+                <span>{new Date(event.at).toLocaleTimeString()}</span>
+              </div>
+              <pre className="mt-0.5 whitespace-pre-wrap font-mono text-[10px] leading-4 text-graphite">{summarizeTracePayload(event.payload)}</pre>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
+  if (tab === "memory") {
+    return (
+      <div className="space-y-3 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-steel">{memory ? `Generated ${new Date(memory.generatedAt).toLocaleString()}` : "Not loaded."}</span>
+          <button type="button" className="cursor-pointer rounded border border-line px-2 py-0.5 text-[11px]" disabled={memoryBusy} onClick={onRefreshMemory}>
+            {memoryBusy ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+        {!memory ? <p className="text-steel">Loading codebase memory…</p> : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded bg-cloud p-2"><p className="text-steel">Files</p><p className="text-lg font-semibold text-ink">{memory.fileCount}</p></div>
+              <div className="rounded bg-cloud p-2"><p className="text-steel">Symbols</p><p className="text-lg font-semibold text-ink">{memory.symbolCount}</p></div>
+            </div>
+            <div>
+              <p className="mb-1 font-semibold text-ink">Top hubs</p>
+              <ul className="space-y-0.5">
+                {memory.topHubs.slice(0, 10).map((h) => (<li key={h} className="font-mono text-[11px] text-graphite">{h}</li>))}
+              </ul>
+            </div>
+            <div>
+              <p className="mb-1 font-semibold text-ink">Routes ({memory.routeMap.length})</p>
+              <ul className="max-h-[140px] space-y-0.5 overflow-auto">
+                {memory.routeMap.slice(0, 20).map((r) => (
+                  <li key={r.path} className="font-mono text-[11px] text-graphite">
+                    <span className="font-semibold text-ink">{r.methods.join("/")}</span> {r.path}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {memory.priorPlans.length ? (
+              <div>
+                <p className="mb-1 font-semibold text-ink">Recent plans</p>
+                <ul className="space-y-0.5">
+                  {memory.priorPlans.slice(0, 6).map((p, i) => (
+                    <li key={i} className="text-[11px] text-graphite">{new Date(p.createdAt).toLocaleDateString()} · {p.goal}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    );
+  }
   if (tab === "agents") {
     if (agentRuns.length === 0) {
       return <p className="text-xs text-steel">Run Fix to populate planner / coder / reviewer agent runs.</p>;
@@ -654,3 +840,22 @@ function renderUnifiedDiff(before: string, after: string): string {
   }
   return out.join("\n");
 }
+
+function summarizeTracePayload(payload: unknown): string {
+  if (payload == null) return "";
+  if (typeof payload === "string") return payload.slice(0, 220);
+  try {
+    const obj = payload as Record<string, unknown>;
+    if (typeof obj.text === "string") return obj.text.slice(0, 220);
+    if (typeof obj.name === "string" || typeof obj.tool === "string") {
+      const tool = obj.name ?? obj.tool;
+      const argStr = obj.args ? JSON.stringify(obj.args).slice(0, 140) : "";
+      return `${String(tool)}${argStr ? ` · ${argStr}` : ""}`;
+    }
+    if (typeof obj.output === "string") return obj.output.slice(0, 220);
+    return JSON.stringify(obj).slice(0, 220);
+  } catch {
+    return String(payload).slice(0, 220);
+  }
+}
+

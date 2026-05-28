@@ -27,6 +27,8 @@ export interface CoderInput {
   projectId?: string;
   repositoryId?: string;
   providerChat?: ProviderChatFn;
+  onEvent?: (event: import("@/lib/admin/agent-tool-loop").ToolLoopEvent) => void;
+  isCancelled?: () => boolean;
 }
 
 export interface CoderOutput {
@@ -85,7 +87,11 @@ export async function runCoderAgent(input: CoderInput): Promise<CoderOutput> {
       maxSteps: 6,
       memory: input.memory,
       providerChat: input.providerChat,
-      onEvent: (event) => recordEvent(run, event)
+      isCancelled: input.isCancelled,
+      onEvent: (event) => {
+        recordEvent(run, event);
+        input.onEvent?.(event);
+      }
     });
 
     let patches = parsePatches(loop.finalMessage);

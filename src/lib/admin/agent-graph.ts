@@ -15,6 +15,7 @@ import { runReviewerAgent } from "@/lib/admin/agents/reviewer";
 import type { AgentRun, ReviewResult } from "@/lib/admin/agents/types";
 import type { ProviderChatFn } from "@/lib/admin/agent-tool-loop";
 import type { ToolLoopEvent } from "@/lib/admin/agent-tool-loop";
+import { publishEvent, isStreamCancelled } from "@/lib/admin/agent-event-bus";
 
 const RUN_LOG_FILENAME = "agent-runs.jsonl";
 
@@ -28,6 +29,7 @@ export interface AgentGraphInput {
   files?: SourceFileInput[];
   providerChat?: ProviderChatFn;
   onEvent?: (event: ToolLoopEvent & { agent: AgentRun["agent"] }) => void;
+  streamId?: string;
 }
 
 export interface AgentGraphResult {
@@ -83,19 +85,31 @@ export async function runAgentGraph(input: AgentGraphInput): Promise<AgentGraphR
   const memory = input.memory ?? (await loadCodebaseMemory());
   const files = input.files ?? loadSelfRepoSnapshot();
   const runs: AgentRun[] = [];
+  const streamId = input.streamId;
+  const isCancelled = streamId ? () => isStreamCancelled(streamId) : undefined;
+  const emit = (agent: AgentRun["agent"], event: ToolLoopEvent): void => {
+    input.onEvent?.({ ...event, agent });
+    if (streamId) publishEvent(streamId, { ...event, agent });
+  };
+
+  if (streamId) publishEvent(streamId, { kind: "stop", payload: { phase: "graph_started" }, agent: "planner" });
 
   try {
+    emit("planner", { kind: "assistant_message", payload: { phase: "planner_start" } });
     const plannerOut = await runPlannerAgent({
       user: input.user,
       orgId: input.orgId,
       request: input.request,
       memory,
       provider: input.provider,
-      providerChat: input.providerChat
+      providerChat: input.providerChat,
+      isCancelled,
+      onEvent: (event) => emit("planner", event)
     });
     persistRun(plannerOut.run, input.pendingFixId);
     runs.push(plannerOut.run);
 
+    emit("coder", { kind: "assistant_message", payload: { phase: "coder_start" } });
     const coderOut = await runCoderAgent({
       user: input.user,
       orgId: input.orgId,
@@ -106,11 +120,14 @@ export async function runAgentGraph(input: AgentGraphInput): Promise<AgentGraphR
       request: input.request,
       projectId: SELF_REPOSITORY_ID,
       repositoryId: SELF_REPOSITORY_ID,
-      providerChat: input.providerChat
+      providerChat: input.providerChat,
+      isCancelled,
+      onEvent: (event) => emit("coder", event)
     });
     persistRun(coderOut.run, input.pendingFixId);
     runs.push(coderOut.run);
 
+    emit("reviewer", { kind: "assistant_message", payload: { phase: "reviewer_start" } });
     const reviewerOut = await runReviewerAgent({
       user: input.user,
       orgId: input.orgId,
@@ -118,7 +135,9 @@ export async function runAgentGraph(input: AgentGraphInput): Promise<AgentGraphR
       patches: coderOut.patches,
       memory,
       provider: input.provider,
-      providerChat: input.providerChat
+      providerChat: input.providerChat,
+      isCancelled,
+      onEvent: (event) => emit("reviewer", event)
     });
     persistRun(reviewerOut.run, input.pendingFixId);
     runs.push(reviewerOut.run);

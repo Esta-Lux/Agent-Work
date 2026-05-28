@@ -10,7 +10,7 @@ import { loadCodebaseMemory, type CodebaseMemorySnapshot } from "@/lib/admin/cod
 import { capToolOutput, findAdminAgentTool, listAdminAgentTools } from "@/lib/admin/tools/registry";
 import type { ToolCall, ToolContext, ToolResult } from "@/lib/admin/tools/types";
 
-export type ToolLoopStopReason = "final_answer" | "max_steps" | "tool_error" | "killed";
+export type ToolLoopStopReason = "final_answer" | "max_steps" | "tool_error" | "killed" | "cancelled";
 
 export interface ToolLoopEvent {
   kind: "assistant_message" | "tool_call" | "tool_result" | "stop";
@@ -34,6 +34,7 @@ export interface ToolLoopOptions {
   memory?: CodebaseMemorySnapshot;
   onEvent?: (event: ToolLoopEvent) => void;
   providerChat?: ProviderChatFn;
+  isCancelled?: () => boolean;
 }
 
 export interface ToolLoopResult {
@@ -174,6 +175,12 @@ export async function runToolLoop(opts: ToolLoopOptions): Promise<ToolLoopResult
   const providerChat: ProviderChatFn = opts.providerChat ?? createProviderChatResponse;
 
   for (let step = 0; step < maxSteps; step++) {
+    if (opts.isCancelled?.()) {
+      stopReason = "cancelled";
+      finalMessage = "Cancelled by admin before step completed.";
+      opts.onEvent?.({ kind: "stop", payload: { reason: stopReason, step } });
+      break;
+    }
     const response = await providerChat({
       provider: opts.provider,
       message: currentMessage,
@@ -195,6 +202,12 @@ export async function runToolLoop(opts: ToolLoopOptions): Promise<ToolLoopResult
 
     const stepResults: ToolResult[] = [];
     for (const call of stepCalls) {
+      if (opts.isCancelled?.()) {
+        stopReason = "cancelled";
+        finalMessage = "Cancelled by admin during tool execution.";
+        opts.onEvent?.({ kind: "stop", payload: { reason: stopReason, step } });
+        return { finalMessage, calls, results, stopReason, steps: calls.length };
+      }
       opts.onEvent?.({ kind: "tool_call", payload: call });
       calls.push(call);
       const result = await dispatchTool(call, ctx);
