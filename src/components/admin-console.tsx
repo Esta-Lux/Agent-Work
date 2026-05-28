@@ -1,5 +1,7 @@
 "use client";
 
+// @deprecated - replaced by admin-shell. Remove after validation sprint.
+
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AdminKillSwitches } from "@/components/admin-kill-switches";
 import { AdminControlHub } from "@/components/admin-control-hub";

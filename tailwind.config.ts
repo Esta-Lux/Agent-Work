@@ -5,6 +5,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        "surface-admin": "#f8f9fb",
+        "panel-admin": "#ffffff",
+        "border-admin": "#e4e7ec",
+        "text-admin-1": "#101828",
+        "text-admin-2": "#475467",
+        "text-admin-3": "#98a2b3",
+        "surface-ws": "#080d12",
+        "panel-ws": "#0f1720",
+        "card-ws": "#141e2b",
+        "border-ws": "rgba(255,255,255,0.07)",
+        "border-ws-2": "rgba(255,255,255,0.13)",
+        "text-ws-1": "#f0f4f8",
+        "text-ws-2": "#8a9bb0",
+        "text-ws-3": "#4a5a6e",
+        "signal-glow": "rgba(13,122,95,0.15)",
+        "signal-text": "#1fd99d",
         ink: "#0c1117",
         graphite: "#2a3139",
         steel: "#5c6b7a",
@@ -16,7 +32,9 @@ const config: Config = {
         critical: "#b42318"
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"]
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+        serif: ["var(--font-instrument-serif)", "Georgia", "serif"]
       },
       boxShadow: {
         glow: "0 0 0 1px rgba(13, 122, 95, 0.12), 0 24px 48px -12px rgba(12, 17, 23, 0.18)",

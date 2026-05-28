@@ -1,5 +1,7 @@
 "use client";
 
+// @deprecated - replaced by workspace-shell-v2. Remove after validation sprint.
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AgentLiveBar } from "@/components/agent-live-bar";
 import { ArchitectureMapPanel } from "@/components/architecture-map-panel";
@@ -28,7 +30,6 @@ import {
 import { buildWorkspaceAgentPreview } from "@/lib/control/workspace-agent-preview";
 import type { DeploymentReadinessResult } from "@/lib/security/types";
 import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
-import { WorkspaceCommandCenter } from "@/components/workspace-command-center";
 import { BlockedStateCard } from "@/components/blocked-state-card";
 import { AgentCouncilPanel } from "@/components/agent-council-panel";
 import { TaskContextPackPanel } from "@/components/task-context-pack-panel";
@@ -42,17 +43,26 @@ import {
   readOnboardingDismissed,
   type OnboardingStepId
 } from "@/components/workspace-onboarding-checklist";
-import { WorkspacePanelChrome } from "@/components/workspace-panel-chrome";
-import { isIntelligenceTab, type IntelligenceTabId } from "@/components/workspace-intelligence-menu";
 import { Alert } from "@/components/ui/alert";
+import { AlertCard } from "@/components/ui/alert-card";
 import { Button } from "@/components/ui/button";
 import { EmptyStateCard } from "@/components/ui/empty-state-card";
+import { WorkspaceShell } from "@/components/workspace/workspace-shell";
+import { WorkspaceCommandCenterV2 } from "@/components/workspace/workspace-command-center-v2";
+import { WorkflowRailV2, type WorkflowStepDef } from "@/components/workspace/workflow-rail-v2";
+import { MissionThread, type MissionEvent } from "@/components/workspace/mission-thread";
+import { OperationPanelShell, type OperationTab } from "@/components/workspace/operation-panel-shell";
+import {
+  buildNextActionInput,
+  computeNextAction,
+  type NextAction,
+  type WorkspaceTab as NextActionTab
+} from "@/lib/workspace/next-action";
 import { selectRelevantFiles, selectReviewBatches } from "@/lib/workspace/workspace-code-context";
 import {
   EngineToggle,
   FileTreeExplorer,
   Panel,
-  WorkspaceStepRail,
   type WorkspaceStep
 } from "@/components/workspace-ui";
 import { StatusPill } from "@/components/status-pill";
@@ -220,8 +230,6 @@ export function UserWorkspace() {
     deployReadinessStatus
   ]);
 
-  const isWorking = /Thinking|Fix pipeline|Importing|Sandbox|Saving|Loading/.test(status);
-
   const REVIEW_ISSUES_PROMPT =
     "Review this codebase and list all issues, risks, and gaps you see. Use file paths from the repo. Cover backend, mobile, frontend, tests, and docs.";
 
@@ -319,14 +327,6 @@ export function UserWorkspace() {
   }
   const briefReady = brief.productName.trim().length > 0 && brief.primaryWorkflow.trim().length > 0;
   const providerConfigured = provider === "openai" ? providerHealth.openai : providerHealth.bootrise;
-
-  const stepCompleted: Partial<Record<WorkspaceStep, boolean>> = {
-    connect: loadedFilePaths.length > 0,
-    plan: briefReady || messages.length > 2,
-    fix: Boolean(report),
-    verify: Boolean(sandboxLog),
-    export: exportDone
-  };
 
   function clearIssue(scope?: WorkspaceIssueScope) {
     if (!scope || workspaceIssue?.scope === scope || workspaceIssue?.scope === "global") {
@@ -949,10 +949,6 @@ export function UserWorkspace() {
     chatPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function openIntelligence(tab: IntelligenceTabId) {
-    setContextTab(tab);
-  }
-
   async function handleFileUpload(fileList: FileList | null) {
     if (!fileList?.length) return;
     clearIssue();
@@ -1365,59 +1361,6 @@ export function UserWorkspace() {
   const primaryBtn = `${btnClass} rounded-lg bg-signal py-2.5 text-sm font-semibold text-white hover:opacity-90`;
   const secondaryBtn = `${btnClass} rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-graphite hover:bg-cloud`;
 
-  const nextAction = (() => {
-    if (!hasCode) {
-      return {
-        label: "Connect repo",
-        helper: "Import a GitHub repository or upload files so BootRise can build project context.",
-        onClick: () => goToStep("connect")
-      };
-    }
-    if (!briefReady) {
-      return {
-        label: "Complete brief",
-        helper: "Add product name and primary workflow to improve planning and unlock clean exports.",
-        onClick: () => goToStep("plan")
-      };
-    }
-    if (report?.controlLayer && !report.controlLayer.canApprove) {
-      return {
-        label: "Review block",
-        helper: report.controlLayer.stopReason ?? "The control layer needs clarification before approval.",
-        onClick: () => {
-          setActiveStep("fix");
-          setContextTab("fix");
-        }
-      };
-    }
-    if (!report) {
-      return {
-        label: "Run Fix",
-        helper: "Describe a narrow change and run the controlled Fix pipeline.",
-        onClick: () => goToStep("fix")
-      };
-    }
-    if (report.approvalStatus === "pending_approval") {
-      return {
-        label: "Review approval",
-        helper: "Inspect proposed patches, control results, and approve only when the scope is safe.",
-        onClick: () => goToStep("fix")
-      };
-    }
-    if (!sandboxPassed) {
-      return {
-        label: "Verify",
-        helper: "Run sandbox verification before exporting or opening a PR.",
-        onClick: () => goToStep("verify")
-      };
-    }
-    return {
-      label: "Export",
-      helper: "Safe evidence is ready. Download the bundle or open a draft PR.",
-      onClick: () => goToStep("export")
-    };
-  })();
-
   const onboardingSteps = [
     {
       id: "connect" as const,
@@ -1451,225 +1394,591 @@ export function UserWorkspace() {
     }
   ];
 
-  return (
-    <section className="mx-auto max-w-[1500px] px-4 py-6 pb-28 sm:px-6 xl:pb-8">
-      <WorkspaceCommandCenter
-        projectName={projectName}
-        report={report}
-        creditsRemaining={creditsRemaining}
-        modelMode={provider === "openai" ? "Premium" : `BootRise ${modelMode}`}
-        securityBlockers={securityBlockers}
-        deployReadinessStatus={deployReadinessStatus}
-        liveSafeToDeploy={liveAgentCoordination?.safeToDeploy}
-        brainSummary={brainStats}
-        nextAction={{ ...nextAction, disabled: busy }}
-      />
-      <div className="mb-5 rounded-2xl border border-line bg-white/85 px-4 py-3 shadow-sm backdrop-blur">
-        <PersonaSelector value={persona} onChange={setPersona} />
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <EngineToggle
-            provider={provider}
-            onChange={handleProviderChange}
-            mode={modelMode}
-            onModeChange={handleModeChange}
-            bootriseOk={providerHealth.bootrise}
-            openaiOk={providerHealth.openai}
-          />
-          <StatusPill label={projectStorage === "supabase" ? "Cloud saved" : "Local"} tone="neutral" />
-          <StatusPill label={status} tone={error ? "failed" : isWorking ? "neutral" : "neutral"} />
-        </div>
-      </div>
+  const nextActionV2: NextAction = computeNextAction(
+    buildNextActionInput({
+      fileCount: loadedFilePaths.length,
+      briefReady,
+      brainIndexedFiles: brainStats?.files,
+      report,
+      sandboxPassed,
+      exportDone,
+      securityBlockers,
+      providerConfigured
+    })
+  );
 
-      {showOnboarding ? (
-        <WorkspaceOnboardingChecklist
-          steps={onboardingSteps}
-          onGo={goToOnboardingStep}
-          onDismiss={() => {
-            dismissOnboardingChecklist();
-            setShowOnboarding(false);
+  function executeNextAction() {
+    const target = nextActionV2.targetTab;
+    const stepFor: Partial<Record<NextActionTab, WorkspaceStep>> = {
+      connect: "connect",
+      files: "plan",
+      fix: "fix",
+      verify: "verify",
+      export: "export"
+    };
+    setContextTab(target);
+    const step = stepFor[target];
+    if (step) setActiveStep(step);
+  }
+
+  function handleOperationTabSelect(id: string) {
+    setContextTab(id);
+    const stepMap: Partial<Record<string, WorkspaceStep>> = {
+      connect: "connect",
+      files: "plan",
+      fix: "fix",
+      verify: "verify",
+      export: "export"
+    };
+    const step = stepMap[id];
+    if (step) setActiveStep(step);
+  }
+
+  const operationTabs: OperationTab[] = [
+    { id: "overview", label: "Overview", group: "workflow" },
+    { id: "connect", label: "Connect", group: "workflow" },
+    {
+      id: "files",
+      label: "Files / Brief",
+      group: "workflow",
+      lockedReason: !hasCode ? "Connect a repo first" : undefined
+    },
+    {
+      id: "fix",
+      label: "Fix",
+      group: "workflow",
+      lockedReason: !hasCode
+        ? "Connect a repo first"
+        : !briefReady
+          ? "Complete brief first"
+          : undefined,
+      badge: report?.approvalStatus === "pending_approval" ? "Approval" : undefined,
+      badgeTone: "warning"
+    },
+    {
+      id: "verify",
+      label: "Verify",
+      group: "workflow",
+      lockedReason: !report ? "Run Fix first" : undefined,
+      badge: sandboxPassed ? "Passed" : undefined,
+      badgeTone: "success"
+    },
+    {
+      id: "export",
+      label: "PR / Export",
+      group: "workflow",
+      lockedReason: !briefReady ? "Brief required" : undefined,
+      badge: exportDone ? "Done" : undefined,
+      badgeTone: "success"
+    },
+    { id: "architecture", label: "Architecture", group: "intelligence" },
+    { id: "brain", label: "Brain", group: "intelligence" },
+    {
+      id: "control",
+      label: "Control",
+      group: "intelligence",
+      alertDot: Boolean(report?.controlLayer && !report.controlLayer.canApprove)
+    },
+    {
+      id: "security",
+      label: "Security",
+      group: "intelligence",
+      badge: securityBlockers > 0 ? String(securityBlockers) : undefined,
+      badgeTone: securityBlockers > 0 ? "danger" : undefined,
+      alertDot: securityBlockers > 0
+    },
+    { id: "ledger", label: "Ledger", group: "intelligence" }
+  ];
+
+  const PANEL_META: Record<string, { title: string; description: string }> = {
+    overview: {
+      title: "Overview",
+      description: "How the workflow guides you through a safe, controlled change."
+    },
+    connect: {
+      title: "Connect repository",
+      description: "Import a real GitHub repo so BootRise can index real files."
+    },
+    files: {
+      title: "Files & product brief",
+      description: "Browse imported files and refine the brief that shapes planning."
+    },
+    fix: {
+      title: "Controlled fix pipeline",
+      description: "Scope, plan, blast radius, patch guard, and approval."
+    },
+    verify: {
+      title: "Verify in sandbox",
+      description: "Preview, runtime telemetry, and sandbox build proof."
+    },
+    export: {
+      title: "PR / Export",
+      description: "Branch, commit, draft PR body, or download bundle."
+    },
+    architecture: {
+      title: "Architecture map",
+      description: "Symbol graph, blast radius, prioritized review findings."
+    },
+    brain: {
+      title: "Project Brain",
+      description: "Indexed files, modules, and freshness."
+    },
+    control: {
+      title: "Control layer",
+      description: "Context Gate, Scope Contract, Patch Guard."
+    },
+    security: {
+      title: "Security & deployment",
+      description: "Findings, blockers, deployment readiness."
+    },
+    ledger: {
+      title: "Living Ledger",
+      description: "Auditable timeline of architectural transitions."
+    }
+  };
+
+  const STEP_LABEL: Record<WorkspaceStep, string> = {
+    connect: "Connect",
+    plan: "Brief",
+    fix: "Fix",
+    verify: "Verify",
+    export: "PR / Export"
+  };
+
+  const STEP_WHY: Record<WorkspaceStep, string> = {
+    connect: "Real code unlocks accurate planning, blast-radius tracing, and security review.",
+    plan: "A short product brief shapes the planner and unlocks clean exports.",
+    fix: "BootRise scopes the change, traces blast radius, and waits for your approval.",
+    verify: "Sandbox build proof feeds Safe-to-PR before you ship.",
+    export: "Open a draft PR or download the BootRise bundle."
+  };
+
+  const railSteps: WorkflowStepDef[] = [
+    {
+      id: "connect",
+      label: "Connect",
+      hint: "GitHub + files",
+      status: activeStep === "connect" ? "active" : hasCode ? "done" : "pending"
+    },
+    {
+      id: "plan",
+      label: "Brief",
+      hint: "Product context",
+      status:
+        activeStep === "plan"
+          ? "active"
+          : briefReady
+            ? "done"
+            : !hasCode
+              ? "locked"
+              : "pending",
+      lockReason: !hasCode ? "Connect a repo first" : undefined
+    },
+    {
+      id: "fix",
+      label: "Fix",
+      hint: "Scope + diff",
+      status:
+        activeStep === "fix"
+          ? "active"
+          : report
+            ? "done"
+            : !hasCode
+              ? "locked"
+              : !briefReady
+                ? "locked"
+                : "pending",
+      lockReason: !hasCode
+        ? "Connect a repo first"
+        : !briefReady
+          ? "Complete brief first"
+          : undefined
+    },
+    {
+      id: "verify",
+      label: "Verify",
+      hint: "Sandbox proof",
+      status:
+        activeStep === "verify"
+          ? "active"
+          : sandboxPassed
+            ? "done"
+            : !report
+              ? "locked"
+              : "pending",
+      lockReason: !report ? "Run Fix first" : undefined
+    },
+    {
+      id: "export",
+      label: "PR / Export",
+      hint: "Ship safely",
+      status:
+        activeStep === "export"
+          ? "active"
+          : exportDone
+            ? "done"
+            : !hasCode || !briefReady
+              ? "locked"
+              : "pending",
+      lockReason: !hasCode
+        ? "Connect first"
+        : !briefReady
+          ? "Complete brief first"
+          : undefined
+    }
+  ];
+
+  const controlScopeLocked = Boolean(report?.controlLayer?.scopeContract);
+  const safeToDeployComputed = report?.controlLayer
+    ? report.controlLayer.agentCoordination.safeToDeploy
+    : deployReadinessStatus != null || securityBlockers > 0
+      ? Boolean(liveAgentCoordination?.safeToDeploy) &&
+        deployReadinessStatus !== "blocked" &&
+        securityBlockers === 0
+      : false;
+
+  const commandCenterTiles = [
+    {
+      id: "brain",
+      label: "Brain",
+      value: brainStats
+        ? `${brainStats.files} files / ${brainStats.modules} modules`
+        : "Not indexed",
+      hint: brainStats?.stale ? `${brainStats.stale} stale` : undefined,
+      tone: brainStats ? ("success" as const) : ("neutral" as const),
+      onClick: () => setContextTab("brain")
+    },
+    {
+      id: "control",
+      label: "Control",
+      value: controlScopeLocked
+        ? "Scope locked"
+        : report?.controlLayer
+          ? "Active"
+          : "Idle",
+      hint: report?.controlLayer?.contextGate.status.replace(/_/g, " "),
+      tone:
+        report?.controlLayer && !report.controlLayer.canApprove
+          ? ("warning" as const)
+          : report?.controlLayer
+            ? ("success" as const)
+            : ("neutral" as const),
+      onClick: () => setContextTab("control")
+    },
+    {
+      id: "security",
+      label: "Security",
+      value:
+        securityBlockers > 0
+          ? `${securityBlockers} blocker${securityBlockers > 1 ? "s" : ""}`
+          : "No blockers",
+      tone: securityBlockers > 0 ? ("danger" as const) : ("success" as const),
+      onClick: () => setContextTab("security")
+    },
+    {
+      id: "safe-pr",
+      label: "Safe to PR",
+      value: report?.safeToPr?.label ?? "Not evaluated",
+      tone:
+        report?.safeToPr?.status === "yes"
+          ? ("success" as const)
+          : report?.safeToPr
+            ? ("warning" as const)
+            : ("neutral" as const)
+    },
+    {
+      id: "safe-deploy",
+      label: "Safe to deploy",
+      value: report?.controlLayer
+        ? safeToDeployComputed
+          ? "Candidate"
+          : "Blocked"
+        : deployReadinessStatus != null || securityBlockers > 0
+          ? safeToDeployComputed
+            ? "Candidate"
+            : "Blocked"
+          : "Run scan",
+      tone: safeToDeployComputed ? ("success" as const) : ("warning" as const)
+    },
+    {
+      id: "credits",
+      label: "Credits",
+      value: creditsRemaining != null ? creditsRemaining.toLocaleString() : "—",
+      hint: "remaining"
+    }
+  ];
+
+  const missionEvents: MissionEvent[] = messages.map((m, i) => {
+    if (m.role === "user") {
+      return {
+        id: `m-${i}`,
+        kind: "user",
+        body: <WorkspaceChatMessage role="user" content={m.content} phase={m.phase} bare />
+      };
+    }
+    const phase = m.phase ?? "";
+    const kind: MissionEvent["kind"] =
+      phase === "building"
+        ? "builder"
+        : phase === "review"
+          ? "qa"
+          : phase === "export"
+            ? "deploy"
+            : phase === "planning"
+              ? "architect"
+              : "bootrise";
+    return {
+      id: `m-${i}`,
+      kind,
+      status: m.phase ? m.phase.charAt(0).toUpperCase() + m.phase.slice(1) : undefined,
+      body: (
+        <WorkspaceChatMessage
+          role="assistant"
+          content={m.content}
+          phase={m.phase}
+          thinkingSteps={m.thinkingSteps}
+          fileActivity={m.fileActivity}
+          suggestedActions={m.suggestedActions}
+          discoveryQuestions={m.discoveryQuestions}
+          plainEnglishSummary={m.plainEnglishSummary}
+          onAction={handleChatAction}
+          bare
+        />
+      )
+    };
+  });
+
+  const currentPanelMeta = PANEL_META[contextTab] ?? { title: "Workspace", description: "" };
+
+  return (
+    <WorkspaceShell
+      commandCenter={
+        <WorkspaceCommandCenterV2
+          projectName={projectName}
+          mission={nextActionV2.reason}
+          modeBadge={{
+            label: provider === "openai" ? "Premium · ChatGPT" : `BootRise · ${modelMode}`,
+            tone: provider === "openai" ? "warning" : "signal"
+          }}
+          modeSlot={
+            <StatusPill
+              label={projectStorage === "supabase" ? "Cloud saved" : "Local"}
+              tone="neutral"
+            />
+          }
+          nextAction={{ ...nextActionV2, disabled: nextActionV2.disabled || busy }}
+          onNextActionClick={executeNextAction}
+          tiles={commandCenterTiles}
+        />
+      }
+      banner={
+        <div className="space-y-3">
+          {showOnboarding ? (
+            <WorkspaceOnboardingChecklist
+              steps={onboardingSteps}
+              onGo={goToOnboardingStep}
+              onDismiss={() => {
+                dismissOnboardingChecklist();
+                setShowOnboarding(false);
+              }}
+            />
+          ) : null}
+          {saveNotice ? (
+            <Alert tone="success" onDismiss={() => setSaveNotice(null)}>
+              {saveNotice}
+            </Alert>
+          ) : null}
+          {workspaceIssue?.scope === "global" ? renderIssue("global") : null}
+          <div className="rounded-2xl border border-line bg-white/85 px-4 py-3 shadow-sm">
+            <PersonaSelector value={persona} onChange={setPersona} />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <EngineToggle
+                provider={provider}
+                onChange={handleProviderChange}
+                mode={modelMode}
+                onModeChange={handleModeChange}
+                bootriseOk={providerHealth.bootrise}
+                openaiOk={providerHealth.openai}
+              />
+              <StatusPill label={status} tone={error ? "failed" : "neutral"} />
+            </div>
+          </div>
+        </div>
+      }
+      rail={
+        <WorkflowRailV2
+          steps={railSteps}
+          onSelect={goToStep}
+          operatorFocus={{
+            headline: `Now: ${STEP_LABEL[activeStep]}`,
+            whyItMatters: STEP_WHY[activeStep],
+            nextAction: { ...nextActionV2, disabled: nextActionV2.disabled || busy },
+            onNextActionClick: executeNextAction
           }}
         />
-      ) : null}
-
-      {providerHealthChecked && !providerConfigured ? (
-        <Alert
-          className="mt-4"
-          tone="warning"
-          title={`${provider === "openai" ? "ChatGPT" : "BootRise"} engine offline`}
-        >
-          Chat still works in offline mode. Full AI review needs{" "}
-          <code>{provider === "openai" ? "OPENAI_API_KEY" : "NVIDIA_API_KEY"}</code> in <code>.env.local</code> and a dev server restart.
-        </Alert>
-      ) : null}
-      {workspaceIssue?.scope === "global" ? (
-        <div className="mt-4">{renderIssue("global")}</div>
-      ) : null}
-      {saveNotice ? (
-        <Alert className="mt-4" tone="success" onDismiss={() => setSaveNotice(null)}>
-          {saveNotice}
-        </Alert>
-      ) : null}
-
-      <div className="mt-6 grid gap-5 xl:grid-cols-[290px_minmax(0,1fr)_minmax(380px,0.92fr)]">
-        <aside className="hidden xl:block">
-          <div className="sticky top-4 space-y-4">
-            <div className="rounded-2xl border border-line bg-white p-3 shadow-sm">
-              <WorkspaceStepRail active={activeStep} onChange={goToStep} completed={stepCompleted} />
-            </div>
-            <ProjectDashboard
-              projectName={projectName}
-              fileCount={loadedFilePaths.length}
-              githubUrl={githubUrl}
-              branch={githubBranch}
-              health={repoHealth}
-              sandboxPassed={sandboxPassed}
-              safeToPr={report?.safeToPr ?? null}
-              storage={projectStorage}
-              lastSaved={lastProjectSaved}
-            />
-            <div className="rounded-2xl border border-line bg-ink p-4 text-white shadow-sm">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">Operator focus</p>
-              <p className="mt-2 text-sm font-semibold">{nextAction.label}</p>
-              <p className="mt-1 text-xs leading-5 text-white/65">{nextAction.helper}</p>
-            </div>
-          </div>
-        </aside>
-        <div className="xl:hidden">
-          <WorkspaceStepRail active={activeStep} onChange={goToStep} completed={stepCompleted} />
-        </div>
-        <div
-          ref={chatPanelRef}
-          className="flex min-h-[min(76vh,780px)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm"
-        >
-          <div className="border-b border-line bg-gradient-to-r from-white via-cloud/40 to-signal/10 px-5 py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-signal">Agent Stream</p>
-            <p className="mt-0.5 text-sm text-steel">One live thread for plans, questions, findings, fixes, and verification.</p>
-          </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
-            {renderIssue("chat")}
-            {messages.map((message, index) => (
-              <WorkspaceChatMessage
-                key={`${message.role}-${index}`}
-                role={message.role}
-                content={message.content}
-                phase={message.phase}
-                thinkingSteps={message.thinkingSteps}
-                fileActivity={message.fileActivity}
-                suggestedActions={message.suggestedActions}
-                discoveryQuestions={message.discoveryQuestions}
-                plainEnglishSummary={message.plainEnglishSummary}
-                onAction={handleChatAction}
+      }
+      thread={
+        <MissionThread
+          missionLabel={projectName || "Untitled project"}
+          missionDetail={nextActionV2.reason}
+          events={missionEvents}
+          scrollRef={chatPanelRef}
+          emptyState={
+            <p className="max-w-sm text-center text-sm text-steel">
+              Start by describing the change you want — BootRise will plan, scope, and verify before anything ships.
+            </p>
+          }
+          headerActions={
+            !showOnboarding ? (
+              <button
+                type="button"
+                className="cursor-pointer rounded-lg border border-line bg-white px-2.5 py-1 text-[11px] font-semibold text-graphite hover:bg-cloud"
+                onClick={() => setShowOnboarding(true)}
+              >
+                Checklist
+              </button>
+            ) : null
+          }
+          input={
+            <div className="space-y-3">
+              <AgentLiveBar
+                busy={busy}
+                status={operationBusy ? status : chatBusy ? "Thinking" : status}
+                steps={liveThinking}
+                filesInFocus={liveFilesInFocus}
+                activeFile={liveActiveFile}
+                totalFiles={loadedFilePaths.length}
               />
-            ))}
-          </div>
-
-          <div className="border-t border-line bg-gradient-to-b from-white via-cloud/40 to-signal/5 p-4">
-            <AgentLiveBar
-              busy={busy}
-              status={operationBusy ? status : chatBusy ? "Thinking" : status}
-              steps={liveThinking}
-              filesInFocus={liveFilesInFocus}
-              activeFile={liveActiveFile}
-              totalFiles={loadedFilePaths.length}
-            />
-            <div className="mb-3 mt-3 flex flex-wrap gap-2">
-              {[
-                { label: "What can you do?", msg: "What can you do?" },
-                { label: "List project issues", msg: REVIEW_ISSUES_PROMPT },
-                { label: "Review my repo", msg: `What is this repo about? ${githubUrl}` },
-                { label: "Feature advice", msg: "Should I add payments now?" },
-                { label: "Run sandbox", action: "sandbox" as const },
-                { label: "Open Fix", action: "fix" as const }
-              ].map((q) => (
-                <button
-                  key={q.label}
-                  type="button"
-                  disabled={chatBusy}
-                  className="rounded-full border border-signal/15 bg-white/85 px-3 py-1.5 text-xs font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-signal/35 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => {
-                    if ("action" in q && q.action === "sandbox") {
-                      void runSandboxVerify();
-                      return;
-                    }
-                    if ("action" in q && q.action === "fix") {
-                      goToStep("fix");
-                      return;
-                    }
-                    if ("msg" in q) void sendChat(q.msg);
-                  }}
-                >
-                  {q.label}
-                </button>
-              ))}
-            </div>
-            {lastChatControl ? (
-              <ChatControlBanner
-                control={lastChatControl}
-                onProceedWithAssumptions={() => {
-                  setAssumptionsApproved(true);
-                  void sendChat("proceed with assumptions — scope lock and patch guards still apply.");
-                }}
-              />
-            ) : null}
-            <div className="rounded-[1.35rem] border border-signal/15 bg-white p-2 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-white">
-              <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-signal">Ask BootRise</p>
-                  <p className="text-xs text-steel">Architecture guide, scoped fixes, review, and verification.</p>
-                </div>
-                <span className="rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
-                  {chatBusy ? "Working" : "Ready"}
-                </span>
+              {renderIssue("chat")}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "What can you do?", msg: "What can you do?" },
+                  { label: "List project issues", msg: REVIEW_ISSUES_PROMPT },
+                  { label: "Review my repo", msg: `What is this repo about? ${githubUrl}` },
+                  { label: "Feature advice", msg: "Should I add payments now?" },
+                  { label: "Run sandbox", action: "sandbox" as const },
+                  { label: "Open Fix", action: "fix" as const }
+                ].map((q) => (
+                  <button
+                    key={q.label}
+                    type="button"
+                    disabled={chatBusy}
+                    className="cursor-pointer rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-graphite shadow-sm transition hover:border-signal/35 hover:bg-cloud disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => {
+                      if ("action" in q && q.action === "sandbox") {
+                        void runSandboxVerify();
+                        return;
+                      }
+                      if ("action" in q && q.action === "fix") {
+                        goToStep("fix");
+                        return;
+                      }
+                      if ("msg" in q) void sendChat(q.msg);
+                    }}
+                  >
+                    {q.label}
+                  </button>
+                ))}
               </div>
-              <div className="flex gap-2 rounded-[1rem] border border-line bg-cloud/70 p-2 focus-within:border-signal/35 focus-within:bg-white focus-within:ring-4 focus-within:ring-signal/10">
-                <textarea
-                  className="min-h-[58px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm leading-6 text-ink outline-none placeholder:text-steel/70"
-                  placeholder="Describe the outcome: fix navigation HUD, harden backend auth, plan deployment checks..."
-                  rows={2}
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
+              {lastChatControl ? (
+                <ChatControlBanner
+                  control={lastChatControl}
+                  onProceedWithAssumptions={() => {
+                    setAssumptionsApproved(true);
+                    void sendChat(
+                      "proceed with assumptions — scope lock and patch guards still apply."
+                    );
+                  }}
+                />
+              ) : null}
+              <div className="rounded-2xl border border-line bg-white p-2 shadow-sm focus-within:border-signal/35 focus-within:ring-4 focus-within:ring-signal/10">
+                <div className="flex items-center justify-between gap-3 px-2 pb-1 pt-1">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-signal">
+                      Ask BootRise
+                    </p>
+                    <p className="text-[11px] text-steel">
+                      Scope first · BootRise plans, then waits for your approval.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                    {chatBusy ? "Working" : "Ready"}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <textarea
+                    className="min-h-[56px] flex-1 resize-none rounded-xl border border-transparent bg-cloud/60 px-3 py-2 text-sm leading-6 text-ink outline-none placeholder:text-steel/70 focus:bg-white"
+                    placeholder="Describe the outcome: fix navigation HUD, harden backend auth, plan deployment checks..."
+                    rows={2}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (chatInput.trim()) {
+                          void sendChat(chatInput.trim());
+                          setChatInput("");
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={chatBusy || !chatInput.trim()}
+                    className="self-end cursor-pointer rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-graphite disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => {
                       if (chatInput.trim()) {
                         void sendChat(chatInput.trim());
                         setChatInput("");
                       }
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={chatBusy || !chatInput.trim()}
-                  className="self-end rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-ink/20 transition hover:-translate-y-0.5 hover:bg-signal disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                  onClick={() => {
-                    if (chatInput.trim()) {
-                      void sendChat(chatInput.trim());
-                      setChatInput("");
-                    }
-                  }}
-                >
-                  {chatBusy ? "Thinking" : "Send"}
-                </button>
-              </div>
-              <div className="flex items-center justify-between px-2 pt-2 text-[11px] text-steel">
-                <span>Enter sends · Shift Enter adds a line</span>
-                <span>{chatInput.length > 0 ? `${chatInput.length} chars` : "Scope first, then Fix"}</span>
+                    }}
+                  >
+                    {chatBusy ? "Thinking" : "Send"}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between px-2 pt-2 text-[10px] text-steel">
+                  <span>Enter sends · Shift+Enter adds a line</span>
+                  <span>
+                    {chatInput.length > 0
+                      ? `${chatInput.length} chars`
+                      : "Scope first, then Fix"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="flex min-h-[min(76vh,780px)] flex-col overflow-hidden rounded-[1.5rem] border border-line bg-white shadow-sm">
-          <WorkspacePanelChrome
-            activeStep={activeStep}
-            contextTab={contextTab}
-            onOverview={() => setContextTab("overview")}
-            onIntelligence={openIntelligence}
-            securityBlockers={securityBlockers}
-          />
-          <div className="flex-1 overflow-y-auto">
+          }
+        />
+      }
+      operation={
+        <OperationPanelShell
+          tabs={operationTabs}
+          activeTab={contextTab}
+          onSelect={handleOperationTabSelect}
+          title={currentPanelMeta.title}
+          description={currentPanelMeta.description}
+        >
+          <div className="space-y-3 p-4 sm:p-5">
+            {providerHealthChecked && !providerConfigured ? (
+              <AlertCard
+                severity="warning"
+                title={`${provider === "openai" ? "ChatGPT" : "BootRise"} engine offline`}
+                summary="The full AI pipeline is unreachable, but BootRise stays usable."
+                missing={
+                  <p>
+                    Set{" "}
+                    <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                      {provider === "openai" ? "OPENAI_API_KEY" : "NVIDIA_API_KEY"}
+                    </code>{" "}
+                    in <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">.env.local</code> and restart the dev server.
+                  </p>
+                }
+                stillWorks={
+                  <p>
+                    Connect, brief, scoped Fix preview, sandbox verify, and export still run end-to-end in deterministic offline mode.
+                  </p>
+                }
+              />
+            ) : null}
             {contextTab === "connect" ? (
               <Panel title="GitHub repository">
                 {renderIssue("connect")}
@@ -1856,12 +2165,26 @@ export function UserWorkspace() {
             {contextTab === "overview" ? (
               <Panel title="Overview">
                 <p className="text-sm leading-6 text-graphite">
-                  The workflow bar is your main navigation. This panel shows tools for the active step — open
-                  Intelligence for architecture, brain, control, security, and ledger.
+                  The workflow rail on the left is your main path. This panel shows tools for the active step;
+                  Intelligence tabs (Architecture, Brain, Control, Security, Ledger) give you read-only context.
                 </p>
-                <Button type="button" className="mt-5" variant="dark" fullWidth onClick={nextAction.onClick} disabled={operationBusy}>
-                  {nextAction.label}
-                </Button>
+                <div className="mt-4 rounded-2xl border border-line bg-cloud/40 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-signal">
+                    Next safe action
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-ink">{nextActionV2.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-steel">{nextActionV2.reason}</p>
+                  <Button
+                    type="button"
+                    className="mt-4"
+                    variant="dark"
+                    fullWidth
+                    onClick={executeNextAction}
+                    disabled={busy || nextActionV2.disabled}
+                  >
+                    {nextActionV2.label}
+                  </Button>
+                </div>
                 {!showOnboarding ? (
                   <button
                     type="button"
@@ -2195,15 +2518,16 @@ export function UserWorkspace() {
               </Panel>
             ) : null}
           </div>
-        </div>
-      </div>
-
-      <WorkspaceBottomBar
-        activeStep={activeStep}
-        onStep={goToStep}
-        onChat={scrollToChat}
-        operationBusy={operationBusy}
-      />
-    </section>
+        </OperationPanelShell>
+      }
+      bottomBar={
+        <WorkspaceBottomBar
+          activeStep={activeStep}
+          onStep={goToStep}
+          onChat={scrollToChat}
+          operationBusy={operationBusy}
+        />
+      }
+    />
   );
 }

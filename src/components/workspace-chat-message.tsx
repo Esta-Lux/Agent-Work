@@ -13,6 +13,11 @@ export interface WorkspaceChatMessageProps {
   discoveryQuestions?: DiscoveryQuestion[];
   plainEnglishSummary?: string;
   onAction?: (action: string) => void;
+  /**
+   * When true, render content without the outer bubble so a parent
+   * container (e.g. Mission Thread typed card) can supply chrome.
+   */
+  bare?: boolean;
 }
 
 export function WorkspaceChatMessage({
@@ -24,7 +29,8 @@ export function WorkspaceChatMessage({
   suggestedActions,
   discoveryQuestions,
   plainEnglishSummary,
-  onAction
+  onAction,
+  bare = false
 }: WorkspaceChatMessageProps) {
   const parsed = parseStructuredMessage(content);
   const sections = parsed.sections.filter((s) => !s.title.toLowerCase().includes("plain english"));
@@ -35,24 +41,28 @@ export function WorkspaceChatMessage({
       ? null
       : stripMarkdownForUser(parsed.bodyWithoutSections || formatUserFacingMessage(content));
 
-  return (
-    <div
-      className={`rounded-2xl text-sm leading-6 ${
+  const wrapperClass = bare
+    ? "text-sm leading-6 text-graphite"
+    : `rounded-2xl text-sm leading-6 ${
         role === "user"
           ? "ml-8 bg-ink px-4 py-3 text-white shadow-sm"
           : "mr-4 border border-line bg-gradient-to-br from-white to-cloud/35 px-4 py-3 text-graphite shadow-sm"
-      }`}
-    >
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <p className={`text-xs font-semibold uppercase ${role === "user" ? "text-white/70" : "text-steel"}`}>
-          {role === "user" ? "You" : "BootRise"}
-        </p>
-        {phase && role === "assistant" ? (
-          <span className="rounded-full border border-signal/20 bg-signal/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-signal">
-            {phase}
-          </span>
-        ) : null}
-      </div>
+      }`;
+
+  return (
+    <div className={wrapperClass}>
+      {!bare ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <p className={`text-xs font-semibold uppercase ${role === "user" ? "text-white/70" : "text-steel"}`}>
+            {role === "user" ? "You" : "BootRise"}
+          </p>
+          {phase && role === "assistant" ? (
+            <span className="rounded-full border border-signal/20 bg-signal/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-signal">
+              {phase}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {thinkingSteps && thinkingSteps.length > 0 ? <ThinkingPanel steps={thinkingSteps} /> : null}
 
