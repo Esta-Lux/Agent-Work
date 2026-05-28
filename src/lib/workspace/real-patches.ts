@@ -104,7 +104,7 @@ async function generatePatchesWithLlm(
     message: prompt,
     history: [],
     system: "Output a single fenced ```diff block. No JSON, no prose outside the diff.",
-    maxOutputTokens: 16000
+    maxOutputTokens: 4000
   });
 
   return parsePatchOutput(result.text, targets);
