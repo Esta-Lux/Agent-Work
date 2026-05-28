@@ -88,6 +88,7 @@ export async function runCoderAgent(input: CoderInput): Promise<CoderOutput> {
       memory: input.memory,
       providerChat: input.providerChat,
       isCancelled: input.isCancelled,
+      maxOutputTokens: 16000,
       onEvent: (event) => {
         recordEvent(run, event);
         input.onEvent?.(event);

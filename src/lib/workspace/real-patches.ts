@@ -101,7 +101,8 @@ async function generatePatchesWithLlm(
     provider,
     message: prompt,
     history: [],
-    system: "Output strict JSON only."
+    system: "Output strict JSON only.",
+    maxOutputTokens: 16000
   });
 
   return parsePatchJson(result.text, targets);

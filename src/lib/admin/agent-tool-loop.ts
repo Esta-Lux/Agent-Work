@@ -22,6 +22,7 @@ export type ProviderChatFn = (input: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   system?: string;
+  maxOutputTokens?: number;
 }) => Promise<LlmChatResult>;
 
 export interface ToolLoopOptions {
@@ -35,6 +36,7 @@ export interface ToolLoopOptions {
   onEvent?: (event: ToolLoopEvent) => void;
   providerChat?: ProviderChatFn;
   isCancelled?: () => boolean;
+  maxOutputTokens?: number;
 }
 
 export interface ToolLoopResult {
@@ -185,7 +187,8 @@ export async function runToolLoop(opts: ToolLoopOptions): Promise<ToolLoopResult
       provider: opts.provider,
       message: currentMessage,
       history,
-      system: systemPrompt
+      system: systemPrompt,
+      maxOutputTokens: opts.maxOutputTokens
     });
     const safeText = redactSecrets(response.text ?? "");
     opts.onEvent?.({ kind: "assistant_message", payload: { step, text: safeText } });

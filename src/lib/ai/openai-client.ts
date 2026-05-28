@@ -104,10 +104,12 @@ export async function createOpenAIChangePlan(
 
 export async function createOpenAIChatResponse({
   message,
-  history
+  history,
+  maxOutputTokens
 }: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
+  maxOutputTokens?: number;
 }): Promise<OpenAIChatResult> {
   const prompt = `You are BootRise's senior product-engineering operator inside the admin console.
 BootRise is the AI coding control layer for large codebases — it scopes tasks, governs context, blocks unsafe patches, and verifies changes before PR.
@@ -143,7 +145,7 @@ Return a practical admin-facing response.`;
 
   return {
     model: getOpenAIModel(),
-    text: await callOpenAIText({ prompt, maxOutputTokens: 900 })
+    text: await callOpenAIText({ prompt, maxOutputTokens: maxOutputTokens ?? 900 })
   };
 }
 

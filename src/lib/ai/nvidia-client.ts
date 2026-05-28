@@ -99,11 +99,13 @@ export async function createNvidiaChangePlan(
 export async function createNvidiaChatResponse({
   message,
   history,
-  system
+  system,
+  maxTokens
 }: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   system?: string;
+  maxTokens?: number;
 }): Promise<{ model: string; text: string }> {
   const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
   if (system) messages.push({ role: "system", content: system });
@@ -112,7 +114,7 @@ export async function createNvidiaChatResponse({
   }
   messages.push({ role: "user", content: message });
 
-  const text = await callNvidiaChat({ messages, maxTokens: 4096 });
+  const text = await callNvidiaChat({ messages, maxTokens: maxTokens ?? 4096 });
   return { model: getNvidiaModel(), text };
 }
 

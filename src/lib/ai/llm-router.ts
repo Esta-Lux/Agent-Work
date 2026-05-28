@@ -52,12 +52,14 @@ export async function createProviderChatResponse(input: {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   system?: string;
+  maxOutputTokens?: number;
 }): Promise<LlmChatResult> {
   if (input.provider === "openai") {
     if (!hasOpenAIKey()) throw new Error("ChatGPT is not configured on the server.");
     const result = await createOpenAIChatResponse({
       message: input.system ? `${input.system}\n\n${input.message}` : input.message,
-      history: input.history
+      history: input.history,
+      maxOutputTokens: input.maxOutputTokens
     });
     return { provider: "openai", model: result.model, text: result.text };
   }
@@ -66,7 +68,8 @@ export async function createProviderChatResponse(input: {
   const result = await createNvidiaChatResponse({
     message: input.message,
     history: input.history,
-    system: input.system
+    system: input.system,
+    maxTokens: input.maxOutputTokens
   });
   return { provider: "bootrise", model: result.model, text: result.text };
 }
