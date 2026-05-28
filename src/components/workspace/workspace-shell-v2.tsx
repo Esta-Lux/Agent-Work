@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { OperationPanelV2 } from "@/components/workspace/operation-panel-v2";
+import { RepoFileEditor } from "@/components/workspace/repo-file-editor";
 import { RepoFileExplorer, type FileNode } from "@/components/workspace/repo-file-explorer";
 import { WorkspaceCommandStrip } from "@/components/workspace/workspace-command-strip";
 import { WorkspaceDiffViewer, type DiffFile } from "@/components/workspace/workspace-diff-viewer";
@@ -11,6 +12,14 @@ import { WorkspaceTopbarV2 } from "@/components/workspace/workspace-topbar-v2";
 import { WorkflowRailV2, type WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
 import type { WorkspaceProvider, WorkspaceRole, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import {
+  createWorkspaceFileStates,
+  getChangedWorkspaceFiles,
+  resetWorkspaceFile,
+  toApiWorkspaceFiles,
+  updateWorkspaceFile,
+  type WorkspaceFileState
+} from "@/lib/workspace/workspace-file-state";
 
 interface WorkspaceFile {
   path: string;
@@ -47,7 +56,7 @@ export function WorkspaceShellV2() {
   const [importMode, setImportMode] = useState<"full" | "key">("full");
   const [projectName, setProjectName] = useState("My startup");
   const [brief, setBrief] = useState<ProjectBrief>(defaultBrief);
-  const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileState[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   const [repositoryId, setRepositoryId] = useState<string | null>(null);
   const [fixRequest, setFixRequest] = useState("");
@@ -68,9 +77,14 @@ export function WorkspaceShellV2() {
     void refreshPlatform();
   }, []);
 
-  const repoConnected = files.length > 0;
-  const fileTree = useMemo(() => buildTree(files, report?.patches?.map((patch) => patch.path) ?? []), [files, report]);
-  const selectedFile = files.find((file) => file.path === selectedPath);
+  const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
+  const repoConnected = workspaceFiles.length > 0;
+  const changedPaths = useMemo(
+    () => [...new Set([...getChangedWorkspaceFiles(workspaceFiles).map((file) => file.path), ...(report?.patches?.map((patch) => patch.path) ?? [])])],
+    [workspaceFiles, report]
+  );
+  const fileTree = useMemo(() => buildTree(apiFiles, changedPaths), [apiFiles, changedPaths]);
+  const selectedFile = workspaceFiles.find((file) => file.path === selectedPath);
   const diff = useMemo(() => reportToDiff(report), [report]);
   const providerConfigured = providerHealth.find((item) => item.provider === provider)?.connected ?? true;
   const briefReady = Boolean(brief.productName.trim() && brief.primaryWorkflow.trim());
@@ -119,7 +133,7 @@ export function WorkspaceShellV2() {
       const data = (await res.json()) as { files?: WorkspaceFile[]; repositoryId?: string; projectId?: string; branch?: string; mode?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Import failed.");
       const nextFiles = data.files ?? [];
-      setFiles(nextFiles);
+      setWorkspaceFiles(createWorkspaceFileStates(nextFiles));
       setRepositoryId(data.repositoryId ?? repositoryId ?? `repo_${Date.now()}`);
       setGithubBranch(data.branch ?? githubBranch);
       setSelectedPath(nextFiles[0]?.path);
@@ -150,7 +164,7 @@ export function WorkspaceShellV2() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request: fixRequest,
-          files,
+          files: apiFiles,
           provider,
           mode: speed,
           projectId: repositoryId ?? undefined,
@@ -182,7 +196,7 @@ export function WorkspaceShellV2() {
       const res = await fetch("/api/workspace/sandbox/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files, repositoryId: repositoryId ?? undefined })
+        body: JSON.stringify({ files: apiFiles, repositoryId: repositoryId ?? undefined })
       });
       const data = (await res.json()) as { status?: string; commands?: Array<{ label: string; exitCode: number; output: string }>; message?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Verify failed.");
@@ -206,7 +220,7 @@ export function WorkspaceShellV2() {
       const res = await fetch("/api/workspace/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "download", projectBrief: brief, files, plan: report?.plan, report: report ?? undefined, repositoryId: repositoryId ?? undefined, preferredProvider: provider })
+        body: JSON.stringify({ mode: "download", projectBrief: brief, files: apiFiles, plan: report?.plan, report: report ?? undefined, repositoryId: repositoryId ?? undefined, preferredProvider: provider })
       });
       const data = (await res.json()) as { message?: string; downloadUrl?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Export failed.");
@@ -227,6 +241,91 @@ export function WorkspaceShellV2() {
     else if (activeStep === "fix") void runFix();
     else if (activeStep === "verify") void runVerify();
     else void exportBundle();
+  }
+
+  async function approvePatch() {
+    if (!report?.pendingFixId) {
+      setIssue("No pending fix is available to approve.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Approving patch");
+
+    try {
+      const res = await fetch("/api/workspace/fix/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pendingFixId: report.pendingFixId,
+          repositoryId: repositoryId ?? report.repositoryId ?? undefined
+        })
+      });
+
+      const data = (await res.json()) as { report?: WorkspaceFixReport; files?: WorkspaceFile[]; error?: string };
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Patch approval failed.");
+      }
+
+      const approvedReport = data.report ?? report;
+      setReport(approvedReport);
+
+      if (Array.isArray(data.files)) {
+        setWorkspaceFiles(createWorkspaceFileStates(data.files));
+      } else {
+        setWorkspaceFiles((current) => applyReportPatchesToWorkspaceFileStates(current, report));
+      }
+
+      setIssue(null);
+      setStatus("Patch approved");
+      setActiveStep("verify");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Patch approval failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rejectPatch() {
+    if (!report?.pendingFixId) {
+      setReport(null);
+      setStatus("Patch rejected");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Rejecting patch");
+
+    try {
+      const res = await fetch("/api/workspace/fix/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pendingFixId: report.pendingFixId,
+          repositoryId: repositoryId ?? report.repositoryId ?? undefined
+        })
+      });
+
+      const data = (await res.json()) as { error?: string };
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Patch rejection failed.");
+      }
+
+      setReport(null);
+      setIssue(null);
+      setStatus("Patch rejected");
+      setActiveStep("fix");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Patch rejection failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -267,9 +366,20 @@ export function WorkspaceShellV2() {
               <RepoFileExplorer files={fileTree} selectedPath={selectedPath} onSelect={setSelectedPath} />
               <div className="min-w-0 overflow-y-auto">
                 {diff.length > 0 && activeStep !== "brief" ? (
-                  <WorkspaceDiffViewer diff={diff} />
+                  <WorkspaceDiffViewer
+                    diff={diff}
+                    onApprove={isPendingReport(report) ? approvePatch : undefined}
+                    onReject={isPendingReport(report) ? rejectPatch : undefined}
+                  />
                 ) : selectedFile ? (
-                  <pre className="min-h-full overflow-auto p-5 font-mono text-xs leading-5 text-text-ws-2">{selectedFile.content}</pre>
+                  <RepoFileEditor
+                    path={selectedFile.path}
+                    content={selectedFile.currentContent}
+                    status={selectedFile.status}
+                    riskLevel={selectedFile.riskLevel}
+                    onChange={(content) => setWorkspaceFiles((current) => updateWorkspaceFile(current, selectedFile.path, content, "manual"))}
+                    onReset={() => setWorkspaceFiles((current) => resetWorkspaceFile(current, selectedFile.path))}
+                  />
                 ) : (
                   <div className="p-6 text-sm text-text-ws-3">Select a file to inspect.</div>
                 )}
@@ -314,6 +424,10 @@ export function WorkspaceShellV2() {
   );
 }
 
+function isPendingReport(report: WorkspaceFixReport | null): boolean {
+  return Boolean(report?.pendingFixId && (!report.approvalStatus || report.approvalStatus === "pending_approval"));
+}
+
 function buildTree(files: WorkspaceFile[], changedPaths: string[]): FileNode[] {
   const root: FileNode[] = [];
   const dirs = new Map<string, FileNode>();
@@ -348,6 +462,21 @@ function readCreditsRemaining(data: CreditsResponse): number | null {
   if (typeof data.balance === "number") return data.balance;
   if (typeof data.balance?.remaining === "number") return data.balance.remaining;
   return null;
+}
+
+function applyReportPatchesToWorkspaceFileStates(
+  files: WorkspaceFileState[],
+  report: WorkspaceFixReport | null
+): WorkspaceFileState[] {
+  if (!report?.patches?.length) return files;
+
+  let next = files;
+
+  for (const patch of report.patches) {
+    next = updateWorkspaceFile(next, patch.path, patch.after, "ai_patch");
+  }
+
+  return next;
 }
 
 function reportToDiff(report: WorkspaceFixReport | null): DiffFile[] {

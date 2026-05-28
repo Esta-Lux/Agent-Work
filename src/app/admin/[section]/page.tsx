@@ -3,6 +3,8 @@ import { requireAdmin } from "@/lib/auth/admin-auth";
 import { AdminControlHub } from "@/components/admin-control-hub";
 import { AdminDetectionsPanel } from "@/components/admin-detections-panel";
 import { AdminKillSwitches } from "@/components/admin-kill-switches";
+import { AdminAuditPage } from "@/components/admin/admin-audit-page";
+import { AdminDataPage } from "@/components/admin/admin-data-page";
 import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminShell, type AdminSection } from "@/components/admin/admin-shell";
 import { SelfAgentPage } from "@/components/admin/self-agent-page";
@@ -59,19 +61,6 @@ function renderSection(section: AdminSection) {
       </div>
     );
   }
-  if (section === "data") return <EmptyAdminSection title="Supabase data management" description="This section will collect schema status, migration helpers, table health, and data maintenance actions." />;
-  return <EmptyAdminSection title="Audit trail" description="This section will show admin actions, mission approvals, security events, and system changes." />;
-}
-
-function EmptyAdminSection({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="space-y-6">
-      <SectionHeader theme="admin" eyebrow="OPS SECTION" title={title} description={description} />
-      <div className="rounded-lg border border-border-admin bg-panel-admin p-10 text-center">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-signal-glow font-mono text-xs text-signal">BR</div>
-        <h2 className="mt-4 text-base font-semibold text-text-admin-1">{title}</h2>
-        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-text-admin-2">{description}</p>
-      </div>
-    </div>
-  );
+  if (section === "data") return <AdminDataPage />;
+  return <AdminAuditPage />;
 }

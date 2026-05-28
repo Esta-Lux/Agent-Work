@@ -40,12 +40,7 @@ export function OperationPanelV2(props: OperationPanelV2Props) {
         <p className="font-mono text-[10px] uppercase tracking-widest text-text-ws-3">Context inspector</p>
         <div className="mt-1 flex items-center justify-between gap-2">
           <h2 className="text-[15px] font-semibold capitalize text-text-ws-1">{props.activeStep}</h2>
-          {props.repoConnected ? (
-            <div className="flex rounded-lg bg-card-ws p-1 text-xs">
-              <span className="rounded-md bg-signal-glow px-2 py-1 text-signal-text">Overview</span>
-              <span className="px-2 py-1 text-text-ws-3">Intelligence</span>
-            </div>
-          ) : null}
+          {props.repoConnected ? <StatusPill variant="signal" label="repo loaded" /> : null}
         </div>
       </header>
       <div className="min-h-0 flex-1 p-4">
@@ -77,7 +72,7 @@ function ConnectStep({
     <div className="space-y-4">
       <div className="rounded-lg bg-card-ws p-4">
         <p className="text-sm font-semibold text-text-ws-1">Start by connecting real code</p>
-        <p className="mt-1 text-xs leading-5 text-text-ws-2">Import a GitHub repository so BootRise can index real files and unlock the guided workflow.</p>
+        <p className="mt-1 text-xs leading-5 text-text-ws-2">Import a GitHub repository so BootRise can index real files and guide the workflow.</p>
       </div>
       <Field label="GitHub URL">
         <input className="w-full rounded-lg border border-border-ws bg-card-ws px-3 py-2 font-mono text-xs text-text-ws-1 outline-none focus:border-signal/50" value={githubUrl} onChange={(event) => onGithubUrlChange(event.target.value)} placeholder="https://github.com/org/repo" />
@@ -161,8 +156,8 @@ function ExportStep({ exportMessage }: { exportMessage: string | null }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-card-ws p-4">
-        <p className="text-sm font-semibold text-text-ws-1">Export / PR</p>
-        <p className="mt-1 text-xs leading-5 text-text-ws-2">{exportMessage ?? "Export unlocks after brief and repo files are ready."}</p>
+        <p className="text-sm font-semibold text-text-ws-1">Export bundle</p>
+        <p className="mt-1 text-xs leading-5 text-text-ws-2">{exportMessage ?? "Export is available after the brief and repo files are ready."}</p>
       </div>
     </div>
   );

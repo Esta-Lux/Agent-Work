@@ -9,11 +9,14 @@ export const ADMIN_BUILD_TEMPLATES: AdminBuildTemplate[] = [
     objective: "Transform the user workspace into a professional mission control interface that builders love to use daily. Focus on clarity, speed, and visual hierarchy.",
     likelyFiles: [
       "src/app/page.tsx",
-      "src/components/workspace-panel.tsx",
-      "src/components/project-list.tsx",
-      "src/components/sidebar.tsx",
-      "src/app/layout.tsx",
-      "src/components/ui/panel-shell.tsx"
+      "src/components/workspace/workspace-shell-v2.tsx",
+      "src/components/workspace/workspace-command-strip.tsx",
+      "src/components/workspace/workflow-rail-v2.tsx",
+      "src/components/workspace/operation-panel-v2.tsx",
+      "src/components/workspace/repo-file-explorer.tsx",
+      "src/components/workspace/workspace-diff-viewer.tsx",
+      "src/components/workspace/repo-file-editor.tsx",
+      "src/lib/workspace/workspace-file-state.ts"
     ],
     forbiddenFiles: [
       "src/lib/auth/**",
@@ -23,11 +26,11 @@ export const ADMIN_BUILD_TEMPLATES: AdminBuildTemplate[] = [
       "src/lib/admin/kill-switches.ts"
     ],
     acceptanceCriteria: [
-      "Sidebar collapses smoothly with animation",
-      "Project cards show live status badges",
-      "Quick actions accessible within 2 clicks",
-      "Mobile responsive down to 320px",
-      "No layout shift on data load"
+      "File explorer shows modified files",
+      "File editor supports manual edits",
+      "Reset file works",
+      "Diff viewer shows AI and manual changes",
+      "Changed files can be used in verify/export"
     ],
     riskLevel: "medium",
     promptStarter: "Redesign the user workspace to feel like a mission control center with collapsible navigation, status-aware project cards, and lightning-fast interactions."
@@ -39,11 +42,13 @@ export const ADMIN_BUILD_TEMPLATES: AdminBuildTemplate[] = [
     targetSurface: "admin_console",
     objective: "Make the admin console feel like a professional operator station with clear mental models, progressive disclosure, and instant navigation between functional areas.",
     likelyFiles: [
-      "src/components/admin-console.tsx",
-      "src/components/admin-control-hub.tsx",
-      "src/components/admin-kill-switches.tsx",
-      "src/components/ui/panel-shell.tsx",
-      "src/app/admin/page.tsx"
+      "src/components/admin/admin-shell.tsx",
+      "src/components/admin/admin-sidebar.tsx",
+      "src/components/admin/admin-topbar.tsx",
+      "src/components/admin/admin-overview.tsx",
+      "src/components/admin/self-agent-page.tsx",
+      "src/app/admin/page.tsx",
+      "src/app/admin/[section]/page.tsx"
     ],
     forbiddenFiles: [
       "src/lib/auth/**",
@@ -68,11 +73,11 @@ export const ADMIN_BUILD_TEMPLATES: AdminBuildTemplate[] = [
     targetSurface: "repo_explorer",
     objective: "Give admins a capable file explorer to browse, preview, and understand repo changes without leaving BootRise. Enable diff review with confidence.",
     likelyFiles: [
-      "src/components/admin-agent-console.tsx",
-      "src/components/file-tree.tsx",
-      "src/components/diff-viewer.tsx",
-      "src/app/admin/page.tsx",
-      "src/lib/admin/admin-agent.ts"
+      "src/components/workspace/repo-file-explorer.tsx",
+      "src/components/workspace/repo-file-editor.tsx",
+      "src/components/workspace/workspace-diff-viewer.tsx",
+      "src/components/workspace/workspace-shell-v2.tsx",
+      "src/lib/workspace/workspace-file-state.ts"
     ],
     forbiddenFiles: [
       "src/lib/auth/**",
@@ -81,11 +86,11 @@ export const ADMIN_BUILD_TEMPLATES: AdminBuildTemplate[] = [
       "src/lib/ai/model-router.ts"
     ],
     acceptanceCriteria: [
-      "File tree loads under 500ms",
-      "Click file to preview content",
-      "Diff highlights additions/deletions clearly",
-      "Keyboard navigation (arrows, enter, escape)",
-      "Search filters files in real-time"
+      "File explorer shows modified files",
+      "File editor supports manual edits",
+      "Reset file works",
+      "Diff viewer shows AI and manual changes",
+      "Changed files can be used in verify/export"
     ],
     riskLevel: "medium",
     promptStarter: "Build a file explorer with tree view, file preview, and diff viewer that makes reviewing repo changes effortless and professional."

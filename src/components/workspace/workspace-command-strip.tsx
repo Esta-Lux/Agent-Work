@@ -29,7 +29,7 @@ const actionLabel: Record<WorkspaceV2Step, string> = {
   brief: "Complete brief",
   fix: "Run Fix",
   verify: "Run Verify",
-  export: "Export / Push PR"
+  export: "Export bundle"
 };
 
 export function WorkspaceCommandStrip({
