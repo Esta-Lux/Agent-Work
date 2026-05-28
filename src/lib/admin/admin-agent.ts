@@ -140,7 +140,8 @@ export async function runAdminAgentChat(input: AdminAgentChatInput): Promise<Adm
     requestedMode: input.mode ?? "fast",
     orgId,
     userId: input.user.id,
-    projectId: ADMIN_PROJECT_ID
+    projectId: ADMIN_PROJECT_ID,
+    premiumApproved: true
   });
   syncSelfRepoSnapshot();
   const files = loadSelfRepoSnapshot();
@@ -216,7 +217,8 @@ export async function runAdminAgentPlan(input: AdminAgentPlanInput): Promise<Adm
     requestedProvider: provider,
     orgId,
     userId: input.user.id,
-    projectId: ADMIN_PROJECT_ID
+    projectId: ADMIN_PROJECT_ID,
+    premiumApproved: true
   });
   syncSelfRepoSnapshot();
   const files = loadSelfRepoSnapshot();
@@ -249,7 +251,8 @@ export async function runAdminAgentFix(input: AdminAgentFixInput): Promise<Admin
     requestedProvider: provider,
     orgId,
     userId: input.user.id,
-    projectId: ADMIN_PROJECT_ID
+    projectId: ADMIN_PROJECT_ID,
+    premiumApproved: true
   });
   syncSelfRepoSnapshot();
   const files = loadSelfRepoSnapshot();
