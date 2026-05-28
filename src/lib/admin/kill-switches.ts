@@ -14,6 +14,12 @@ export interface KillSwitchState {
   disableGithubPush: boolean;
   disableDraftPrCreation: boolean;
   disableAdminChat: boolean;
+  disableAdminAgent: boolean;
+  disableAdvancedAdminAgent: boolean;
+  disableAgentToolUse: boolean;
+  disableAgentShell: boolean;
+  disableDetectionsScanner: boolean;
+  disableDetectionsWatchdog: boolean;
   maxWorkspaceFiles: number;
   updatedAt: string;
   updatedBy: string;
@@ -32,6 +38,12 @@ const DEFAULT_STATE: KillSwitchState = {
   disableGithubPush: false,
   disableDraftPrCreation: false,
   disableAdminChat: false,
+  disableAdminAgent: false,
+  disableAdvancedAdminAgent: false,
+  disableAgentToolUse: false,
+  disableAgentShell: false,
+  disableDetectionsScanner: true,
+  disableDetectionsWatchdog: false,
   maxWorkspaceFiles: 5000,
   updatedAt: new Date().toISOString(),
   updatedBy: "system"
@@ -82,6 +94,12 @@ export function assertKillSwitchAllowed(
     | "github_push"
     | "draft_pr"
     | "admin_chat"
+    | "admin_agent"
+    | "advanced_admin_agent"
+    | "agent_tool_use"
+    | "agent_shell"
+    | "detections_scanner"
+    | "detections_watchdog"
 ): void {
   const state = getKillSwitches();
   if (action === "nvidia" && state.disableNvidia) {
@@ -119,6 +137,24 @@ export function assertKillSwitchAllowed(
   }
   if (action === "admin_chat" && state.disableAdminChat) {
     throw new Error("Admin chat is disabled by admin kill switch.");
+  }
+  if (action === "admin_agent" && state.disableAdminAgent) {
+    throw new Error("Admin self-agent is disabled by admin kill switch.");
+  }
+  if (action === "advanced_admin_agent" && state.disableAdvancedAdminAgent) {
+    throw new Error("Advanced admin agent (multi-agent graph) is disabled by admin kill switch.");
+  }
+  if (action === "agent_tool_use" && state.disableAgentToolUse) {
+    throw new Error("Admin agent tool use is disabled by admin kill switch.");
+  }
+  if (action === "agent_shell" && state.disableAgentShell) {
+    throw new Error("Admin agent shell tools are disabled by admin kill switch.");
+  }
+  if (action === "detections_scanner" && state.disableDetectionsScanner) {
+    throw new Error("Detections scanner is disabled by admin kill switch.");
+  }
+  if (action === "detections_watchdog" && state.disableDetectionsWatchdog) {
+    throw new Error("Detections watchdog is disabled by admin kill switch.");
   }
 }
 

@@ -16,6 +16,12 @@ interface KillSwitchState {
   disableGithubPush: boolean;
   disableDraftPrCreation: boolean;
   disableAdminChat: boolean;
+  disableAdminAgent: boolean;
+  disableAdvancedAdminAgent: boolean;
+  disableAgentToolUse: boolean;
+  disableAgentShell: boolean;
+  disableDetectionsScanner: boolean;
+  disableDetectionsWatchdog: boolean;
   maxWorkspaceFiles: number;
   updatedAt: string;
 }
@@ -69,7 +75,13 @@ export function AdminKillSwitches() {
     { key: "disableGithubImport", label: "Disable GitHub import", hint: "Blocks repo import from GitHub" },
     { key: "disableGithubPush", label: "Disable GitHub push", hint: "Blocks automated branch push" },
     { key: "disableDraftPrCreation", label: "Disable draft PRs", hint: "Blocks automated draft PR creation" },
-    { key: "disableAdminChat", label: "Disable admin chat", hint: "Blocks admin AI chat responses" }
+    { key: "disableAdminChat", label: "Disable admin chat", hint: "Blocks admin AI chat responses" },
+    { key: "disableAdminAgent", label: "Disable self-agent", hint: "Blocks the BootRise admin self-improvement agent" },
+    { key: "disableAdvancedAdminAgent", label: "Advanced admin agent", hint: "Falls back to single-pass admin self-agent" },
+    { key: "disableAgentToolUse", label: "Agent tool use", hint: "Blocks the tool-use loop" },
+    { key: "disableAgentShell", label: "Agent shell tools", hint: "Blocks tsc / lint / test shell tools" },
+    { key: "disableDetectionsScanner", label: "Detections scanner", hint: "Blocks manual /admin scan endpoint" },
+    { key: "disableDetectionsWatchdog", label: "Detections watchdog", hint: "Stops the 60s live watchdog" }
   ];
 
   return (

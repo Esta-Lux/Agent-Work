@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AdminKillSwitches } from "@/components/admin-kill-switches";
 import { AdminControlHub } from "@/components/admin-control-hub";
 import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
+import { AdminAgentConsole } from "@/components/admin-agent-console";
+import { AdminDetectionsPanel } from "@/components/admin-detections-panel";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
 import { Alert } from "@/components/ui/alert";
@@ -349,6 +351,25 @@ export function AdminConsole() {
           </ul>
         </PanelShell>
       ) : null}
+
+      <PanelShell
+        id="detections"
+        title="Detections"
+        eyebrow="Self-aware safety net"
+        description="Static + live signals from this repo. Manual scanner + 60s watchdog. Click Fix it to hand off to the admin self-agent."
+        className="mb-6"
+      >
+        <AdminDetectionsPanel />
+      </PanelShell>
+
+      <PanelShell
+        title="Self-Agent"
+        eyebrow="Codebase self-improvement"
+        description="Chat with, plan against, and patch the BootRise codebase itself. Approved fixes can open a draft PR or, with explicit confirmation, push directly to main."
+        className="mb-6"
+      >
+        <AdminAgentConsole />
+      </PanelShell>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <PanelShell title="Admin operator copilot" eyebrow="AI ops">

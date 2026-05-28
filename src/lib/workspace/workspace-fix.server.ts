@@ -237,6 +237,106 @@ export async function createPendingFixPlan(
   };
 }
 
+export interface PersistAdminPendingFixInput {
+  files: SourceFileInput[];
+  request: string;
+  provider: LlmProviderId;
+  orgId: string;
+  userId: string;
+  projectId: string;
+  prebuiltPlan: ChangePlan;
+  prebuiltPatches: ProposedPatch[];
+  review?: { verdict: string; findings: Array<{ severity: string; message: string; path?: string }> };
+  plannerSource?: string;
+  assumptionsApproved?: boolean;
+}
+
+export interface PersistAdminPendingFixResult {
+  pendingFixId: string;
+  report: WorkspaceFixReport;
+  repositoryId: string;
+  plannerSource: string;
+}
+
+export async function persistAdminPendingFix(
+  input: PersistAdminPendingFixInput
+): Promise<PersistAdminPendingFixResult> {
+  const repo = buildRepoIntelligenceSnapshot(input.files);
+  const repositoryId = `repo_${Date.now()}`;
+  const now = new Date().toISOString();
+  upsertRecord(memoryStore.repositories, {
+    id: repositoryId,
+    name: "Admin Self-Repo",
+    source: "uploaded",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const rootSymbol = repo.symbols.find((sym) => sym.exported)?.name ?? repo.symbols[0]?.name ?? "Page";
+  const blast = await traceBlastRadius(repositoryId, rootSymbol);
+
+  const plannerSource = input.plannerSource ?? "admin-agent-graph";
+  const pendingFixId = createPendingFixId();
+  const controlLayer = await runControlLayerBeforePatch({
+    orgId: input.orgId,
+    userId: input.userId,
+    projectId: input.projectId,
+    repositoryId,
+    request: input.request,
+    files: input.files,
+    plan: input.prebuiltPlan,
+    patches: input.prebuiltPatches,
+    assumptionsApproved: input.assumptionsApproved ?? true
+  });
+
+  savePendingFix(
+    {
+      id: pendingFixId,
+      repositoryId,
+      request: input.request,
+      plan: input.prebuiltPlan,
+      patches: input.prebuiltPatches,
+      filesSnapshot: input.files,
+      provider: input.provider,
+      plannerSource,
+      status: "pending_approval",
+      createdAt: now,
+      controlLayer
+    },
+    { orgId: input.orgId, projectId: input.projectId }
+  );
+
+  upsertRecord(memoryStore.plans, {
+    id: input.prebuiltPlan.id,
+    repositoryId,
+    plan: input.prebuiltPlan,
+    status: "draft",
+    createdAt: now
+  });
+
+  const report = await buildReportFromPatches({
+    repositoryId,
+    plan: input.prebuiltPlan,
+    patches: input.prebuiltPatches,
+    blast,
+    request: input.request,
+    patchSource: plannerSource,
+    pendingFixId,
+    approvalStatus: "pending_approval",
+    controlLayer
+  });
+
+  if (input.review) {
+    const reviewLine = `Reviewer verdict: ${input.review.verdict}${input.review.findings.length ? ` · ${input.review.findings.length} finding(s)` : ""}`;
+    report.guidanceForBuilder = [reviewLine, ...report.guidanceForBuilder];
+    for (const finding of input.review.findings.slice(0, 5)) {
+      report.guidanceForBuilder.push(`Review ${finding.severity}: ${finding.message}${finding.path ? ` (${finding.path})` : ""}`);
+    }
+  }
+
+  return { pendingFixId, report, repositoryId, plannerSource };
+}
+
 export async function approvePendingFix(
   pendingFixId: string,
   options?: { sandboxPassed?: boolean; orgId?: string }
