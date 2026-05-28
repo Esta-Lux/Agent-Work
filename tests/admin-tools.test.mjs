@@ -9,11 +9,16 @@ const USER = { id: "admin-test", email: "admin@bootrise.local" };
 function setupRepo() {
   const root = mkdtempSync(join(tmpdir(), "bootrise-admin-tools-"));
   mkdirSync(join(root, "src", "app", "api", "foo"), { recursive: true });
+  mkdirSync(join(root, "src", "app", "api", "proxy", "[sessionId]", "[[...path]]"), { recursive: true });
   mkdirSync(join(root, "src", "lib"), { recursive: true });
   mkdirSync(join(root, ".bootrise", "admin"), { recursive: true });
   writeFileSync(
     join(root, "src", "app", "api", "foo", "route.ts"),
     "export async function GET() { return new Response('ok'); }\n"
+  );
+  writeFileSync(
+    join(root, "src", "app", "api", "proxy", "[sessionId]", "[[...path]]", "route.ts"),
+    "export async function GET() { return new Response('proxy'); }\n"
   );
   writeFileSync(
     join(root, "src", "lib", "util.ts"),
@@ -46,6 +51,13 @@ test("admin tools enforce denylist, traversal block, and output cap", async () =
 
     await assert.rejects(() => readFileTool.execute({ path: ".env" }, ctx), /denied/i);
     await assert.rejects(() => readFileTool.execute({ path: "../etc/passwd" }, ctx), /denied/i);
+    await assert.rejects(() => readFileTool.execute({ path: "src/../etc/passwd" }, ctx), /denied/i);
+
+    const dyn = await readFileTool.execute(
+      { path: "src/app/api/proxy/[sessionId]/[[...path]]/route.ts" },
+      ctx
+    );
+    assert.ok(dyn.content.includes("Response('proxy')"));
 
     const allowedExample = await readFileTool.execute({ path: ".env.example" }, ctx);
     assert.ok(allowedExample.content.includes("OK=keep"));

@@ -68,7 +68,7 @@ export function computeFileHash(content: string): string {
 
 function safeRelativePath(filePath: string): string {
   const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (normalized.includes("..")) {
+  if (normalized.split("/").some((segment) => segment === "..")) {
     throw new Error(`Unsafe path rejected: ${filePath}`);
   }
   return normalized;

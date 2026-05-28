@@ -18,7 +18,8 @@ interface ReadFileOutput {
 }
 
 function isDeniedPath(path: string): boolean {
-  if (path.includes("..") || path.startsWith("/")) return true;
+  if (path.startsWith("/")) return true;
+  if (path.split("/").some((segment) => segment === "..")) return true;
   if (ALLOW_ENV_EXAMPLE.test(path)) return false;
   return HARD_DENY_PATTERNS.some((re) => re.test(path));
 }

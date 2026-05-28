@@ -68,3 +68,37 @@ test("repo-store snapshots can be restored", async () => {
     rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("repo-store accepts Next.js dynamic-route paths and rejects real traversal", async () => {
+  const originalCwd = process.cwd();
+  const tempRoot = mkdtempSync(join(tmpdir(), "bootrise-repo-"));
+  process.chdir(tempRoot);
+
+  try {
+    const { syncRepoFiles, readRepoFile } = await import("../src/lib/workspace/repo-store.ts");
+
+    const dynamicPath = "src/app/api/workspace/preview/proxy/[sessionId]/[[...path]]/route.ts";
+    const result = syncRepoFiles(
+      "repo_dyn",
+      [
+        { path: dynamicPath, content: "export async function GET() { return new Response('ok'); }" },
+        { path: "src/app/api/[...slug]/route.ts", content: "export async function GET() {}" }
+      ],
+      { fullReplace: true }
+    );
+    assert.equal(result.written.length, 2);
+    assert.ok(readRepoFile("repo_dyn", dynamicPath)?.content.includes("Response('ok')"));
+
+    assert.throws(
+      () => syncRepoFiles("repo_dyn", [{ path: "../etc/passwd", content: "x" }], { fullReplace: true }),
+      /Unsafe path rejected/i
+    );
+    assert.throws(
+      () => syncRepoFiles("repo_dyn", [{ path: "src/../etc/passwd", content: "x" }], { fullReplace: true }),
+      /Unsafe path rejected/i
+    );
+  } finally {
+    process.chdir(originalCwd);
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
