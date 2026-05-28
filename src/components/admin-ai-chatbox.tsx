@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { formatUserFacingMessage } from "@/lib/format-user-message";
+import { createAdminBuildMissionClient } from "@/lib/admin-build/admin-build-client";
+import type { AdminBuildMission } from "@/lib/admin-build/types";
 
 type ChatModel = "bootrise" | "openai";
 
@@ -64,6 +66,7 @@ export function AdminAIChatbox() {
   ]);
   const [plan, setPlan] = useState<WebsitePlan | null>(null);
   const [operatorPlan, setOperatorPlan] = useState<OperatorPlan | null>(null);
+  const [createdMission, setCreatedMission] = useState<AdminBuildMission | null>(null);
   const [status, setStatus] = useState("Ready");
   const [isSending, setIsSending] = useState(false);
 
@@ -140,6 +143,7 @@ export function AdminAIChatbox() {
     ]);
     setPlan(null);
     setOperatorPlan(null);
+    setCreatedMission(null);
     setInput(promptStarters[0]);
     setStatus("Ready");
   }
@@ -269,6 +273,46 @@ export function AdminAIChatbox() {
                   <CheckList title="Acceptance" items={operatorPlan.acceptanceChecks} />
                   <CheckList title="Blockers" items={operatorPlan.blockers} />
                 </div>
+
+                {!createdMission ? (
+                  <div className="mt-4">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const mission = await createAdminBuildMissionClient({
+                            title: `Build: ${operatorPlan.operatingMode}`,
+                            targetSurface: "user_workspace",
+                            objective: operatorPlan.mission,
+                            acceptanceCriteria: operatorPlan.acceptanceChecks,
+                            forbiddenFiles: [
+                              "src/lib/auth/**",
+                              "src/app/api/auth/**",
+                              "src/lib/ai/model-router.ts",
+                              "src/lib/admin/kill-switches.ts",
+                              "src/lib/db/migrations/**",
+                              "src/lib/usage/**"
+                            ],
+                            riskLevel: "medium",
+                            generatedFrom: "ai_chat"
+                          });
+                          setCreatedMission(mission);
+                        } catch (err) {
+                          console.error("Failed to create mission:", err);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-signal bg-signal/10 px-4 py-2 text-sm font-semibold text-signal hover:bg-signal/20 transition"
+                      type="button"
+                    >
+                      Turn into Build Mission
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-signal/30 bg-signal/5 p-3">
+                    <p className="text-sm font-semibold text-signal">Build Mission Created</p>
+                    <p className="text-xs text-graphite mt-1">{createdMission.title}</p>
+                    <p className="text-xs text-steel mt-1">ID: {createdMission.id.slice(0, 20)}...</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="mt-3 rounded border border-dashed border-line bg-cloud p-5 text-sm leading-6 text-steel">

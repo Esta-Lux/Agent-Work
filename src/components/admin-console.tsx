@@ -6,6 +6,7 @@ import { AdminControlHub } from "@/components/admin-control-hub";
 import { AdminAIChatbox } from "@/components/admin-ai-chatbox";
 import { AdminAgentConsole } from "@/components/admin-agent-console";
 import { AdminDetectionsPanel } from "@/components/admin-detections-panel";
+import { AdminBuildModePanel } from "@/components/admin-build-mode-panel";
 import { AdminWorkspaceStatePanel } from "@/components/admin-workspace-state-panel";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { StatusPill } from "@/components/status-pill";
@@ -381,6 +382,10 @@ export function AdminConsole() {
       >
         <AdminAgentConsole />
       </PanelShell>
+
+      <div className="mb-6">
+        <AdminBuildModePanel userId="admin-console" />
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <PanelShell title="Admin operator copilot" eyebrow="AI ops">

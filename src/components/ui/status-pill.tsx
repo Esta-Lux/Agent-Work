@@ -7,6 +7,7 @@ export type StatusPillTone =
   | "low"
   | "medium"
   | "high"
+  | "critical"
   | "pending"
   | "passed"
   | "failed"
@@ -22,6 +23,7 @@ export function StatusPill({ label, tone = "neutral" }: { label: string; tone?: 
     low: "bg-signal/10 text-signal border-signal/25",
     medium: "bg-caution/10 text-caution border-caution/30",
     high: "bg-critical/10 text-critical border-critical/25",
+    critical: "bg-critical/15 text-critical border-critical/30",
     pending: "bg-white text-steel border-steel/25",
     passed: "bg-signal/10 text-signal border-signal/25",
     failed: "bg-critical/10 text-critical border-critical/25",
