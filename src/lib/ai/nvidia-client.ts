@@ -5,7 +5,7 @@ import { classifyTaskIntent } from "@/lib/ai/task-intent";
 const NVIDIA_CHAT_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 /** Stronger default for code review, planning, and multi-file reasoning (NVIDIA API catalog). */
 const DEFAULT_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5";
-const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 interface PlannerJson {
   interpretedGoal?: string;
