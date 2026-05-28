@@ -6,14 +6,17 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 import { generateRealPatches } from "@/lib/workspace/real-patches";
+import { applyUnifiedDiffFromLlm, UNIFIED_DIFF_INSTRUCTIONS } from "@/lib/workspace/unified-diff";
 import { completeAgentRun, createAgentRun, recordEvent, type AgentRun } from "@/lib/admin/agents/types";
 
 const CODER_SYSTEM = [
   "You are the Coder agent for the BootRise admin self-agent.",
-  "Inspect target files using read-file / list-symbols / query-memory before proposing changes.",
-  "Return a fenced JSON block with shape:",
-  '{"patches":[{"path":"...","before":"...","after":"...","summary":"..."}]}',
-  "Each `before` must match the current file content exactly. Keep patches minimal and reversible."
+  "Use read-file / list-symbols / query-memory to inspect the exact current content of each target file before proposing changes.",
+  "",
+  UNIFIED_DIFF_INSTRUCTIONS,
+  "",
+  "If multiple files change, include separate `--- a/... / +++ b/...` headers inside the same diff block.",
+  "Keep changes minimal and reversible. Do not touch auth, billing, .env, or migrations unless explicitly in scope."
 ].join("\n");
 
 export interface CoderInput {
@@ -37,7 +40,12 @@ export interface CoderOutput {
   source: "agent" | "fallback";
 }
 
-function parsePatches(text: string): ProposedPatch[] {
+function parsePatches(text: string, files: SourceFileInput[]): ProposedPatch[] {
+  const ctx = { files: new Map(files.map((f) => [f.path, f.content])) };
+  const result = applyUnifiedDiffFromLlm(text, ctx, { defaultSummary: "Agent-proposed patch" });
+  if (result.patches.length > 0) return result.patches;
+
+  // Legacy JSON fallback — kept for backward compatibility with older LLM responses.
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = fenced ? fenced[1] : text;
   const start = candidate.indexOf("{");
@@ -95,7 +103,7 @@ export async function runCoderAgent(input: CoderInput): Promise<CoderOutput> {
       }
     });
 
-    let patches = parsePatches(loop.finalMessage);
+    let patches = parsePatches(loop.finalMessage, input.files);
     let source: CoderOutput["source"] = "agent";
     if (patches.length === 0) {
       const fallback = await generateRealPatches({

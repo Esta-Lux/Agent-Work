@@ -5,6 +5,7 @@ import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 import { buildContextPlan } from "@/lib/control/context-governor";
 import { classifyTaskIntent } from "@/lib/ai/task-intent";
+import { applyUnifiedDiffFromLlm, UNIFIED_DIFF_INSTRUCTIONS } from "@/lib/workspace/unified-diff";
 
 const MAX_FILES_IN_PROMPT = 10;
 const MAX_CHARS_PER_FILE = 6000;
@@ -81,12 +82,12 @@ async function generatePatchesWithLlm(
 
   const prompt = [
     "You are BootRise. Produce REAL file edits for an approved change plan.",
-    "Return ONLY valid JSON (no markdown):",
-    '{ "patches": [ { "path": "exact/path/from/input", "after": "complete new file content", "summary": "one line" } ] }',
-    "Rules:",
+    "",
+    UNIFIED_DIFF_INSTRUCTIONS,
+    "",
+    "Additional rules:",
     "- Only edit paths listed below (context governor deep-read + plan targets).",
-    "- `after` must be the FULL file content after the change.",
-    `- Max ${Math.min(8, plan.impact.files.length || 8)} patches.`,
+    `- Max ${Math.min(8, plan.impact.files.length || 8)} files in the diff.`,
     "- Do not invent new file paths or npm packages not in package.json.",
     "- Do not touch auth, billing, .env, or migrations unless explicitly in scope.",
     "",
@@ -94,6 +95,7 @@ async function generatePatchesWithLlm(
     `Plan goal: ${plan.intent.interpretedGoal}`,
     `Target files: ${plan.impact.files.join(", ") || "see below"}`,
     "",
+    "Current file contents (read-only reference for building the diff):",
     fileBlocks
   ].join("\n");
 
@@ -101,26 +103,36 @@ async function generatePatchesWithLlm(
     provider,
     message: prompt,
     history: [],
-    system: "Output strict JSON only.",
+    system: "Output a single fenced ```diff block. No JSON, no prose outside the diff.",
     maxOutputTokens: 16000
   });
 
-  return parsePatchJson(result.text, targets);
+  return parsePatchOutput(result.text, targets);
 }
 
-function parsePatchJson(raw: string, targets: SourceFileInput[]): ProposedPatch[] {
+function parsePatchOutput(raw: string, targets: SourceFileInput[]): ProposedPatch[] {
+  const byPath = new Map(targets.map((f) => [f.path, f.content]));
+  const diffResult = applyUnifiedDiffFromLlm(raw, { files: byPath }, {
+    defaultSummary: "Updated per approved plan"
+  });
+  if (diffResult.patches.length > 0) {
+    return diffResult.patches.filter((p) => byPath.has(p.path));
+  }
+
+  // Legacy JSON fallback for older provider responses.
   const normalized = raw.trim().replace(/^```json\s*/i, "").replace(/```$/i, "");
   const start = normalized.indexOf("{");
   const end = normalized.lastIndexOf("}");
   if (start < 0 || end <= start) return [];
 
-  const parsed = JSON.parse(normalized.slice(start, end + 1)) as {
-    patches?: Array<{ path?: string; after?: string; summary?: string }>;
-  };
+  let parsed: { patches?: Array<{ path?: string; after?: string; summary?: string }> };
+  try {
+    parsed = JSON.parse(normalized.slice(start, end + 1));
+  } catch {
+    return [];
+  }
 
-  const byPath = new Map(targets.map((f) => [f.path, f.content]));
   const patches: ProposedPatch[] = [];
-
   for (const item of parsed.patches ?? []) {
     const path = item.path?.trim();
     if (!path || !byPath.has(path) || !item.after) continue;
@@ -132,6 +144,5 @@ function parsePatchJson(raw: string, targets: SourceFileInput[]): ProposedPatch[
       applied: false
     });
   }
-
   return patches;
 }

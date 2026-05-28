@@ -11,16 +11,18 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node --import ./tests/ts-alias-loader.mjs --test",
-    "test:unit": "node --import ./tests/ts-alias-loader.mjs --test tests/admin-agent.test.mjs tests/ast-analyzer.test.mjs tests/bootrise-voice.test.mjs tests/control-gate.test.mjs tests/credit-charging.test.mjs tests/deterministic-repo-review.test.mjs tests/file-indexer.test.mjs tests/github-config.test.mjs tests/github-direct-push.test.mjs tests/implementation-plan.test.mjs tests/kill-switches.test.mjs tests/model-router.test.mjs tests/phase1-integration.test.mjs tests/phase2-integration.test.mjs tests/providers.test.mjs tests/repo-overview.test.mjs tests/repo-store.test.mjs tests/review-config.test.mjs tests/self-repo.test.mjs tests/senior-architect.test.mjs tests/snaproad-security-accuracy.test.mjs tests/task-context-pack.test.mjs tests/task-session.test.mjs tests/usage-store.test.mjs tests/workspace-code-context.test.mjs tests/provider-keys.test.mjs tests/codebase-memory.test.mjs tests/admin-tools.test.mjs tests/agent-tool-loop.test.mjs tests/agent-graph.test.mjs tests/detections-scanner.test.mjs tests/detections-watchdog.test.mjs tests/detection-synthesize-fix.test.mjs"
+    "test:unit": "node --import ./tests/ts-alias-loader.mjs --test tests/admin-agent.test.mjs tests/ast-analyzer.test.mjs tests/bootrise-voice.test.mjs tests/control-gate.test.mjs tests/credit-charging.test.mjs tests/deterministic-repo-review.test.mjs tests/file-indexer.test.mjs tests/github-config.test.mjs tests/github-direct-push.test.mjs tests/implementation-plan.test.mjs tests/kill-switches.test.mjs tests/model-router.test.mjs tests/phase1-integration.test.mjs tests/phase2-integration.test.mjs tests/providers.test.mjs tests/repo-overview.test.mjs tests/repo-store.test.mjs tests/review-config.test.mjs tests/self-repo.test.mjs tests/senior-architect.test.mjs tests/snaproad-security-accuracy.test.mjs tests/task-context-pack.test.mjs tests/task-session.test.mjs tests/usage-store.test.mjs tests/workspace-code-context.test.mjs tests/provider-keys.test.mjs tests/codebase-memory.test.mjs tests/admin-tools.test.mjs tests/agent-tool-loop.test.mjs tests/agent-graph.test.mjs tests/detections-scanner.test.mjs tests/detections-watchdog.test.mjs tests/detection-synthesize-fix.test.mjs tests/coder-diff.test.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.84.0",
+    "@types/diff": "^7.0.2",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@webcontainer/api": "^1.6.1",
+    "diff": "^9.0.0",
     "fflate": "^0.8.3",
     "monaco-editor": "^0.55.1",
     "next": "^14.2.30",
