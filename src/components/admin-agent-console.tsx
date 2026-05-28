@@ -9,6 +9,7 @@ import { AdminProviderKeysPanel } from "@/components/admin-provider-keys-panel";
 import { formatUserFacingMessage } from "@/lib/format-user-message";
 
 type AgentMode = "chat" | "plan" | "fix";
+type AgentProvider = "bootrise" | "openai";
 type InspectorTab = "plan" | "diff" | "verify" | "agents" | "trace" | "memory";
 
 interface TraceEvent {
@@ -127,6 +128,7 @@ const PUSH_PHRASE = "PUSH TO MAIN";
 
 export function AdminAgentConsole() {
   const [mode, setMode] = useState<AgentMode>("chat");
+  const [agentProvider, setAgentProvider] = useState<AgentProvider>("bootrise");
   const [input, setInput] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([
     {
@@ -270,7 +272,7 @@ export function AdminAgentConsole() {
         const res = await fetch("/api/admin/agent/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, history })
+          body: JSON.stringify({ message, history, provider: agentProvider })
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Chat failed." }))).error ?? "Chat failed.");
         const data = (await res.json()) as ChatResponse;
@@ -285,7 +287,7 @@ export function AdminAgentConsole() {
         const res = await fetch("/api/admin/agent/plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ request: message })
+          body: JSON.stringify({ request: message, provider: agentProvider })
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Plan failed." }))).error ?? "Plan failed.");
         const data = (await res.json()) as PlanResponse;
@@ -308,7 +310,7 @@ export function AdminAgentConsole() {
           const res = await fetch("/api/admin/agent/fix", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ request: message, streamId: newStreamId })
+            body: JSON.stringify({ request: message, streamId: newStreamId, provider: agentProvider })
           });
           if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Fix failed." }))).error ?? "Fix failed.");
           const data = (await res.json()) as FixResponse;
@@ -463,17 +465,33 @@ export function AdminAgentConsole() {
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <StatusPill label={status} />
           {pendingStatus ? <StatusPill label={`fix: ${pendingStatus}`} tone={pendingStatus === "approved" ? "passed" : "neutral"} /> : null}
-          <div className="ml-auto inline-flex overflow-hidden rounded-lg border border-line text-xs">
-            {(["chat", "plan", "fix"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`px-3 py-1.5 font-semibold ${mode === m ? "bg-ink text-white" : "bg-white text-graphite hover:bg-cloud"}`}
-              >
-                {m === "chat" ? "Chat" : m === "plan" ? "Plan" : "Fix"}
-              </button>
-            ))}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="inline-flex overflow-hidden rounded-lg border border-line text-xs">
+              {(["bootrise", "openai"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAgentProvider(p)}
+                  disabled={busy}
+                  className={`px-3 py-1.5 font-semibold ${agentProvider === p ? "bg-ink text-white" : "bg-white text-graphite hover:bg-cloud"} disabled:opacity-60`}
+                  title={p === "bootrise" ? "BootRise (NVIDIA)" : "ChatGPT (OpenAI)"}
+                >
+                  {p === "bootrise" ? "BootRise" : "ChatGPT"}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex overflow-hidden rounded-lg border border-line text-xs">
+              {(["chat", "plan", "fix"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`px-3 py-1.5 font-semibold ${mode === m ? "bg-ink text-white" : "bg-white text-graphite hover:bg-cloud"}`}
+                >
+                  {m === "chat" ? "Chat" : m === "plan" ? "Plan" : "Fix"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -12,6 +12,13 @@ test("resolveAdminProvider honors selection", async () => {
   const { resolveAdminProvider } = await import("../src/lib/ai/providers.ts");
   assert.equal(resolveAdminProvider("openai"), "openai");
   assert.equal(resolveAdminProvider("bootrise"), "bootrise");
+  assert.equal(resolveAdminProvider("chatgpt"), "openai");
+  assert.equal(resolveAdminProvider("ChatGPT"), "openai");
+  assert.equal(resolveAdminProvider("gpt"), "openai");
+  assert.equal(resolveAdminProvider("  OpenAI  "), "openai");
+  assert.equal(resolveAdminProvider(undefined), "bootrise");
+  assert.equal(resolveAdminProvider("nvidia"), "bootrise");
+  assert.equal(resolveAdminProvider("typo"), "bootrise");
 });
 
 test("export bundle tags ai provider", async () => {

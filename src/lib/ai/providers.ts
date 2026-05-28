@@ -88,6 +88,7 @@ export function resolveUserProvider(selected?: string): LlmProviderId {
 }
 
 export function resolveAdminProvider(selected?: string): LlmProviderId {
-  if (selected === "bootrise") return "bootrise";
-  return selected === "openai" ? "openai" : "bootrise";
+  const value = selected?.trim().toLowerCase();
+  if (value === "openai" || value === "chatgpt" || value === "gpt") return "openai";
+  return "bootrise";
 }
