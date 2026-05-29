@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { OperationPanelV2 } from "@/components/workspace/operation-panel-v2";
@@ -100,7 +100,7 @@ export function WorkspaceShellV2() {
   useEffect(() => {
     if (!repoConnected || !briefReady) return;
     void refreshRoadmap();
-  }, [apiFiles, brief, briefReady, repoConnected, report]);
+  }, [briefReady, refreshRoadmap, repoConnected]);
 
   async function refreshPlatform() {
     try {
@@ -114,7 +114,7 @@ export function WorkspaceShellV2() {
     }
   }
 
-  async function refreshRoadmap() {
+  const refreshRoadmap = useCallback(async () => {
     setRoadmapLoading(true);
     try {
       const res = await fetch("/api/workspace/architecture/roadmap", {
@@ -141,7 +141,7 @@ export function WorkspaceShellV2() {
     } finally {
       setRoadmapLoading(false);
     }
-  }
+  }, [apiFiles, brief, report]);
 
   async function loadBranches() {
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before loading branches.");

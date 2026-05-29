@@ -2,12 +2,18 @@ import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
 import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
-function hasPath(files: SourceFileInput[], pattern: RegExp): boolean {
-  return files.some((file) => pattern.test(file.path));
-}
-
-function hasContent(files: SourceFileInput[], pattern: RegExp): boolean {
-  return files.some((file) => pattern.test(file.content));
+interface RepoSignals {
+  hasNextApp: boolean;
+  hasSupabase: boolean;
+  hasStripe: boolean;
+  hasAdmin: boolean;
+  hasAuth: boolean;
+  hasBilling: boolean;
+  hasTests: boolean;
+  hasCi: boolean;
+  hasMonitoring: boolean;
+  hasEnvDocs: boolean;
+  hasDeployConfig: boolean;
 }
 
 function toTitle(value: string): string {
@@ -18,16 +24,45 @@ function toTitle(value: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function detectAppType(files: SourceFileInput[], brief?: Partial<ProjectBrief>): string {
-  const hasNextApp = hasPath(files, /(^|\/)(src\/app|app)\//) || hasContent(files, /"next"\s*:/);
-  const hasSupabase = hasPath(files, /supabase/i) || hasContent(files, /supabase/i);
-  const hasStripe = hasPath(files, /stripe|billing|payment/i) || Boolean(brief?.paymentsRequired);
-  const hasAdmin = hasPath(files, /src\/app\/admin|src\/components\/admin/i);
+function collectRepoSignals(files: SourceFileInput[]): RepoSignals {
+  const signals: RepoSignals = {
+    hasNextApp: false,
+    hasSupabase: false,
+    hasStripe: false,
+    hasAdmin: false,
+    hasAuth: false,
+    hasBilling: false,
+    hasTests: false,
+    hasCi: false,
+    hasMonitoring: false,
+    hasEnvDocs: false,
+    hasDeployConfig: false
+  };
 
-  const parts = [hasNextApp ? "Next.js" : "Web", "application"];
-  if (hasSupabase) parts.push("with Supabase");
-  if (hasStripe) parts.push("and billing");
-  if (hasAdmin) parts.push("plus admin operations");
+  for (const file of files) {
+    const path = file.path;
+    const content = file.content;
+    signals.hasNextApp ||= /(^|\/)(src\/app|app)\//.test(path) || /"next"\s*:/.test(content);
+    signals.hasSupabase ||= /supabase/i.test(path) || /supabase/i.test(content);
+    signals.hasStripe ||= /stripe|billing|payment/i.test(path) || /stripe|checkout/i.test(content);
+    signals.hasAdmin ||= /src\/app\/admin|src\/components\/admin/i.test(path);
+    signals.hasAuth ||= /auth|session|middleware/i.test(path) || /requireAuth|withWorkspaceAuth|createServerClient/i.test(content);
+    signals.hasBilling ||= /billing|payment|stripe/i.test(path) || /stripe|checkout/i.test(content);
+    signals.hasTests ||= /(^|\/)tests?\//i.test(path) || /\.test\./i.test(path);
+    signals.hasCi ||= /^\.github\/workflows\//i.test(path);
+    signals.hasMonitoring ||= /sentry|telemetry|monitor|logging/i.test(path) || /recordAudit|telemetry|logger/i.test(content);
+    signals.hasEnvDocs ||= (/\.env\.example|docs\/.*env|README\.md/i.test(path) && /env|environment|SUPABASE_URL|GITHUB_TOKEN/i.test(content));
+    signals.hasDeployConfig ||= /vercel\.json|fly\.toml|dockerfile|docker-compose|render\.yaml/i.test(path) || /next build|vercel/i.test(content);
+  }
+
+  return signals;
+}
+
+function detectAppType(signals: RepoSignals, brief?: Partial<ProjectBrief>): string {
+  const parts = [signals.hasNextApp ? "Next.js" : "Web", "application"];
+  if (signals.hasSupabase) parts.push("with Supabase");
+  if (signals.hasStripe || brief?.paymentsRequired) parts.push("and billing");
+  if (signals.hasAdmin) parts.push("plus admin operations");
   return parts.join(" ");
 }
 
@@ -39,18 +74,6 @@ function detectMaturity(status: ReturnType<typeof evaluateDeploymentReadiness>["
   return "prototype";
 }
 
-function detectCapabilities(files: SourceFileInput[]) {
-  return {
-    hasAuth: hasPath(files, /auth|session|middleware/i) || hasContent(files, /requireAuth|withWorkspaceAuth|createServerClient/i),
-    hasBilling: hasPath(files, /billing|payment|stripe/i) || hasContent(files, /stripe|checkout/i),
-    hasTests: hasPath(files, /(^|\/)tests?\//i) || hasPath(files, /\.test\./i),
-    hasCi: hasPath(files, /^\.github\/workflows\//i),
-    hasMonitoring: hasPath(files, /sentry|telemetry|monitor|logging/i) || hasContent(files, /recordAudit|telemetry|logger/i),
-    hasEnvDocs: hasPath(files, /\.env\.example|docs\/.*env|README\.md/i) && hasContent(files, /env|environment|SUPABASE_URL|GITHUB_TOKEN/i),
-    hasDeployConfig: hasPath(files, /vercel\.json|fly\.toml|dockerfile|docker-compose|render\.yaml/i) || hasContent(files, /next build|vercel/i)
-  };
-}
-
 export function buildArchitectureRoadmap(input: {
   files: SourceFileInput[];
   brief?: Partial<ProjectBrief>;
@@ -58,8 +81,8 @@ export function buildArchitectureRoadmap(input: {
 }): ArchitectureRoadmap {
   const { files, brief, report } = input;
   const deployment = evaluateDeploymentReadiness(files);
-  const capabilities = detectCapabilities(files);
-  const appType = detectAppType(files, brief);
+  const signals = collectRepoSignals(files);
+  const appType = detectAppType(signals, brief);
   const currentMaturity = detectMaturity(deployment.status, files);
   const deploymentBlockers = [
     ...deployment.missingProductionItems,
@@ -67,12 +90,12 @@ export function buildArchitectureRoadmap(input: {
   ].slice(0, 6);
 
   const missingCapabilities = [
-    !capabilities.hasAuth && brief?.authRequired ? "Authentication and role-aware session flow are still missing." : null,
-    !capabilities.hasBilling && brief?.paymentsRequired ? "Billing and quota enforcement still need to be wired." : null,
-    !capabilities.hasTests ? "Automated regression tests are too thin for safe multi-step delivery." : null,
-    !capabilities.hasCi ? "CI workflow coverage is missing, so PR proof is incomplete." : null,
-    !capabilities.hasMonitoring ? "Runtime monitoring and operational alerts need a first-class path." : null,
-    !capabilities.hasDeployConfig ? "Deployment configuration needs a production-ready target definition." : null
+    !signals.hasAuth && brief?.authRequired ? "Authentication and role-aware session flow are still missing." : null,
+    !signals.hasBilling && brief?.paymentsRequired ? "Billing and quota enforcement still need to be wired." : null,
+    !signals.hasTests ? "Automated regression tests are too thin for safe multi-step delivery." : null,
+    !signals.hasCi ? "CI workflow coverage is missing, so PR proof is incomplete." : null,
+    !signals.hasMonitoring ? "Runtime monitoring and operational alerts need a first-class path." : null,
+    !signals.hasDeployConfig ? "Deployment configuration needs a production-ready target definition." : null
   ].filter((value): value is string => Boolean(value));
 
   const securityPolicies = [
@@ -90,10 +113,10 @@ export function buildArchitectureRoadmap(input: {
   ].filter((value): value is string => Boolean(value));
 
   const recommendedIntegrations = [
-    hasPath(files, /supabase/i) ? "Supabase for auth, data, and storage." : null,
-    brief?.paymentsRequired || hasPath(files, /stripe/i) ? "Stripe for billing, subscriptions, and webhooks." : null,
+    signals.hasSupabase ? "Supabase for auth, data, and storage." : null,
+    brief?.paymentsRequired || signals.hasStripe ? "Stripe for billing, subscriptions, and webhooks." : null,
     "GitHub App or token-backed draft PR flow for controlled delivery.",
-    capabilities.hasMonitoring ? "Existing telemetry pipeline can anchor production monitoring." : "Add Sentry or equivalent monitoring before wider rollout."
+    signals.hasMonitoring ? "Existing telemetry pipeline can anchor production monitoring." : "Add Sentry or equivalent monitoring before wider rollout."
   ].filter((value): value is string => Boolean(value));
 
   const suggestedPhases = [

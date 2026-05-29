@@ -1,6 +1,8 @@
 import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 
+const ENV_VAR_PATTERN = /process\.env\.[A-Z0-9_]+/;
+
 export interface TaskCompletionFinding {
   severity: "warning" | "block";
   message: string;
@@ -89,7 +91,7 @@ export function evaluateTaskCompletion(input: {
     });
   }
 
-  const usesNewEnv = input.patches.some((patch) => /process\.env\.[A-Z0-9_]+/.test(patch.after) && !/process\.env\.[A-Z0-9_]+/.test(patch.before));
+  const usesNewEnv = input.patches.some((patch) => ENV_VAR_PATTERN.test(patch.after) && !ENV_VAR_PATTERN.test(patch.before));
   if (usesNewEnv && !changedDomains.has("docs") && !changedDomains.has("ops")) {
     findings.push({
       severity: "warning",
