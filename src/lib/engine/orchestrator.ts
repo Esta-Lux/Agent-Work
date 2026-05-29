@@ -20,8 +20,12 @@ export interface OrchestrationResult {
 export class BootRiseOrchestrator {
   private sandbox: SandboxRuntime;
   private verifier: VerificationEngine;
+  private readonly repositoryId: string;
+  private readonly repoPath: string;
 
-  constructor(private readonly repositoryId: string, private readonly repoPath: string) {
+  constructor(repositoryId: string, repoPath: string) {
+    this.repositoryId = repositoryId;
+    this.repoPath = repoPath;
     this.sandbox = new SandboxRuntime(repoPath);
     this.verifier = new VerificationEngine(this.sandbox);
   }

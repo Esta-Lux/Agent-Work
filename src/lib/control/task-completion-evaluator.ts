@@ -16,7 +16,9 @@ export interface TaskCompletionEvaluation {
   coveredDomains: string[];
 }
 
-function classifyDomain(path: string): "frontend" | "backend" | "data" | "tests" | "docs" | "ops" {
+type TaskDomain = "frontend" | "backend" | "data" | "tests" | "docs" | "ops";
+
+function classifyDomain(path: string): TaskDomain {
   if (/test|spec/i.test(path)) return "tests";
   if (/docs|readme|\.md$/i.test(path)) return "docs";
   if (/api|route|server|auth|middleware/i.test(path)) return "backend";
@@ -25,9 +27,9 @@ function classifyDomain(path: string): "frontend" | "backend" | "data" | "tests"
   return "frontend";
 }
 
-function inferRequestedDomains(request: string): Set<string> {
+function inferRequestedDomains(request: string): Set<TaskDomain> {
   const lowered = request.toLowerCase();
-  const domains = new Set<string>();
+  const domains = new Set<TaskDomain>();
   if (/(ui|frontend|page|component|screen)/.test(lowered)) domains.add("frontend");
   if (/(api|backend|server|route|endpoint|auth)/.test(lowered)) domains.add("backend");
   if (/(db|database|migration|schema|supabase|table)/.test(lowered)) domains.add("data");

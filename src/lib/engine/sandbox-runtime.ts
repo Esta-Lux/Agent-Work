@@ -9,7 +9,11 @@ export interface SandboxExecutionResult {
 }
 
 export class SandboxRuntime {
-  constructor(private readonly hostVolumePath: string) {}
+  private readonly hostVolumePath: string;
+
+  constructor(hostVolumePath: string) {
+    this.hostVolumePath = hostVolumePath;
+  }
 
   public async executeCommand(command: string[], timeoutMs = 30_000): Promise<SandboxExecutionResult> {
     if (process.env.BOOTRISE_SANDBOX_MODE === "docker") {
