@@ -369,46 +369,46 @@ export function WorkspaceShellV2() {
     } finally {
       setBusy(false);
     }
+  }
 
-    async function openDraftPr() {
-      if (!report?.pendingFixId) return setIssue("Approve a pending fix before opening a draft PR.");
-      if (report.approvalStatus !== "approved") return setIssue("Approve the patch before opening a draft PR.");
-      if (!githubUrl.trim()) return setIssue("Connect a GitHub repository before opening a draft PR.");
+  async function openDraftPr() {
+    if (!report?.pendingFixId) return setIssue("Approve a pending fix before opening a draft PR.");
+    if (report.approvalStatus !== "approved") return setIssue("Approve the patch before opening a draft PR.");
+    if (!githubUrl.trim()) return setIssue("Connect a GitHub repository before opening a draft PR.");
 
-      setBusy(true);
-      setStatus("Opening draft PR");
-      try {
-        const res = await fetch("/api/workspace/github/pr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            pendingFixId: report.pendingFixId,
-            remoteUrl: githubUrl.trim(),
-            branch: githubBranch,
-            projectId: repositoryId ?? report.repositoryId
-          })
-        });
-        const data = (await res.json()) as {
-          draftPr?: { prUrl?: string; prNumber?: number };
-          push?: { compareUrl?: string; branch?: string };
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error ?? "Draft PR creation failed.");
-        const message =
-          data.draftPr?.prUrl ??
-          data.push?.compareUrl ??
-          `Draft PR opened from ${data.push?.branch ?? "the BootRise branch"}.`;
-        setDraftPrMessage(message);
-        setIssue(null);
-        setStatus("Draft PR opened");
-        setActiveStep("export");
-      } catch (caught) {
-        setIssue(caught instanceof Error ? caught.message : "Draft PR creation failed.");
-        setStatus("Blocked");
-      } finally {
-        setBusy(false);
-      }
+    setBusy(true);
+    setStatus("Opening draft PR");
+    try {
+      const res = await fetch("/api/workspace/github/pr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          pendingFixId: report.pendingFixId,
+          remoteUrl: githubUrl.trim(),
+          branch: githubBranch,
+          projectId: repositoryId ?? report.repositoryId
+        })
+      });
+      const data = (await res.json()) as {
+        draftPr?: { prUrl?: string; prNumber?: number };
+        push?: { compareUrl?: string; branch?: string };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Draft PR creation failed.");
+      const message =
+        data.draftPr?.prUrl ??
+        data.push?.compareUrl ??
+        `Draft PR opened from ${data.push?.branch ?? "the BootRise branch"}.`;
+      setDraftPrMessage(message);
+      setIssue(null);
+      setStatus("Draft PR opened");
+      setActiveStep("export");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Draft PR creation failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
     }
   }
 

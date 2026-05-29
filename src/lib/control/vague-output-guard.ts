@@ -14,15 +14,15 @@ export interface VagueOutputGuardResult {
   findings: VagueOutputFinding[];
 }
 
-const BLOCKED_PHRASES = [
-  /TODO\b/i,
-  /placeholder/i,
-  /implement later/i,
-  /wire this later/i,
-  /\bexample only\b/i,
-  /\bpseudo(code)?\b/i,
-  /assume existing/i,
-  /rest of file unchanged/i
+const BLOCKED_PHRASES: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /TODO\b/i, label: "TODO" },
+  { pattern: /placeholder/i, label: "placeholder" },
+  { pattern: /implement later/i, label: "implement later" },
+  { pattern: /wire this later/i, label: "wire this later" },
+  { pattern: /\bexample only\b/i, label: "example only" },
+  { pattern: /\bpseudo(code)?\b/i, label: "pseudocode" },
+  { pattern: /assume existing/i, label: "assume existing" },
+  { pattern: /rest of file unchanged/i, label: "rest of file unchanged" }
 ];
 
 function newlyIntroduces(text: string, previous: string, pattern: RegExp): boolean {
@@ -33,22 +33,21 @@ export function evaluateVagueOutputGuard(patches: ProposedPatch[]): VagueOutputG
   const findings: VagueOutputFinding[] = [];
 
   for (const patch of patches) {
-    for (const pattern of BLOCKED_PHRASES) {
-      const phrase = pattern.source.replace(/\\b/g, "").replace(/\(\w+\)\?/g, "").replace(/\\/g, "");
-      if (newlyIntroduces(patch.summary, "", pattern)) {
+    for (const blocked of BLOCKED_PHRASES) {
+      if (newlyIntroduces(patch.summary, "", blocked.pattern)) {
         findings.push({
           path: patch.path,
-          phrase,
+          phrase: blocked.label,
           severity: "block",
-          message: `Patch summary for ${patch.path} is still vague (${phrase}).`
+          message: `Patch summary for ${patch.path} is still vague (${blocked.label}).`
         });
       }
-      if (newlyIntroduces(patch.after, patch.before, pattern)) {
+      if (newlyIntroduces(patch.after, patch.before, blocked.pattern)) {
         findings.push({
           path: patch.path,
-          phrase,
+          phrase: blocked.label,
           severity: "block",
-          message: `Patch for ${patch.path} introduces vague or incomplete output (${phrase}).`
+          message: `Patch for ${patch.path} introduces vague or incomplete output (${blocked.label}).`
         });
       }
     }

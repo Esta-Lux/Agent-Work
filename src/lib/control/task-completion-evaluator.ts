@@ -79,10 +79,13 @@ export function evaluateTaskCompletion(input: {
 
   const touchedBackend = changedDomains.has("backend");
   const touchedFrontend = changedDomains.has("frontend");
-  if (/(wire|connect|end-to-end|end to end|full stack|full-stack)/i.test(input.request) && touchedBackend !== touchedFrontend) {
+  const explicitlyCallsForBothSurfaces =
+    /(frontend|ui|component|screen)/i.test(input.request) &&
+    /(backend|api|server|route|endpoint)/i.test(input.request);
+  if (explicitlyCallsForBothSurfaces && (!touchedBackend || !touchedFrontend)) {
     findings.push({
       severity: "block",
-      message: "The request reads as end-to-end work, but only one side of the app was changed."
+      message: "The request explicitly calls for both frontend and backend work, but the patch set does not cover both surfaces."
     });
   }
 

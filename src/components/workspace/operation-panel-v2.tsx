@@ -185,7 +185,7 @@ function ExportStep({
           </div>
           {report?.safeToPr?.status ? (
             <StatusPill
-              variant={report.safeToPr.status === "yes" ? "signal" : report.safeToPr.status === "caution" ? "blue" : "amber"}
+              variant={safeToPrVariant(report.safeToPr.status)}
               label={report.safeToPr.status.replace(/_/g, " ")}
             />
           ) : null}
@@ -217,6 +217,12 @@ function ExportStep({
       </div>
     </div>
   );
+}
+
+function safeToPrVariant(status: "yes" | "caution" | "no") {
+  if (status === "yes") return "signal" as const;
+  if (status === "caution") return "blue" as const;
+  return "amber" as const;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
