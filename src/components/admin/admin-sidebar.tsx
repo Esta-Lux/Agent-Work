@@ -2,6 +2,7 @@ import Link from "next/link";
 
 type AdminSection =
   | "overview"
+  | "user-health"
   | "self-agent"
   | "readiness"
   | "providers"
@@ -23,6 +24,7 @@ const groups: Array<{
     label: "Monitor",
     items: [
       { id: "overview", label: "Overview", icon: "OV" },
+      { id: "user-health", label: "User Workspace Health", icon: "UH" },
       { id: "self-agent", label: "Self-Agent", icon: "SA", core: true },
       { id: "readiness", label: "Readiness", icon: "RD" }
     ]

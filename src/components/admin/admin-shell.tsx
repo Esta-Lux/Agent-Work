@@ -4,6 +4,7 @@ import { AdminTopbar } from "@/components/admin/admin-topbar";
 
 export type AdminSection =
   | "overview"
+  | "user-health"
   | "self-agent"
   | "readiness"
   | "providers"
@@ -29,4 +30,3 @@ export function AdminShell({ currentSection, children }: AdminShellProps) {
     </div>
   );
 }
-

@@ -7,13 +7,14 @@ import { AdminAuditPage } from "@/components/admin/admin-audit-page";
 import { AdminDataPage } from "@/components/admin/admin-data-page";
 import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminShell, type AdminSection } from "@/components/admin/admin-shell";
+import { UserWorkspaceHealthPage } from "@/components/admin/user-workspace-health-page";
 import { AdminAgentConsole } from "@/components/admin-agent-console";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { ProductionReadinessPanel } from "@/components/production-readiness-panel";
 import { UnitEconomicsPanel } from "@/components/unit-economics-panel";
 import { SectionHeader } from "@/components/ui/section-header";
 
-const sections: AdminSection[] = ["overview", "self-agent", "readiness", "providers", "data", "usage", "control", "security", "audit"];
+const sections: AdminSection[] = ["overview", "user-health", "self-agent", "readiness", "providers", "data", "usage", "control", "security", "audit"];
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function AdminSectionPage({ params }: { params: { section: 
 
 function renderSection(section: AdminSection) {
   if (section === "overview") return <AdminOverview />;
+  if (section === "user-health") return <UserWorkspaceHealthPage />;
   if (section === "self-agent") return <AdminAgentConsole />;
   if (section === "readiness") return <ProductionReadinessPanel />;
   if (section === "providers") {

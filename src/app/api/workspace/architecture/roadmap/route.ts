@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
-import { buildArchitectureRoadmap } from "@/lib/architecture/architecture-roadmap";
+import { runArchitectureRoadmapAgent } from "@/lib/agents/user/architecture-roadmap-agent";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "files are required." }, { status: 400 });
     }
 
-    const roadmap = buildArchitectureRoadmap({
+    const roadmap = runArchitectureRoadmapAgent({
       files: body.files,
       brief: body.brief,
       report: body.report ?? null
