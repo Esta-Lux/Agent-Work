@@ -11,7 +11,7 @@ import { WorkspaceDiffViewer, type DiffFile } from "@/components/workspace/works
 import { WorkspaceTopbarV2 } from "@/components/workspace/workspace-topbar-v2";
 import { WorkflowRailV2, type WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
 import type { WorkspaceProvider, WorkspaceRole, WorkspaceSpeed } from "@/components/workspace/mode-popover";
-import type { ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -72,10 +72,9 @@ export function WorkspaceShellV2() {
   const [offlineDismissed, setOfflineDismissed] = useState(false);
   const [sandboxLog, setSandboxLog] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    void refreshPlatform();
-  }, []);
+  const [roadmap, setRoadmap] = useState<ArchitectureRoadmap | null>(null);
+  const [roadmapLoading, setRoadmapLoading] = useState(false);
+  const [draftPrMessage, setDraftPrMessage] = useState<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
   const repoConnected = workspaceFiles.length > 0;
@@ -90,6 +89,18 @@ export function WorkspaceShellV2() {
   const briefReady = Boolean(brief.productName.trim() && brief.primaryWorkflow.trim());
   const controlBlocked = Boolean(report?.controlLayer && !report.controlLayer.canApprove);
   const safeToPr = report?.safeToPr?.status === "yes" || report?.approvalStatus === "approved";
+  const securityBlockers = roadmap?.deploymentBlockers.length ?? 0;
+  const deployStatus =
+    !roadmap ? "unknown" : roadmap.deploymentBlockers.length > 0 || roadmap.productionReadiness === "blocked" ? "failed" : "ready";
+
+  useEffect(() => {
+    void refreshPlatform();
+  }, []);
+
+  useEffect(() => {
+    if (!repoConnected || !briefReady) return;
+    void refreshRoadmap();
+  }, [apiFiles, brief, briefReady, repoConnected, report]);
 
   async function refreshPlatform() {
     try {
@@ -100,6 +111,35 @@ export function WorkspaceShellV2() {
       setCreditsRemaining(readCreditsRemaining(creditsJson));
     } catch {
       setProviderHealth([]);
+    }
+  }
+
+  async function refreshRoadmap() {
+    setRoadmapLoading(true);
+    try {
+      const res = await fetch("/api/workspace/architecture/roadmap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          files: apiFiles,
+          brief,
+          report: report
+            ? {
+                approvalStatus: report.approvalStatus,
+                safeToPr: report.safeToPr,
+                controlLayer: report.controlLayer
+              }
+            : null
+        })
+      });
+      const data = (await res.json()) as { roadmap?: ArchitectureRoadmap; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Architecture roadmap failed.");
+      setRoadmap(data.roadmap ?? null);
+    } catch {
+      setRoadmap(null);
+    } finally {
+      setRoadmapLoading(false);
     }
   }
 
@@ -145,6 +185,7 @@ export function WorkspaceShellV2() {
       setActiveStep("brief");
       setIssue(null);
       setStatus("Repository imported");
+      setDraftPrMessage(null);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Import failed.");
       setStatus("Blocked");
@@ -180,6 +221,7 @@ export function WorkspaceShellV2() {
       setActiveStep("verify");
       setIssue(null);
       setStatus("Fix report ready");
+      setDraftPrMessage(null);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");
@@ -320,11 +362,53 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Patch rejected");
       setActiveStep("fix");
+      setDraftPrMessage(null);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Patch rejection failed.");
       setStatus("Blocked");
     } finally {
       setBusy(false);
+    }
+
+    async function openDraftPr() {
+      if (!report?.pendingFixId) return setIssue("Approve a pending fix before opening a draft PR.");
+      if (report.approvalStatus !== "approved") return setIssue("Approve the patch before opening a draft PR.");
+      if (!githubUrl.trim()) return setIssue("Connect a GitHub repository before opening a draft PR.");
+
+      setBusy(true);
+      setStatus("Opening draft PR");
+      try {
+        const res = await fetch("/api/workspace/github/pr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            pendingFixId: report.pendingFixId,
+            remoteUrl: githubUrl.trim(),
+            branch: githubBranch,
+            projectId: repositoryId ?? report.repositoryId
+          })
+        });
+        const data = (await res.json()) as {
+          draftPr?: { prUrl?: string; prNumber?: number };
+          push?: { compareUrl?: string; branch?: string };
+          error?: string;
+        };
+        if (!res.ok) throw new Error(data.error ?? "Draft PR creation failed.");
+        const message =
+          data.draftPr?.prUrl ??
+          data.push?.compareUrl ??
+          `Draft PR opened from ${data.push?.branch ?? "the BootRise branch"}.`;
+        setDraftPrMessage(message);
+        setIssue(null);
+        setStatus("Draft PR opened");
+        setActiveStep("export");
+      } catch (caught) {
+        setIssue(caught instanceof Error ? caught.message : "Draft PR creation failed.");
+        setStatus("Blocked");
+      } finally {
+        setBusy(false);
+      }
     }
   }
 
@@ -346,9 +430,9 @@ export function WorkspaceShellV2() {
         creditsRemaining={creditsRemaining}
         brainIndexed={repoConnected}
         controlBlocked={controlBlocked}
-        securityBlockers={0}
+        securityBlockers={securityBlockers}
         safeToPr={safeToPr}
-        deployStatus={sandboxLog ? "ready" : "unknown"}
+        deployStatus={deployStatus}
         busy={busy}
         role={role}
         provider={provider}
@@ -410,6 +494,11 @@ export function WorkspaceShellV2() {
           speed={speed}
           sandboxLog={sandboxLog}
           exportMessage={exportMessage}
+          roadmap={roadmap}
+          roadmapLoading={roadmapLoading}
+          report={report}
+          draftPrMessage={draftPrMessage}
+          busy={busy}
           onGithubUrlChange={setGithubUrl}
           onGithubBranchChange={setGithubBranch}
           onImportModeChange={setImportMode}
@@ -418,6 +507,7 @@ export function WorkspaceShellV2() {
           onFixRequestChange={setFixRequest}
           onLoadBranches={loadBranches}
           onOpenDocs={() => window.open("/docs/GITHUB_APP.md", "_blank", "noreferrer")}
+          onOpenDraftPr={openDraftPr}
         />
       </div>
     </div>

@@ -31,6 +31,25 @@ function riskForPath(path: string): string {
   return "normal";
 }
 
+function extractStructuredSummary(path: string, content: string): string {
+  const imports = [...content.matchAll(/import\s+.*?from\s+["']([^"']+)["']/g)].map((match) => match[1]).slice(0, 3);
+  const exports = [...content.matchAll(/export\s+(?:async\s+)?(?:function|const|class|type|interface)\s+([A-Za-z0-9_]+)/g)]
+    .map((match) => match[1])
+    .slice(0, 4);
+  const envVars = [...content.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((match) => match[1]).slice(0, 4);
+  const routes = [...content.matchAll(/\b(GET|POST|PUT|PATCH|DELETE)\b/g)].map((match) => match[1]).slice(0, 4);
+  const summaryBits = [
+    path.includes("/api/") || /route\.(ts|js)x?$/i.test(path) ? "API surface" : null,
+    imports.length ? `imports ${imports.join(", ")}` : null,
+    exports.length ? `exports ${exports.join(", ")}` : null,
+    envVars.length ? `env ${envVars.join(", ")}` : null,
+    routes.length ? `verbs ${routes.join(", ")}` : null
+  ].filter((value): value is string => Boolean(value));
+
+  if (summaryBits.length > 0) return summaryBits.join(" · ");
+  return content.slice(0, 200).replace(/\s+/g, " ").trim();
+}
+
 export async function indexProjectFiles(input: {
   orgId: string;
   projectId: string;
@@ -60,7 +79,7 @@ export async function indexProjectFiles(input: {
       language: detectLanguage(file.path),
       sizeBytes: file.content.length,
       moduleName: file.path.split("/")[0] || "root",
-      summary: file.content.slice(0, 200).replace(/\s+/g, " ").trim(),
+      summary: extractStructuredSummary(file.path, file.content),
       riskLevel: riskForPath(file.path),
       lastIndexedAt: now
     };

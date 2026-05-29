@@ -18,6 +18,20 @@ export interface ProjectBrief {
   longBuild: boolean;
 }
 
+export interface ArchitectureRoadmap {
+  appType: string;
+  currentMaturity: "prototype" | "controlled_alpha" | "closed_beta" | "release_candidate" | "production_ready";
+  productionReadiness: "blocked" | "needs_review" | "safe_for_staging" | "production_candidate" | "production_ready";
+  currentStateSummary: string;
+  missingCapabilities: string[];
+  securityPolicies: string[];
+  recommendedIntegrations: string[];
+  deploymentBlockers: string[];
+  suggestedPhases: string[];
+  acceptanceCriteria: string[];
+  deferUntilLater: string[];
+}
+
 export interface DiscoveryQuestion {
   id: string;
   prompt: string;

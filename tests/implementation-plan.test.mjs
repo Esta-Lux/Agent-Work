@@ -82,3 +82,117 @@ describe("deployment readiness", () => {
     assert.ok(report.status);
   });
 });
+
+describe("architecture roadmap", () => {
+  it("summarizes maturity and blockers from the workspace snapshot", async () => {
+    const { buildArchitectureRoadmap } = await import("../src/lib/architecture/architecture-roadmap.ts");
+    const roadmap = buildArchitectureRoadmap({
+      files: [
+        { path: "package.json", content: '{"dependencies":{"next":"14.2.30"}}' },
+        { path: "src/app/page.tsx", content: "export default function Page() { return null; }" },
+        { path: "src/app/api/demo/route.ts", content: "export async function GET() { return Response.json({ ok: true }); }" }
+      ],
+      brief: { authRequired: true, paymentsRequired: true, audience: "startup teams" }
+    });
+    assert.equal(roadmap.appType.includes("Next.js"), true);
+    assert.ok(roadmap.securityPolicies.length > 0);
+    assert.ok(roadmap.deploymentBlockers.length > 0);
+  });
+});
+
+describe("control gate alignment guards", () => {
+  it("blocks vague placeholder patches", async () => {
+    const { runControlGate } = await import("../src/lib/control/control-gate.ts");
+    const summary = await runControlGate({
+      request: "add a real login flow",
+      plan: {
+        id: "plan_guard_1",
+        intent: {
+          request: "add a real login flow",
+          interpretedGoal: "Add login flow",
+          businessImpact: "Users can sign in"
+        },
+        impact: {
+          files: ["src/components/login.tsx"],
+          services: [],
+          apis: [],
+          databaseSchemas: [],
+          blastRadius: []
+        },
+        risk: { level: "medium", reasons: ["auth"] },
+        steps: [
+          {
+            id: "step_1",
+            title: "Update login UI",
+            domain: "frontend",
+            summary: "Wire the login form",
+            targetFiles: ["src/components/login.tsx"],
+            dependsOn: []
+          }
+        ],
+        validations: [],
+        rollbackStrategy: "Revert login patch"
+      },
+      files: [{ path: "src/components/login.tsx", content: "export function Login() { return null; }" }],
+      patches: [
+        {
+          path: "src/components/login.tsx",
+          before: "export function Login() { return null; }",
+          after: "export function Login() { /* TODO implement later */ return null; }",
+          summary: "TODO implement later"
+        }
+      ]
+    });
+    assert.equal(summary.vagueOutput.blocked, true);
+    assert.equal(summary.canApprove, false);
+  });
+
+  it("blocks end-to-end requests that only change one side", async () => {
+    const { runControlGate } = await import("../src/lib/control/control-gate.ts");
+    const summary = await runControlGate({
+      request: "wire the frontend and backend end-to-end for login",
+      plan: {
+        id: "plan_guard_2",
+        intent: {
+          request: "wire the frontend and backend end-to-end for login",
+          interpretedGoal: "Wire login end to end",
+          businessImpact: "Users can sign in from UI"
+        },
+        impact: {
+          files: ["src/app/api/login/route.ts", "src/components/login.tsx"],
+          services: [],
+          apis: [],
+          databaseSchemas: [],
+          blastRadius: []
+        },
+        risk: { level: "medium", reasons: ["cross-surface"] },
+        steps: [
+          {
+            id: "step_1",
+            title: "Wire login",
+            domain: "backend",
+            summary: "Connect frontend to backend",
+            targetFiles: ["src/app/api/login/route.ts", "src/components/login.tsx"],
+            dependsOn: []
+          }
+        ],
+        validations: [],
+        rollbackStrategy: "Revert login wiring"
+      },
+      files: [
+        { path: "src/app/api/login/route.ts", content: "export async function POST() { return Response.json({ ok: true }); }" },
+        { path: "src/components/login.tsx", content: "export function Login() { return null; }" }
+      ],
+      patches: [
+        {
+          path: "src/components/login.tsx",
+          before: "export function Login() { return null; }",
+          after: "export function Login() { return <button>Login</button>; }",
+          summary: "Add login button"
+        }
+      ]
+    });
+    assert.equal(summary.taskCompletion.blocked, true);
+    assert.equal(summary.canApprove, false);
+  });
+});
