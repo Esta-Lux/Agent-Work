@@ -17,7 +17,7 @@ async function requireGithubHeaders(): Promise<Record<string, string>> {
   const token = await resolveGithubApiToken();
   if (!token) {
     throw new Error(
-      "GitHub credentials required for push. Set GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY (and install the app), or GITHUB_TOKEN in .env.local."
+      "GitHub credentials required for push. Set GITHUB_APP_CLIENT_ID (or GITHUB_APP_ID) + GITHUB_APP_PRIVATE_KEY (and install the app), or GITHUB_TOKEN in .env.local."
     );
   }
   return {

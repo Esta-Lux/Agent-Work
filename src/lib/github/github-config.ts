@@ -19,6 +19,11 @@ export interface GithubAuthConfig {
   app: GithubAppConfig | null;
 }
 
+export function githubAppJwtIssuer(app: GithubAppConfig | null | undefined): string | null {
+  if (!app) return null;
+  return app.clientId || app.appId || null;
+}
+
 function readPrivateKey(): string | null {
   const inline = process.env.GITHUB_APP_PRIVATE_KEY?.trim();
   if (inline) return inline.replace(/\\n/g, "\n");
@@ -39,9 +44,10 @@ export function loadGithubAuthConfig(): GithubAuthConfig {
   const privateKeyPem = readPrivateKey();
   const installationId = process.env.GITHUB_APP_INSTALLATION_ID?.trim() ?? "";
   const slug = process.env.GITHUB_APP_SLUG?.trim() ?? "";
+  const hasAnyAppConfig = Boolean(clientId || clientSecret || appId || privateKeyPem || installationId || slug);
 
   const app =
-    clientId && clientSecret
+    hasAnyAppConfig
       ? {
           clientId,
           clientSecret,
@@ -59,11 +65,11 @@ export function loadGithubAuthConfig(): GithubAuthConfig {
 }
 
 export function isGithubAppConfigured(config: GithubAuthConfig = loadGithubAuthConfig()): boolean {
-  return Boolean(config.app?.clientId && config.app?.clientSecret);
+  return Boolean(config.app && (config.app.clientId || config.app.appId));
 }
 
 export function canUseGithubAppApi(config: GithubAuthConfig = loadGithubAuthConfig()): boolean {
-  return Boolean(config.app?.appId && config.app?.privateKeyPem);
+  return Boolean(githubAppJwtIssuer(config.app) && config.app?.privateKeyPem);
 }
 
 export function hasGithubApiCredentials(config: GithubAuthConfig = loadGithubAuthConfig()): boolean {
@@ -84,6 +90,7 @@ export function githubAuthStatus(config: GithubAuthConfig = loadGithubAuthConfig
           clientId: config.app.clientId,
           hasClientSecret: Boolean(config.app.clientSecret),
           appId: config.app.appId,
+          jwtIssuer: githubAppJwtIssuer(config.app),
           hasPrivateKey: Boolean(config.app.privateKeyPem),
           installationId: config.app.installationId,
           slug: config.app.slug,

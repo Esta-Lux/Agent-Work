@@ -36,7 +36,9 @@ export function evaluateDeploymentReadiness(files: SourceFileInput[]): Deploymen
     missingProductionItems.push("SUPABASE_URL in deployment environment");
   }
   if (!hasGithubApiCredentials()) {
-    missingProductionItems.push("GitHub App (GITHUB_APP_ID + private key) or GITHUB_TOKEN for draft PRs (optional)");
+    missingProductionItems.push(
+      "GitHub App (GITHUB_APP_CLIENT_ID or GITHUB_APP_ID, plus private key) or GITHUB_TOKEN for draft PRs (optional)"
+    );
   }
 
   const score = computeSecurityScore(findings);

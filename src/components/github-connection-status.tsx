@@ -9,6 +9,7 @@ type GithubStatus = {
     clientId: string;
     hasClientSecret: boolean;
     appId: string | null;
+    jwtIssuer: string | null;
     hasPrivateKey: boolean;
     installationId: string | null;
     slug: string | null;
@@ -59,7 +60,13 @@ export function GithubConnectionStatus() {
         {app ? (
           <>
             <li>GitHub App client configured ({app.clientId.slice(0, 8)}…)</li>
-            <li>{app.appId ? `App ID ${app.appId}` : "Missing GITHUB_APP_ID"}</li>
+            <li>
+              {app.jwtIssuer
+                ? app.jwtIssuer === app.clientId
+                  ? `JWT issuer uses Client ID ${app.clientId}`
+                  : `JWT issuer uses App ID ${app.appId}`
+                : "Missing GITHUB_APP_CLIENT_ID or GITHUB_APP_ID"}
+            </li>
             <li>{app.hasPrivateKey ? "Private key loaded" : "Missing GITHUB_APP_PRIVATE_KEY"}</li>
             <li>
               {app.canIssueInstallationToken

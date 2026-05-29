@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * OAuth callback for GitHub App user authorization (optional dev flow).
  * Exchanges `code` for a user access token — useful when installation tokens are not set up yet.
- * Prefer GitHub App installation tokens (GITHUB_APP_ID + private key) for production.
+ * Prefer GitHub App installation tokens (GITHUB_APP_CLIENT_ID or GITHUB_APP_ID, plus private key) for production.
  */
 export async function GET(request: Request) {
   const config = loadGithubAuthConfig();
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     ok: true,
     scope: data.scope ?? null,
     hint:
-      "For server import/push, prefer GitHub App installation tokens (GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY). You may set GITHUB_TOKEN to this user token for local dev only — do not commit it.",
+      "For server import/push, prefer GitHub App installation tokens (GITHUB_APP_CLIENT_ID or GITHUB_APP_ID, plus GITHUB_APP_PRIVATE_KEY). You may set GITHUB_TOKEN to this user token for local dev only — do not commit it.",
     hasAccessToken: Boolean(data.access_token)
   });
 }

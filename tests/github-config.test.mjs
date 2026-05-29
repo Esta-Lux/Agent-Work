@@ -7,30 +7,53 @@ const { loadGithubAuthConfig, githubAuthStatus, hasGithubApiCredentials } = awai
 
 const envBackup = { ...process.env };
 
+function clearGithubEnv() {
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GITHUB_APP_CLIENT_ID;
+  delete process.env.GITHUB_APP_CLIENT_SECRET;
+  delete process.env.GITHUB_APP_ID;
+  delete process.env.GITHUB_APP_PRIVATE_KEY;
+  delete process.env.GITHUB_APP_PRIVATE_KEY_PATH;
+  delete process.env.GITHUB_APP_INSTALLATION_ID;
+  delete process.env.GITHUB_APP_SLUG;
+}
+
 describe("github config", () => {
   afterEach(() => {
     process.env = { ...envBackup };
   });
 
   it("reports not ready without credentials", () => {
-    delete process.env.GITHUB_TOKEN;
-    delete process.env.GITHUB_APP_CLIENT_ID;
-    delete process.env.GITHUB_APP_ID;
+    clearGithubEnv();
     const status = githubAuthStatus(loadGithubAuthConfig());
     assert.equal(status.ready, false);
     assert.equal(hasGithubApiCredentials(loadGithubAuthConfig()), false);
   });
 
   it("reports app client configured without exposing secret", () => {
+    clearGithubEnv();
     process.env.GITHUB_APP_CLIENT_ID = "Ov23test";
     process.env.GITHUB_APP_CLIENT_SECRET = "secret_value";
     const status = githubAuthStatus(loadGithubAuthConfig());
     assert.equal(status.app?.clientId, "Ov23test");
     assert.equal(status.app?.hasClientSecret, true);
+    assert.equal(status.app?.jwtIssuer, "Ov23test");
     assert.equal(status.ready, false);
   });
 
+  it("can issue installation tokens with client id and private key only", () => {
+    clearGithubEnv();
+    process.env.GITHUB_APP_CLIENT_ID = "Iv23test";
+    process.env.GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\\nkey\\n-----END RSA PRIVATE KEY-----";
+    const status = githubAuthStatus(loadGithubAuthConfig());
+    assert.equal(status.app?.jwtIssuer, "Iv23test");
+    assert.equal(status.app?.hasClientSecret, false);
+    assert.equal(status.app?.canIssueInstallationToken, true);
+    assert.equal(status.ready, true);
+  });
+
   it("ready with PAT", () => {
+    clearGithubEnv();
     process.env.GITHUB_TOKEN = "ghp_test";
     assert.equal(hasGithubApiCredentials(loadGithubAuthConfig()), true);
   });

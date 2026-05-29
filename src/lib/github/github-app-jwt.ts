@@ -5,11 +5,11 @@ function base64Url(input: string | Buffer): string {
   return buf.toString("base64url");
 }
 
-/** GitHub App JWT (RS256), valid up to 10 minutes. */
-export function createGithubAppJwt(appId: string, privateKeyPem: string): string {
+/** GitHub App JWT (RS256), valid up to 10 minutes. `iss` may be the Client ID or App ID. */
+export function createGithubAppJwt(issuer: string, privateKeyPem: string): string {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
-  const payload = { iat: now - 60, exp: now + 9 * 60, iss: appId };
+  const payload = { iat: now - 60, exp: now + 9 * 60, iss: issuer };
   const encodedHeader = base64Url(JSON.stringify(header));
   const encodedPayload = base64Url(JSON.stringify(payload));
   const signingInput = `${encodedHeader}.${encodedPayload}`;
