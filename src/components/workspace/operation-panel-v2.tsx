@@ -2,7 +2,7 @@
 
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
-import { StatusPill } from "@/components/ui/status-pill";
+import { StatusPill, type StatusPillVariant } from "@/components/ui/status-pill";
 import { ArchitectureRoadmapPanel } from "@/components/workspace/architecture-roadmap-panel";
 import type { WorkspaceProvider, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import type { WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
@@ -219,7 +219,7 @@ function ExportStep({
   );
 }
 
-function safeToPrVariant(status: "yes" | "caution" | "no") {
+function safeToPrVariant(status: "yes" | "caution" | "no"): StatusPillVariant {
   if (status === "yes") return "signal" as const;
   if (status === "caution") return "blue" as const;
   return "amber" as const;

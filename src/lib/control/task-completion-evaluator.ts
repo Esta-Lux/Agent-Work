@@ -1,7 +1,7 @@
 import type { ChangePlan } from "@/lib/types/core";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 
-const ENV_VAR_PATTERN = /process\.env\.[A-Z0-9_]+/;
+const ENV_VAR_PATTERN = /\bprocess\.env\.[A-Z0-9_]+\b/;
 
 export interface TaskCompletionFinding {
   severity: "warning" | "block";

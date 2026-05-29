@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { OperationPanelV2 } from "@/components/workspace/operation-panel-v2";
@@ -75,6 +75,7 @@ export function WorkspaceShellV2() {
   const [roadmap, setRoadmap] = useState<ArchitectureRoadmap | null>(null);
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [draftPrMessage, setDraftPrMessage] = useState<string | null>(null);
+  const roadmapRequestRef = useRef<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
   const repoConnected = workspaceFiles.length > 0;
@@ -100,7 +101,7 @@ export function WorkspaceShellV2() {
   useEffect(() => {
     if (!repoConnected || !briefReady) return;
     void refreshRoadmap();
-  }, [briefReady, refreshRoadmap, repoConnected]);
+  }, [apiFiles, brief, briefReady, repoConnected, report]);
 
   async function refreshPlatform() {
     try {
@@ -114,7 +115,16 @@ export function WorkspaceShellV2() {
     }
   }
 
-  const refreshRoadmap = useCallback(async () => {
+  async function refreshRoadmap() {
+    const requestKey = JSON.stringify({
+      files: apiFiles.map((file) => ({ path: file.path, content: file.content })),
+      brief,
+      approvalStatus: report?.approvalStatus,
+      safeToPr: report?.safeToPr?.status,
+      controlBlocked: report?.controlLayer?.canApprove
+    });
+    if (roadmapRequestRef.current === requestKey) return;
+    roadmapRequestRef.current = requestKey;
     setRoadmapLoading(true);
     try {
       const res = await fetch("/api/workspace/architecture/roadmap", {
@@ -138,10 +148,11 @@ export function WorkspaceShellV2() {
       setRoadmap(data.roadmap ?? null);
     } catch {
       setRoadmap(null);
+      roadmapRequestRef.current = null;
     } finally {
       setRoadmapLoading(false);
     }
-  }, [apiFiles, brief, report]);
+  }
 
   async function loadBranches() {
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before loading branches.");

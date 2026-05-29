@@ -70,7 +70,7 @@ function detectMaturity(status: ReturnType<typeof evaluateDeploymentReadiness>["
   if (status === "production_ready") return "production_ready";
   if (status === "production_candidate") return "release_candidate";
   if (status === "safe_for_staging") return "closed_beta";
-  if (hasPath(files, /tests?\//i) || hasPath(files, /\.test\./i)) return "controlled_alpha";
+  if (files.some((file) => /tests?\//i.test(file.path) || /\.test\./i.test(file.path))) return "controlled_alpha";
   return "prototype";
 }
 
