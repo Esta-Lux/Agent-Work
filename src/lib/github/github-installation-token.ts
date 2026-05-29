@@ -1,5 +1,5 @@
 import { createGithubAppJwt } from "@/lib/github/github-app-jwt";
-import type { GithubAppConfig } from "@/lib/github/github-config";
+import { githubAppJwtIssuer, type GithubAppConfig } from "@/lib/github/github-config";
 
 const TOKEN_CACHE = new Map<string, { token: string; expiresAt: number }>();
 
@@ -41,17 +41,20 @@ async function resolveInstallationId(app: GithubAppConfig, jwt: string): Promise
 }
 
 export async function getGithubAppInstallationToken(app: GithubAppConfig): Promise<string> {
-  if (!app.appId || !app.privateKeyPem) {
-    throw new Error("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required for installation tokens.");
+  const jwtIssuer = githubAppJwtIssuer(app);
+  if (!jwtIssuer || !app.privateKeyPem) {
+    throw new Error(
+      "GITHUB_APP_CLIENT_ID (preferred) or GITHUB_APP_ID, plus GITHUB_APP_PRIVATE_KEY, are required for installation tokens."
+    );
   }
 
-  const cacheKey = `${app.appId}:${app.installationId ?? "auto"}`;
+  const cacheKey = `${jwtIssuer}:${app.installationId ?? "auto"}`;
   const cached = TOKEN_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > Date.now() + 60_000) {
     return cached.token;
   }
 
-  const jwt = createGithubAppJwt(app.appId, app.privateKeyPem);
+  const jwt = createGithubAppJwt(jwtIssuer, app.privateKeyPem);
   const installationId = await resolveInstallationId(app, jwt);
 
   const res = await githubAppFetch(`/app/installations/${installationId}/access_tokens`, jwt, {

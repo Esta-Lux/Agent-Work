@@ -5,15 +5,16 @@ BootRise uses GitHub credentials for **import**, **branch list**, **push**, and 
 ## Recommended: GitHub App installation token
 
 1. Open your app at [GitHub Developer settings → GitHub Apps](https://github.com/settings/apps).
-2. Copy **App ID**, **Client ID**, and **Client secret** into `.env.local` (see `.env.example`).
+2. Copy **Client ID** into `.env.local` (see `.env.example`). Add **App ID** too if you want a fallback issuer.
 3. Click **Generate a private key** → save the `.pem` file.
 4. Set either:
    - `GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"`  
      (use `\n` for line breaks in one line), or  
    - `GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/bootrise-github-app.pem`
-5. Set `GITHUB_APP_SLUG` from `https://github.com/apps/<slug>`.
-6. **Install** the app on your org or repo: `https://github.com/apps/<slug>/installations/new`
-7. Optional: set `GITHUB_APP_INSTALLATION_ID` from the installation URL. If you have exactly one install, BootRise auto-detects it.
+5. Optional for OAuth helper only: set `GITHUB_APP_CLIENT_SECRET`.
+6. Set `GITHUB_APP_SLUG` from `https://github.com/apps/<slug>`.
+7. **Install** the app on your org or repo: `https://github.com/apps/<slug>/installations/new`
+8. Optional: set `GITHUB_APP_INSTALLATION_ID` from the installation URL. If you have exactly one install, BootRise auto-detects it.
 
 Check status (no secrets returned):
 

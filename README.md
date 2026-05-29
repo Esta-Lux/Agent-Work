@@ -320,7 +320,7 @@ flowchart TD
 | --- | --- |
 | Filesystem-backed repo ingestion | **Done** — `.bootrise/repos/{repositoryId}` + incremental sync via `POST /api/workspace/repos/{id}/sync` |
 | TypeScript compiler AST (exports, re-exports, calls) | **Done** — `ast-analyzer.ts` + `symbol-graph.ts` → blast radius + architecture map |
-| GitHub App + PAT | **Done** — `src/lib/github/*`, `GET /api/github/status`; finish App ID + private key in `.env.local` |
+| GitHub App + PAT | **Done** — `src/lib/github/*`, `GET /api/github/status`; finish Client ID/App ID + private key in `.env.local` |
 | Open-source compose plan | **Doc** — `docs/INTEGRATION_ROADMAP.md` (Monaco, Semgrep, RepoMaster-style graphs; study OpenHands/SWE-agent) |
 | Persist snapshots & architecture memory | **Partial** — disk snapshots + Living Ledger; optional `004_repo_canonical.sql` for cloud registry |
 | Approval-gated execution worker | **Partial** — approve/reject + pending fixes; no queue workers |

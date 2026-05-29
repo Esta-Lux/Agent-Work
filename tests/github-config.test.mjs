@@ -30,6 +30,16 @@ describe("github config", () => {
     assert.equal(status.ready, false);
   });
 
+  it("can issue installation tokens with client id and private key only", () => {
+    process.env.GITHUB_APP_CLIENT_ID = "Iv23test";
+    process.env.GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\\nkey\\n-----END RSA PRIVATE KEY-----";
+    const status = githubAuthStatus(loadGithubAuthConfig());
+    assert.equal(status.app?.jwtIssuer, "Iv23test");
+    assert.equal(status.app?.hasClientSecret, false);
+    assert.equal(status.app?.canIssueInstallationToken, true);
+    assert.equal(status.ready, true);
+  });
+
   it("ready with PAT", () => {
     process.env.GITHUB_TOKEN = "ghp_test";
     assert.equal(hasGithubApiCredentials(loadGithubAuthConfig()), true);
