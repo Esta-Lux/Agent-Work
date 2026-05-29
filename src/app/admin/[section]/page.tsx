@@ -7,7 +7,7 @@ import { AdminAuditPage } from "@/components/admin/admin-audit-page";
 import { AdminDataPage } from "@/components/admin/admin-data-page";
 import { AdminOverview } from "@/components/admin/admin-overview";
 import { AdminShell, type AdminSection } from "@/components/admin/admin-shell";
-import { SelfAgentPage } from "@/components/admin/self-agent-page";
+import { AdminAgentConsole } from "@/components/admin-agent-console";
 import { PlatformStatusBar } from "@/components/platform-status-bar";
 import { ProductionReadinessPanel } from "@/components/production-readiness-panel";
 import { UnitEconomicsPanel } from "@/components/unit-economics-panel";
@@ -27,7 +27,7 @@ export default async function AdminSectionPage({ params }: { params: { section: 
 
 function renderSection(section: AdminSection) {
   if (section === "overview") return <AdminOverview />;
-  if (section === "self-agent") return <SelfAgentPage />;
+  if (section === "self-agent") return <AdminAgentConsole />;
   if (section === "readiness") return <ProductionReadinessPanel />;
   if (section === "providers") {
     return (
