@@ -1,5 +1,6 @@
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { getServerE2EAuthRole } from "@/lib/auth/e2e-auth.server";
 import { AuthError, type AuthUser, type UserOrgContext } from "@/lib/auth/types";
 import { requireUser } from "@/lib/auth/server-auth";
 
@@ -11,14 +12,15 @@ async function ensurePersonalOrg(user: AuthUser): Promise<UserOrgContext> {
   const supabase = getSupabaseServiceClient();
   const orgId = personalOrgId(user.id);
   const orgName = user.email ? `${user.email.split("@")[0]}'s workspace` : "Personal workspace";
+  const e2eRole = getServerE2EAuthRole();
 
   if (!supabase) {
-    if (isServerDevAuthBypass()) {
+    if (isServerDevAuthBypass() || e2eRole) {
       return {
         user,
         orgId: process.env.BOOTRISE_DEV_ORG_ID?.trim() || "org_default",
-        orgName: "Dev workspace",
-        orgRole: "owner",
+        orgName: e2eRole === "admin" ? "E2E admin workspace" : "Dev workspace",
+        orgRole: e2eRole === "admin" ? "admin" : "owner",
         isPersonalOrg: true
       };
     }
@@ -56,18 +58,19 @@ async function ensurePersonalOrg(user: AuthUser): Promise<UserOrgContext> {
 export async function resolveUserOrgContext(orgId?: string | null): Promise<UserOrgContext> {
   const user = await requireUser();
   const supabase = getSupabaseServiceClient();
+  const e2eRole = getServerE2EAuthRole();
 
   if (!orgId) {
     return ensurePersonalOrg(user);
   }
 
   if (!supabase) {
-    if (isServerDevAuthBypass()) {
+    if (isServerDevAuthBypass() || e2eRole) {
       return {
         user,
         orgId,
-        orgName: "Dev workspace",
-        orgRole: "owner",
+        orgName: e2eRole === "admin" ? "E2E admin workspace" : "Dev workspace",
+        orgRole: e2eRole === "admin" ? "admin" : "owner",
         isPersonalOrg: false
       };
     }

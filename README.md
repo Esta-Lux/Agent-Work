@@ -101,20 +101,24 @@ npm run dev
 
 `npm run dev` skips auth on localhost and loads the workspace as **dev@bootrise.local**. Production still requires Supabase. To test real login locally, set `BOOTRISE_DEV_AUTH_STRICT=1` in `.env.local` and restart — see [docs/DEV.md](docs/DEV.md).
 
+Playwright now has a dedicated E2E harness for both the workspace (`/`) and admin (`/admin`) surfaces. Run `npx playwright install chromium` once, then use `npm run test:e2e`.
+
 Useful checks:
 
 ```bash
+npm run lint
 npm run typecheck
 npm run build
 npm test
+npm run test:e2e
 ```
 
 ## Two surfaces
 
 | Surface | URL | Purpose |
 | --- | --- | --- |
-| **User workspace** | `/` | Product brief, agent chat, code intake, fix/report, download or GitHub export |
-| **Admin** | `/admin` | Operator readiness, provider health, internal ops chat |
+| **User workspace** | `/` | Connect repos, plan scoped work, review patches, verify changes, and export or open draft PRs |
+| **Admin** | `/admin` | Operator readiness, missions, provider health, control checks, security events, and audit review |
 
 ## Use the user workspace
 
