@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
 import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
@@ -64,7 +65,7 @@ export function createWorkUnitRun(input: {
   loadCache();
   const now = new Date().toISOString();
   const record: WorkUnitRunRecord = {
-    id: `wur_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `wur_${randomUUID()}`,
     orgId: input.orgId,
     projectId: input.projectId,
     repositoryId: input.repositoryId,

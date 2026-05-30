@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { evaluateTaskCompletion } from "@/lib/control/task-completion-evaluator";
 import { applyPatchesToFiles } from "@/lib/workspace/apply-patches";
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
           ...execution,
           status: "skipped",
           blockers: [
-            "Marked for rerun after an upstream unit changed. Re-run this unit to refresh downstream output."
+            "Marked for rerun after an upstream unit changed. Rerun this unit to refresh downstream output."
           ]
         };
       }
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
     const completion = evaluateTaskCompletion({
       request: run.taskDescription,
       plan: {
-        id: `multi_pass_rerun_${Date.now()}`,
+        id: `multi_pass_rerun_${randomUUID()}`,
         intent: {
           request: run.taskDescription,
           interpretedGoal: run.workUnitPlan.taskSummary,

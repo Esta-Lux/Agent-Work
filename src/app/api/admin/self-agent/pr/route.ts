@@ -38,7 +38,13 @@ export async function POST(request: Request) {
 
     const branch = body?.branchName?.trim() || mission.branchName?.trim() || preview.branchName;
     const title = body?.title?.trim() || `BootRise self-agent: ${mission.title}`;
-    const prUrl = `https://github.com/Esta-Lux/Agent-Work/compare/main...${encodeURIComponent(branch)}?expand=1`;
+    const remoteUrl = body?.remoteUrl?.trim() || process.env.BOOTRISE_GITHUB_REMOTE_URL?.trim() || "https://github.com/Esta-Lux/Agent-Work";
+    const sanitizedRemote = remoteUrl.replace(/\.git$/i, "").replace(/\/+$/, "");
+    const baseBranch =
+      process.env.BOOTRISE_GITHUB_BASE_BRANCH?.trim() ||
+      process.env.BOOTRISE_SELF_AGENT_BASE_BRANCH?.trim() ||
+      "main";
+    const prUrl = `${sanitizedRemote}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(branch)}?expand=1`;
     const updatedMission = updateAdminBuildMission(
       mission.id,
       {
@@ -54,7 +60,7 @@ export async function POST(request: Request) {
       draftPr: {
         title,
         branch,
-        remoteUrl: body?.remoteUrl?.trim() || "https://github.com/Esta-Lux/Agent-Work",
+        remoteUrl,
         prUrl
       }
     });

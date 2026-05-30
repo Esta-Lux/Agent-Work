@@ -85,9 +85,13 @@ async function scoreProvider(input: {
   );
 
   try {
-    const result = await createPendingFixPlan(input.files, input.task, input.provider as LlmProviderId, {
-      assumptionsApproved: true
-    });
+    const result = await withTimeout(
+      createPendingFixPlan(input.files, input.task, input.provider as LlmProviderId, {
+        assumptionsApproved: true
+      }),
+      45_000,
+      `${input.provider} duel run timed out.`
+    );
     const patches = result.report.patches ?? [];
     const patchGuard = evaluateVagueOutputGuard(
       patches.length > 0
@@ -130,5 +134,19 @@ async function scoreProvider(input: {
       recommendation: "blocked",
       summary: error instanceof Error ? error.message : "Provider duel generation failed."
     };
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
