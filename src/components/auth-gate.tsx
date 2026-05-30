@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { isClientDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { E2E_AUTH_ROLE_COOKIE, isClientE2EAuthEnabled } from "@/lib/auth/e2e-auth";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
 
 interface SessionUser {
@@ -24,10 +25,22 @@ function SessionSpinner() {
 export function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
   const devBypass = isClientDevAuthBypass();
+  const e2eAuth = isClientE2EAuthEnabled();
 
   useEffect(() => {
     if (devBypass) {
       setUser({ email: "dev@bootrise.local" });
+      return;
+    }
+    if (e2eAuth) {
+      void fetch("/api/workspace/me", { credentials: "include" })
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const data = (await response.json()) as { user?: SessionUser | null };
+          return data.user ?? null;
+        })
+        .then((nextUser) => setUser(nextUser))
+        .catch(() => setUser(null));
       return;
     }
     const supabase = getSupabaseBrowserClient();
@@ -42,7 +55,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setUser(session?.user ? { email: session.user.email ?? null } : null);
     });
     return () => sub.subscription.unsubscribe();
-  }, [devBypass]);
+  }, [devBypass, e2eAuth]);
 
   if (user === undefined) {
     return <SessionSpinner />;
@@ -81,10 +94,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
 export function AuthHeaderActions() {
   const [email, setEmail] = useState<string | null>(null);
   const devBypass = isClientDevAuthBypass();
+  const e2eAuth = isClientE2EAuthEnabled();
 
   useEffect(() => {
     if (devBypass) {
       setEmail("dev@bootrise.local");
+      return;
+    }
+    if (e2eAuth) {
+      void fetch("/api/workspace/me", { credentials: "include" })
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const data = (await response.json()) as { user?: SessionUser | null };
+          return data.user?.email ?? null;
+        })
+        .then((nextEmail) => setEmail(nextEmail))
+        .catch(() => setEmail(null));
       return;
     }
     const supabase = getSupabaseBrowserClient();
@@ -92,11 +117,16 @@ export function AuthHeaderActions() {
     void supabase.auth.getUser().then(({ data }: { data: { user?: { email?: string | null } | null } }) =>
       setEmail(data.user?.email ?? null)
     );
-  }, [devBypass]);
+  }, [devBypass, e2eAuth]);
 
   async function signOut() {
     if (devBypass) {
       window.location.reload();
+      return;
+    }
+    if (e2eAuth) {
+      document.cookie = `${E2E_AUTH_ROLE_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
+      window.location.href = "/auth/sign-in";
       return;
     }
     const supabase = getSupabaseBrowserClient();

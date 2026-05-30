@@ -2,6 +2,7 @@ import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { AuthError, type AuthUser } from "@/lib/auth/types";
 import { requireUser } from "@/lib/auth/server-auth";
 import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { isE2EAdminUser } from "@/lib/auth/e2e-auth.server";
 
 function parseAdminEmails(): Set<string> {
   const raw = process.env.BOOTRISE_ADMIN_EMAILS?.trim() ?? "";
@@ -28,6 +29,7 @@ async function isOrgAdmin(userId: string): Promise<boolean> {
 
 export async function isAdminUser(user: AuthUser): Promise<boolean> {
   if (isServerDevAuthBypass()) return true;
+  if (isE2EAdminUser(user)) return true;
   const allowlist = parseAdminEmails();
   if (user.email && allowlist.has(user.email.toLowerCase())) return true;
   return isOrgAdmin(user.id);

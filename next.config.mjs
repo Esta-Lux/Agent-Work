@@ -8,15 +8,19 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
   "";
 const devAuthBypass = isDevAuthBypassEnabled();
+const e2eAuth = process.env.NODE_ENV !== "production" && process.env.BOOTRISE_E2E_AUTH === "1";
+const distDir = process.env.BOOTRISE_NEXT_DIST_DIR?.trim() || ".next";
 
 const nextConfig = {
   reactStrictMode: true,
+  distDir,
   allowedDevOrigins: ["127.0.0.1:3000", "localhost:3000", "127.0.0.1", "localhost"],
   env: {
     NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabaseAnonKey,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
-    NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS: devAuthBypass ? "1" : "0"
+    NEXT_PUBLIC_BOOTRISE_DEV_AUTH_BYPASS: devAuthBypass ? "1" : "0",
+    NEXT_PUBLIC_BOOTRISE_E2E_AUTH: e2eAuth ? "1" : "0"
   },
   async headers() {
     return [

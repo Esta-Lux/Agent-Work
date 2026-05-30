@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isServerE2EAuthEnabled } from "@/lib/auth/e2e-auth";
+import { getE2EAuthRoleFromRequest } from "@/lib/auth/e2e-auth.server";
 import { resolveDevAuthBypass } from "@/lib/auth/resolve-dev-auth-bypass";
 
 export async function middleware(request: NextRequest) {
@@ -32,8 +34,12 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const devBypass = resolveDevAuthBypass();
+  const e2eRole = getE2EAuthRoleFromRequest(request);
 
   if (pathname.startsWith("/admin") && !devBypass) {
+    if (isServerE2EAuthEnabled() && e2eRole) {
+      return response;
+    }
     if (!url || !anonKey) {
       return NextResponse.redirect(new URL("/auth/sign-in?next=/admin", request.url));
     }

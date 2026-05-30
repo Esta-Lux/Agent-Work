@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/db/supabase-server";
 import { isSupabaseConfigured } from "@/lib/db/supabase";
 import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
+import { getServerE2EAuthUser } from "@/lib/auth/e2e-auth.server";
 import { AuthError, type AuthUser } from "@/lib/auth/types";
 
 function devBypassUser(): AuthUser | null {
@@ -13,6 +14,9 @@ function devBypassUser(): AuthUser | null {
 export async function getServerUser(): Promise<AuthUser | null> {
   const bypass = devBypassUser();
   if (bypass) return bypass;
+
+  const e2eUser = getServerE2EAuthUser();
+  if (e2eUser) return e2eUser;
 
   if (!isSupabaseConfigured()) return null;
 
