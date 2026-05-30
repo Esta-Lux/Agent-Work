@@ -10,7 +10,6 @@ async function writeStorageState(path: string, role: "workspace" | "admin", conf
       name: E2E_AUTH_ROLE_COOKIE,
       value: role,
       url: strictBaseUrl(config),
-      path: "/",
       sameSite: "Lax"
     }
   ]);

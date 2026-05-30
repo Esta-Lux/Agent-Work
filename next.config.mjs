@@ -9,9 +9,11 @@ const supabaseAnonKey =
   "";
 const devAuthBypass = isDevAuthBypassEnabled();
 const e2eAuth = process.env.NODE_ENV !== "production" && process.env.BOOTRISE_E2E_AUTH === "1";
+const distDir = process.env.BOOTRISE_NEXT_DIST_DIR?.trim() || ".next";
 
 const nextConfig = {
   reactStrictMode: true,
+  distDir,
   allowedDevOrigins: ["127.0.0.1:3000", "localhost:3000", "127.0.0.1", "localhost"],
   env: {
     NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,

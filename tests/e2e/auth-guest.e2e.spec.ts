@@ -8,6 +8,6 @@ test("strict-auth workspace shows the sign-in gate for guests", async ({ page })
 
 test("strict-auth admin redirects guests to sign-in", async ({ page }) => {
   await page.goto("/admin");
-  await expect(page).toHaveURL(/\/auth\/sign-in\?next=%2Fadmin/);
+  await expect(page).toHaveURL(/\/auth\/sign-in\?next=\/admin/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });

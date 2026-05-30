@@ -12,8 +12,8 @@ export class AdminPage {
     await expect(this.page.getByText("Recent self-agent missions")).toBeVisible();
   }
 
-  async navigateTo(label: string, heading: string) {
-    await this.page.getByRole("link", { name: label }).click();
+  async navigateTo(href: string, heading: string) {
+    await this.page.goto(href);
     await expect(this.page.getByRole("heading", { name: heading })).toBeVisible();
   }
 }

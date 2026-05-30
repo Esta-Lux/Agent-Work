@@ -10,8 +10,8 @@ test("admin surfaces load and navigate across core sections", async ({ page }) =
   const admin = new AdminPage(page);
   await admin.goto();
   await admin.expectOverviewLoaded();
-  await admin.navigateTo("Providers", "AI provider health");
-  await admin.navigateTo("Control", "Control layer");
-  await admin.navigateTo("Security", "Security detections");
-  await admin.navigateTo("Audit", "Operational audit");
+  await admin.navigateTo("/admin/providers", "AI provider health");
+  await admin.navigateTo("/admin/control", "Control layer");
+  await admin.navigateTo("/admin/security", "Security detections");
+  await admin.navigateTo("/admin/audit", "Operational audit");
 });

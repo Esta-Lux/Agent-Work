@@ -32,7 +32,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: {
         ...baseEnv,
-        BOOTRISE_DEV_AUTH_BYPASS: "1"
+        BOOTRISE_DEV_AUTH_BYPASS: "1",
+        BOOTRISE_NEXT_DIST_DIR: ".next-playwright-bypass"
       }
     },
     {
@@ -42,21 +43,22 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       env: {
         ...baseEnv,
-        BOOTRISE_DEV_AUTH_STRICT: "1"
+        BOOTRISE_DEV_AUTH_STRICT: "1",
+        BOOTRISE_NEXT_DIST_DIR: ".next-playwright-strict"
       }
     }
   ],
   projects: [
     {
       name: "workspace-bypass",
-      testMatch: /workspace\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)workspace\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3100"
       }
     },
     {
       name: "workspace-strict",
-      testMatch: /workspace\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)workspace\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3101",
         storageState: workspaceAuthFile
@@ -64,14 +66,14 @@ export default defineConfig({
     },
     {
       name: "admin-bypass",
-      testMatch: /admin\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)admin\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3100"
       }
     },
     {
       name: "admin-strict",
-      testMatch: /admin\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)admin\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3101",
         storageState: adminAuthFile
@@ -79,14 +81,14 @@ export default defineConfig({
     },
     {
       name: "auth-guest-strict",
-      testMatch: /auth-guest\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)auth-guest\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3101"
       }
     },
     {
       name: "auth-workspace-strict",
-      testMatch: /auth-workspace\.e2e\.spec\.ts/,
+      testMatch: /(^|\/)auth-workspace\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3101",
         storageState: workspaceAuthFile
