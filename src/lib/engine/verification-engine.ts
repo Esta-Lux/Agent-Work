@@ -7,7 +7,11 @@ export interface VerificationReport {
 }
 
 export class VerificationEngine {
-  constructor(private readonly runtime: SandboxRuntime) {}
+  private readonly runtime: SandboxRuntime;
+
+  constructor(runtime: SandboxRuntime) {
+    this.runtime = runtime;
+  }
 
   public async runFullVerification(): Promise<VerificationReport> {
     const buildCheck = await this.runtime.executeCommand(["npm", "run", "build"]);
@@ -34,4 +38,3 @@ export class VerificationEngine {
     };
   }
 }
-

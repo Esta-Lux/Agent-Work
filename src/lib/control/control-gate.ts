@@ -15,6 +15,8 @@ import { recordControlEvent } from "@/lib/control/control-telemetry";
 import { evaluateContextGate } from "@/lib/control/context-gate";
 import { buildAgentCoordination } from "@/lib/control/agent-coordination";
 import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
+import { evaluateVagueOutputGuard } from "@/lib/control/vague-output-guard";
+import { evaluateTaskCompletion } from "@/lib/control/task-completion-evaluator";
 
 function estimateUsd(chars: number): number {
   const tokens = chars / 4;
@@ -37,6 +39,12 @@ export async function runControlGate(input: {
     request: input.request,
     plan: input.plan,
     files: input.files,
+    patches: input.patches
+  });
+  const vagueOutput = evaluateVagueOutputGuard(input.patches);
+  const taskCompletion = evaluateTaskCompletion({
+    request: input.request,
+    plan: input.plan,
     patches: input.patches
   });
   const contextGate = evaluateContextGate({
@@ -101,6 +109,12 @@ export async function runControlGate(input: {
   if (!stopReason && contextGate.status !== "proceed_with_assumptions") {
     stopReason = `${contextGate.reason} Context confidence: ${Math.round(contextGate.confidence * 100)}%.`;
   }
+  if (!stopReason && vagueOutput.blocked) {
+    stopReason = vagueOutput.summary;
+  }
+  if (!stopReason && taskCompletion.blocked) {
+    stopReason = taskCompletion.summary;
+  }
   if (!stop.shouldStop && !regressionGuard.passed) {
     stopReason = regressionGuard.summary;
   }
@@ -122,6 +136,8 @@ export async function runControlGate(input: {
     contextGate.status === "proceed_with_assumptions" &&
     agentCoordination.canPatch &&
     !patchGuard.blocked &&
+    !vagueOutput.blocked &&
+    !taskCompletion.blocked &&
     regressionGuard.passed &&
     !stop.shouldStop &&
     scopeContract.allowedEditFiles.length > 0;
@@ -134,6 +150,8 @@ export async function runControlGate(input: {
     contextPlan,
     patchGuard,
     regressionGuard,
+    vagueOutput,
+    taskCompletion,
     repositoryMap,
     tokenWaste,
     stopReason,
@@ -163,6 +181,12 @@ export async function runControlGate(input: {
 export function assertApproveAllowed(control: ControlLayerSummary): void {
   if (!control.canApprove) {
     throw new Error(control.stopReason ?? "Control layer blocked approval.");
+  }
+  if (control.vagueOutput.blocked) {
+    throw new Error(control.vagueOutput.findings[0]?.message ?? control.vagueOutput.summary);
+  }
+  if (control.taskCompletion.blocked) {
+    throw new Error(control.taskCompletion.findings[0]?.message ?? control.taskCompletion.summary);
   }
   const blocks = control.patchGuard.findings.filter((f) => f.severity === "block");
   if (blocks.length > 0) {

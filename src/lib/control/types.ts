@@ -160,6 +160,29 @@ export interface PatchGuardResult {
   findings: ControlFinding[];
 }
 
+export interface VagueOutputGuardSummary {
+  passed: boolean;
+  blocked: boolean;
+  summary: string;
+  findings: Array<{
+    path?: string;
+    phrase: string;
+    message: string;
+    severity: "warning" | "block";
+  }>;
+}
+
+export interface TaskCompletionSummary {
+  passed: boolean;
+  blocked: boolean;
+  summary: string;
+  findings: Array<{
+    severity: "warning" | "block";
+    message: string;
+  }>;
+  coveredDomains: string[];
+}
+
 export interface ControlLayerSummary {
   contextGate: ContextGateDecision;
   agentCoordination: AgentCoordinationSummary;
@@ -169,6 +192,8 @@ export interface ControlLayerSummary {
   regressionGuard: RegressionGuardResult;
   repositoryMap: RepositoryMap;
   tokenWaste: TokenWasteSummary;
+  vagueOutput: VagueOutputGuardSummary;
+  taskCompletion: TaskCompletionSummary;
   stopReason: string | null;
   failedPatchAttempts: number;
   canApprove: boolean;
