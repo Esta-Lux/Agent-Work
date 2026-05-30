@@ -4,6 +4,7 @@ import type { SafeToPrVerdict } from "@/lib/workspace/safe-to-pr";
 import type { createVerificationSummary } from "@/lib/verification/verification-summary";
 import type { ChatControlSummary, ControlLayerSummary } from "@/lib/control/types";
 import type { ReviewFinding } from "@/lib/workspace/review-findings";
+import type { AppType, AppTypeTemplate } from "@/lib/architecture/app-type-templates";
 
 export type { RepoHealthSummary, SafeToPrVerdict };
 
@@ -30,6 +31,27 @@ export interface ArchitectureRoadmap {
   suggestedPhases: string[];
   acceptanceCriteria: string[];
   deferUntilLater: string[];
+  detectedAppType?: AppType;
+  appTypeTemplate?: AppTypeTemplate;
+  policyGaps?: PolicyGap[];
+  roadmapToBuildMissions?: BuildMissionSuggestion[];
+}
+
+export interface PolicyGap {
+  policy: string;
+  severity: "critical" | "warning" | "info";
+  affectedFiles: string[];
+  recommendedImplementation: string[];
+  acceptanceCriteria: string[];
+}
+
+export interface BuildMissionSuggestion {
+  title: string;
+  description: string;
+  priority: "p0" | "p1" | "p2";
+  estimatedWorkUnits: number;
+  targetFiles: string[];
+  requiredBy: string;
 }
 
 export interface DiscoveryQuestion {

@@ -6,6 +6,8 @@ import { runSecurityScanFull } from "@/lib/security/security-scan";
 import { appendLedgerEvent } from "@/lib/workspace/living-ledger-timeline";
 import { addArchitectureMemory } from "@/lib/project-brain/memory-updater";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
+import { ASYNC_THRESHOLD_FILES } from "@/lib/jobs/inngest-client";
+import { enqueueJob } from "@/lib/jobs/enqueue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +20,16 @@ export async function POST(request: Request) {
     } | null;
     if (!body?.files?.length) {
       return NextResponse.json({ error: "files required." }, { status: 400 });
+    }
+    if (body.files.length > ASYNC_THRESHOLD_FILES) {
+      const queued = await enqueueJob({
+        type: "security.scan",
+        orgId: ctx.orgId,
+        userId: ctx.user.id,
+        projectId: body.projectId ?? `security_${Date.now()}`,
+        files: body.files
+      });
+      return NextResponse.json({ product: "BootRise", jobId: queued.jobId, status: "queued" });
     }
     const action = "basic_security_scan";
     const estimatedCredits = estimateCreditsForAction(action);

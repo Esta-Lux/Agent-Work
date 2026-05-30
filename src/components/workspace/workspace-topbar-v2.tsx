@@ -9,7 +9,7 @@ interface WorkspaceTopbarV2Props {
 export function WorkspaceTopbarV2({ projectName, creditsRemaining }: WorkspaceTopbarV2Props) {
   const creditsLabel = typeof creditsRemaining === "number" ? creditsRemaining.toLocaleString() : "...";
   return (
-    <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border-ws bg-panel-ws px-5">
+    <header data-tour="topbar" className="flex h-[52px] shrink-0 items-center justify-between border-b border-border-ws bg-panel-ws px-5">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-signal text-[11px] font-bold text-white">BR</div>
         <span className="font-serif text-lg italic text-text-ws-1">BootRise</span>

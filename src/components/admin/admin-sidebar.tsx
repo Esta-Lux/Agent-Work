@@ -5,6 +5,10 @@ type AdminSection =
   | "user-health"
   | "self-agent"
   | "readiness"
+  | "jobs"
+  | "sandbox"
+  | "github-app"
+  | "billing"
   | "providers"
   | "data"
   | "usage"
@@ -26,13 +30,17 @@ const groups: Array<{
       { id: "overview", label: "Overview", icon: "OV" },
       { id: "user-health", label: "User Workspace Health", icon: "UH" },
       { id: "self-agent", label: "Self-Agent", icon: "SA", core: true },
-      { id: "readiness", label: "Readiness", icon: "RD" }
+      { id: "readiness", label: "Readiness", icon: "RD" },
+      { id: "jobs", label: "Jobs", icon: "JB" }
     ]
   },
   {
     label: "Systems",
     items: [
       { id: "providers", label: "Providers", icon: "PR" },
+      { id: "sandbox", label: "Sandbox", icon: "SB" },
+      { id: "github-app", label: "GitHub App", icon: "GH" },
+      { id: "billing", label: "Billing", icon: "BL" },
       { id: "data", label: "Data", icon: "DT" },
       { id: "usage", label: "Usage", icon: "US" }
     ]

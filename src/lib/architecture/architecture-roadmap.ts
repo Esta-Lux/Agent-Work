@@ -1,5 +1,6 @@
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { evaluateDeploymentReadiness } from "@/lib/deployment/deployment-readiness";
+import { getAppTypeTemplate, type AppType } from "@/lib/architecture/app-type-templates";
 import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 
 interface RepoSignals {
@@ -66,6 +67,29 @@ function detectAppType(signals: RepoSignals, brief?: Partial<ProjectBrief>): str
   return parts.join(" ");
 }
 
+function detectTemplateAppType(signals: RepoSignals, files: SourceFileInput[], brief?: Partial<ProjectBrief>): AppType {
+  const text = [
+    brief?.productName,
+    brief?.audience,
+    brief?.primaryWorkflow,
+    ...files.slice(0, 80).flatMap((file) => [file.path, file.content.slice(0, 400)])
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n")
+    .toLowerCase();
+
+  if (/map|route|navigation|location|gps|trip|driver|travel/.test(text)) return "navigation_location";
+  if (/coach|health|wellness|patient|fitness|nutrition/.test(text)) return "health_coaching";
+  if (/marketplace|seller|buyer|listing|vendor/.test(text)) return "marketplace";
+  if (/ecommerce|commerce|cart|checkout|product|order/.test(text) || signals.hasStripe) return "ecommerce";
+  if (/ai|chat|model|prompt|agent|llm/.test(text)) return "ai_app";
+  if (/developer|repo|github|code|diff|pull request|ci/.test(text)) return "developer_tool";
+  if (/community|social|post|comment|moderation/.test(text)) return "social_community";
+  if (signals.hasAdmin && /admin|operator|ops|control/.test(text)) return "internal_admin";
+  if (/workspace|team|project|organization|dashboard/.test(text)) return "saas_workspace";
+  return "unknown";
+}
+
 function detectMaturity(status: ReturnType<typeof evaluateDeploymentReadiness>["status"], files: SourceFileInput[]): ArchitectureRoadmap["currentMaturity"] {
   if (status === "production_ready") return "production_ready";
   if (status === "production_candidate") return "release_candidate";
@@ -83,6 +107,8 @@ export function buildArchitectureRoadmap(input: {
   const deployment = evaluateDeploymentReadiness(files);
   const signals = collectRepoSignals(files);
   const appType = detectAppType(signals, brief);
+  const detectedAppType = detectTemplateAppType(signals, files, brief);
+  const appTypeTemplate = getAppTypeTemplate(detectedAppType);
   const currentMaturity = detectMaturity(deployment.status, files);
   const deploymentBlockers = [
     ...deployment.missingProductionItems,
@@ -138,6 +164,40 @@ export function buildArchitectureRoadmap(input: {
     report?.approvalStatus !== "approved" ? "Do not open a PR until the current patch set is approved and verified." : null
   ].filter((value): value is string => Boolean(value));
 
+  const affectedPolicyFiles = files
+    .map((file) => file.path)
+    .filter((path) => /src\/app|src\/lib|middleware|\.env|supabase|admin|auth|api/.test(path))
+    .slice(0, 5);
+
+  const policyGaps = appTypeTemplate.requiredPolicies
+    .filter((policy) => {
+      const needle = policy.toLowerCase().split(/\s+/)[0] ?? policy.toLowerCase();
+      return !files.some((file) => file.path.toLowerCase().includes(needle) || file.content.toLowerCase().includes(policy.toLowerCase()));
+    })
+    .slice(0, 5)
+    .map((policy, index) => ({
+      policy,
+      severity: index === 0 && (brief?.authRequired || detectedAppType !== "unknown") ? "critical" as const : "warning" as const,
+      affectedFiles: affectedPolicyFiles.length ? affectedPolicyFiles : files.slice(0, 3).map((file) => file.path),
+      recommendedImplementation: [
+        `Define ${policy.toLowerCase()} in the narrowest route/component boundary first.`,
+        "Add an audit or verification signal so operators can see whether the policy is active."
+      ],
+      acceptanceCriteria: [
+        `${(affectedPolicyFiles[0] ?? files[0]?.path ?? "src/app").replace(/\\/g, "/")} documents or enforces ${policy.toLowerCase()}.`,
+        "Verification or review output can prove the policy is not only described in copy."
+      ]
+    }));
+
+  const roadmapToBuildMissions = appTypeTemplate.suggestedBuildPhases.slice(0, 3).map((phase, index) => ({
+    title: phase.title,
+    description: phase.description,
+    priority: index === 0 ? "p0" as const : index === 1 ? "p1" as const : "p2" as const,
+    estimatedWorkUnits: Math.max(1, Math.min(3, phase.targetFiles.length)),
+    targetFiles: phase.targetFiles,
+    requiredBy: appTypeTemplate.displayName
+  }));
+
   const maturityLabel =
     currentMaturity === "production_ready"
       ? "production-ready"
@@ -170,6 +230,10 @@ export function buildArchitectureRoadmap(input: {
     deploymentBlockers,
     suggestedPhases,
     acceptanceCriteria,
-    deferUntilLater
+    deferUntilLater,
+    detectedAppType,
+    appTypeTemplate,
+    policyGaps,
+    roadmapToBuildMissions
   };
 }

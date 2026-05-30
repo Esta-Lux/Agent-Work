@@ -52,7 +52,7 @@ export function WorkflowRailV2(props: WorkflowRailV2Props) {
   const { activeStep, repoConnected, onStepChange } = props;
   const activeIndex = steps.findIndex((step) => step.id === activeStep);
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col border-r border-border-ws bg-panel-ws p-3">
+    <aside data-tour="workflow-rail" className="flex w-[220px] shrink-0 flex-col border-r border-border-ws bg-panel-ws p-3">
       <div className="mb-3 px-2 font-mono text-[10px] uppercase tracking-widest text-text-ws-3">Workflow</div>
       <ol className="space-y-1">
         {steps.map((step, index) => {

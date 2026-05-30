@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
+import { OnboardingChecklist } from "@/components/workspace/onboarding-checklist";
 import { OperationPanelV2 } from "@/components/workspace/operation-panel-v2";
 import { RepoFileEditor } from "@/components/workspace/repo-file-editor";
 import { RepoFileExplorer, type FileNode } from "@/components/workspace/repo-file-explorer";
@@ -12,6 +13,10 @@ import { WorkspaceTopbarV2 } from "@/components/workspace/workspace-topbar-v2";
 import { WorkflowRailV2, type WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
 import type { WorkspaceProvider, WorkspaceRole, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
+import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
+import type { DeploymentReadinessResult, SecurityFinding } from "@/lib/security/types";
+import { deriveOnboardingState, type OnboardingState } from "@/lib/onboarding/onboarding-state";
+import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -75,6 +80,16 @@ export function WorkspaceShellV2() {
   const [roadmap, setRoadmap] = useState<ArchitectureRoadmap | null>(null);
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [draftPrMessage, setDraftPrMessage] = useState<string | null>(null);
+  const [workUnitPlan, setWorkUnitPlan] = useState<WorkUnitPlan | null>(null);
+  const [workUnitApproved, setWorkUnitApproved] = useState(false);
+  const [securityFindings, setSecurityFindings] = useState<SecurityFinding[] | null>(null);
+  const [securityScore, setSecurityScore] = useState<number | null>(null);
+  const [securityCriticalCount, setSecurityCriticalCount] = useState<number | null>(null);
+  const [deploymentReadiness, setDeploymentReadiness] = useState<DeploymentReadinessResult | null>(null);
+  const [deploymentCheckedAt, setDeploymentCheckedAt] = useState<string | null>(null);
+  const [providerDuelResults, setProviderDuelResults] = useState<ProviderDuelResult[]>([]);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const roadmapRequestRef = useRef<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
@@ -93,6 +108,17 @@ export function WorkspaceShellV2() {
   const securityBlockers = roadmap?.deploymentBlockers.length ?? 0;
   const deployStatus =
     !roadmap ? "unknown" : roadmap.deploymentBlockers.length > 0 || roadmap.productionReadiness === "blocked" ? "failed" : "ready";
+  const onboardingState: OnboardingState = deriveOnboardingState({
+    repoConnected,
+    brainIndexed: repoConnected,
+    roadmapReady: Boolean(roadmap),
+    fixRequest,
+    hasReport: Boolean(report),
+    patchApproved: report?.approvalStatus === "approved",
+    verified: Boolean(sandboxLog),
+    exported: Boolean(exportMessage || draftPrMessage),
+    dismissed: onboardingDismissed
+  });
 
   useEffect(() => {
     void refreshPlatform();
@@ -205,9 +231,13 @@ export function WorkspaceShellV2() {
     }
   }
 
-  async function runFix() {
+  async function runFix(options?: { skipWorkUnitPlanning?: boolean }) {
     if (!repoConnected) return setIssue("Connect a repo before running Fix.");
     if (!fixRequest.trim()) return setIssue("Describe one scoped change before running Fix.");
+    if (!options?.skipWorkUnitPlanning && !workUnitApproved) {
+      const planned = await planWorkUnitsForFix();
+      if (planned?.requiresMultiPass) return;
+    }
     setBusy(true);
     setStatus("Running Fix");
     try {
@@ -228,6 +258,8 @@ export function WorkspaceShellV2() {
       const data = (await res.json()) as { report?: WorkspaceFixReport; repositoryId?: string; pendingFixId?: string; error?: string };
       if (!res.ok || !data.report) throw new Error(data.error ?? "Fix failed.");
       setReport(data.report);
+      setWorkUnitPlan(null);
+      setWorkUnitApproved(false);
       setRepositoryId(data.repositoryId ?? data.report.repositoryId ?? repositoryId);
       setActiveStep("verify");
       setIssue(null);
@@ -239,6 +271,49 @@ export function WorkspaceShellV2() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function planWorkUnitsForFix(): Promise<WorkUnitPlan | null> {
+    setBusy(true);
+    setStatus("Planning work units");
+    try {
+      const res = await fetch("/api/workspace/work-units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          taskDescription: fixRequest,
+          scopedFiles: selectedPath ? [selectedPath] : [],
+          repoFiles: apiFiles
+        })
+      });
+      const data = (await res.json()) as { workUnitPlan?: WorkUnitPlan; error?: string };
+      if (!res.ok || !data.workUnitPlan) throw new Error(data.error ?? "Work unit planning failed.");
+      setWorkUnitPlan(data.workUnitPlan);
+      setStatus(data.workUnitPlan.requiresMultiPass ? "Work unit plan ready" : "Work unit plan clear");
+      if (!data.workUnitPlan.requiresMultiPass) {
+        setWorkUnitApproved(true);
+      }
+      setIssue(null);
+      return data.workUnitPlan;
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Work unit planning failed.");
+      setStatus("Blocked");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function proceedWithScopedFix() {
+    setWorkUnitApproved(true);
+    void runFix({ skipWorkUnitPlanning: true });
+  }
+
+  function simplifyFixRequest() {
+    setWorkUnitPlan(null);
+    setWorkUnitApproved(false);
+    setStatus("Ready");
   }
 
   async function runVerify() {
@@ -291,6 +366,7 @@ export function WorkspaceShellV2() {
   function primaryAction() {
     if (!repoConnected || activeStep === "connect") void importRepo();
     else if (activeStep === "brief") setActiveStep("fix");
+    else if (activeStep === "fix" && workUnitPlan?.requiresMultiPass) proceedWithScopedFix();
     else if (activeStep === "fix") void runFix();
     else if (activeStep === "verify") void runVerify();
     else void exportBundle();
@@ -382,7 +458,7 @@ export function WorkspaceShellV2() {
     }
   }
 
-  async function openDraftPr() {
+  async function openDraftPr(input?: { commitMessage?: string; prTitle?: string; prBody?: string; draft?: boolean }) {
     if (!report?.pendingFixId) return setIssue("Approve a pending fix before opening a draft PR.");
     if (report.approvalStatus !== "approved") return setIssue("Approve the patch before opening a draft PR.");
     if (!githubUrl.trim()) return setIssue("Connect a GitHub repository before opening a draft PR.");
@@ -398,7 +474,11 @@ export function WorkspaceShellV2() {
           pendingFixId: report.pendingFixId,
           remoteUrl: githubUrl.trim(),
           branch: githubBranch,
-          projectId: repositoryId ?? report.repositoryId
+          projectId: repositoryId ?? report.repositoryId,
+          commitMessage: input?.commitMessage,
+          prTitle: input?.prTitle,
+          prBody: input?.prBody,
+          draft: input?.draft ?? true
         })
       });
       const data = (await res.json()) as {
@@ -417,6 +497,85 @@ export function WorkspaceShellV2() {
       setActiveStep("export");
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Draft PR creation failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runSecurityScan() {
+    if (!repoConnected) return setIssue("Connect a repo before running a security scan.");
+    setBusy(true);
+    setStatus("Running security scan");
+    try {
+      const res = await fetch("/api/workspace/security/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ files: apiFiles, projectId: repositoryId ?? undefined })
+      });
+      const data = (await res.json()) as { findings?: SecurityFinding[]; score?: number; criticalCount?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Security scan failed.");
+      setSecurityFindings(data.findings ?? []);
+      setSecurityScore(typeof data.score === "number" ? data.score : null);
+      setSecurityCriticalCount(typeof data.criticalCount === "number" ? data.criticalCount : 0);
+      setIssue(null);
+      setStatus("Security scan complete");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Security scan failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runDeploymentReadiness() {
+    if (!repoConnected) return setIssue("Connect a repo before running deployment readiness.");
+    setBusy(true);
+    setStatus("Running deploy readiness");
+    try {
+      const res = await fetch("/api/workspace/deploy/readiness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ files: apiFiles })
+      });
+      const data = (await res.json()) as { report?: DeploymentReadinessResult; error?: string };
+      if (!res.ok || !data.report) throw new Error(data.error ?? "Deployment readiness failed.");
+      setDeploymentReadiness(data.report);
+      setDeploymentCheckedAt(new Date().toLocaleString());
+      setIssue(null);
+      setStatus("Deploy readiness complete");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Deployment readiness failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runProviderDuel() {
+    if (!fixRequest.trim()) return setIssue("Describe a task before running Provider Duel.");
+    setBusy(true);
+    setStatus("Comparing providers");
+    try {
+      const res = await fetch("/api/workspace/provider-duel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          task: fixRequest,
+          files: apiFiles,
+          premiumAllowed: provider === "openai" || speed === "premium"
+        })
+      });
+      const data = (await res.json()) as { results?: ProviderDuelResult[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Provider Duel failed.");
+      setProviderDuelResults(data.results ?? []);
+      setIssue(null);
+      setStatus("Provider Duel complete");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Provider Duel failed.");
       setStatus("Blocked");
     } finally {
       setBusy(false);
@@ -452,10 +611,15 @@ export function WorkspaceShellV2() {
         onProviderChange={setProvider}
         onSpeedChange={setSpeed}
         onPrimaryAction={primaryAction}
+        onShowOnboarding={() => {
+          setOnboardingDismissed(false);
+          setTourOpen(true);
+        }}
       />
+      {tourOpen ? <OnboardingChecklist state={onboardingState} mode="tour" onDismiss={() => setTourOpen(false)} /> : null}
       <div className="grid min-h-[calc(100vh-244px)] flex-1 grid-cols-[220px_minmax(0,1fr)_320px]">
         <WorkflowRailV2 activeStep={activeStep} repoConnected={repoConnected} onStepChange={(step) => (!repoConnected && step !== "connect" ? undefined : setActiveStep(step))} />
-        <main className="min-w-0 bg-surface-ws">
+        <main data-tour="file-workspace" className="min-w-0 bg-surface-ws">
           {repoConnected ? (
             <div className="grid h-full min-h-[520px] grid-cols-[260px_minmax(0,1fr)]">
               <RepoFileExplorer files={fileTree} selectedPath={selectedPath} onSelect={setSelectedPath} />
@@ -509,6 +673,13 @@ export function WorkspaceShellV2() {
           roadmapLoading={roadmapLoading}
           report={report}
           draftPrMessage={draftPrMessage}
+          workUnitPlan={workUnitPlan}
+          securityFindings={securityFindings}
+          securityScore={securityScore}
+          securityCriticalCount={securityCriticalCount}
+          deploymentReadiness={deploymentReadiness}
+          deploymentCheckedAt={deploymentCheckedAt}
+          providerDuelResults={providerDuelResults}
           busy={busy}
           onGithubUrlChange={setGithubUrl}
           onGithubBranchChange={setGithubBranch}
@@ -519,6 +690,11 @@ export function WorkspaceShellV2() {
           onLoadBranches={loadBranches}
           onOpenDocs={() => window.open("/docs/GITHUB_APP.md", "_blank", "noreferrer")}
           onOpenDraftPr={openDraftPr}
+          onProceedWithScopedFix={proceedWithScopedFix}
+          onSimplifyFixRequest={simplifyFixRequest}
+          onRunSecurityScan={runSecurityScan}
+          onRunDeploymentReadiness={runDeploymentReadiness}
+          onRunProviderDuel={runProviderDuel}
         />
       </div>
     </div>

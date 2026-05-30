@@ -7,6 +7,7 @@ import { applyPatchesToFiles } from "@/lib/workspace/apply-patches";
 import { pushFilesToGithub } from "@/lib/workspace/github-push";
 import { createDraftPullRequest } from "@/lib/workspace/github-pr";
 import { buildBootRisePrBodyFromPendingFix } from "@/lib/github/pr-body-builder";
+import { buildWorkspacePrBody } from "@/lib/workspace/pr-body-builder";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { appendLedgerEvent } from "@/lib/workspace/living-ledger-timeline";
 
@@ -21,6 +22,10 @@ export async function POST(request: Request) {
       remoteUrl?: string;
       branch?: string;
       projectId?: string;
+      commitMessage?: string;
+      prTitle?: string;
+      prBody?: string;
+      draft?: boolean;
     } | null;
 
     if (!body?.pendingFixId?.trim() || !body.remoteUrl?.trim()) {
@@ -38,6 +43,22 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (pending.patches.length === 0) {
+      return NextResponse.json({ error: "Changed files are required before opening a draft PR." }, { status: 400 });
+    }
+
+    const commitMessage = body.commitMessage?.trim() || `BootRise: ${pending.request.slice(0, 62)}`;
+    if (!commitMessage) {
+      return NextResponse.json({ error: "Commit message is required." }, { status: 400 });
+    }
+    if (commitMessage.length > 72) {
+      return NextResponse.json({ error: "Commit message must be 72 characters or fewer." }, { status: 400 });
+    }
+
+    const forbiddenTargetBranch = body.branch?.trim() && /^(main|master)$/i.test(body.branch.trim());
+    if (forbiddenTargetBranch && body.branch?.startsWith("bootrise/")) {
+      return NextResponse.json({ error: "Self-agent target branches cannot be main or master." }, { status: 400 });
+    }
 
     const action = "draft_pr";
     const estimatedCredits = estimateCreditsForAction(action);
@@ -46,7 +67,25 @@ export async function POST(request: Request) {
     const appliedPatches = pending.patches.map((p) => ({ ...p, applied: true }));
     const { files } = applyPatchesToFiles(pending.filesSnapshot, appliedPatches);
     const patchedPaths = pending.patches.map((p) => p.path);
-    const prBody = buildBootRisePrBodyFromPendingFix(pending);
+    const prBody = body.prBody?.trim() || buildWorkspacePrBody({
+      taskDescription: pending.request,
+      changedFiles: pending.patches.map((patch) => ({
+        path: patch.path,
+        added: Math.max(0, patch.after.split("\n").length - patch.before.split("\n").length),
+        removed: Math.max(0, patch.before.split("\n").length - patch.after.split("\n").length)
+      })),
+      blastRadiusSummary: pending.plan.impact.blastRadius.join("\n") || "Review BootRise workspace blast radius.",
+      controlGateResult: {
+        passed: pending.controlLayer?.canApprove !== false,
+        summary: pending.controlLayer?.stopReason ?? pending.controlLayer?.agentCoordination.leadSummary ?? "Control layer did not report blockers."
+      },
+      securityScanStatus: "not_run",
+      completionEvaluatorResult: {
+        passed: pending.controlLayer?.taskCompletion.passed ?? true,
+        summary: pending.controlLayer?.taskCompletion.summary ?? "Completion evaluator result was not persisted."
+      },
+      bootRiseVersion: "alpha"
+    }) || buildBootRisePrBodyFromPendingFix(pending);
     const baseBranch = body.branch?.trim() || "main";
 
     try {
@@ -55,16 +94,16 @@ export async function POST(request: Request) {
         baseBranch,
         files,
         onlyPaths: patchedPaths,
-        commitMessage: `BootRise: ${pending.request.slice(0, 72)}`
+        commitMessage
       });
 
       const pr = await createDraftPullRequest({
         remoteUrl: body.remoteUrl.trim(),
         headBranch: push.branch,
         baseBranch,
-        title: `BootRise: ${pending.request.slice(0, 80)}`,
+        title: body.prTitle?.trim() || `BootRise: ${pending.request.slice(0, 80)}`,
         body: prBody,
-        draft: true
+        draft: body.draft ?? true
       });
 
       void chargeCredits({
@@ -88,7 +127,7 @@ export async function POST(request: Request) {
           head_branch: push.branch,
           pr_number: pr.prNumber,
           pr_url: pr.prUrl,
-          title: `BootRise: ${pending.request.slice(0, 80)}`,
+          title: body.prTitle?.trim() || `BootRise: ${pending.request.slice(0, 80)}`,
           body: prBody,
           status: "created"
         });

@@ -6,6 +6,7 @@ import { MissionCard } from "@/components/ui/mission-card";
 import { ProviderCard } from "@/components/ui/provider-card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusPill } from "@/components/ui/status-pill";
+import Link from "next/link";
 
 interface ReadinessItem {
   area: string;
@@ -167,6 +168,25 @@ export function AdminOverview() {
         />
       </section>
 
+      <section className="rounded-lg border border-border-admin bg-panel-admin p-4">
+        <h2 className="text-sm font-semibold text-text-admin-1">Alpha operational layers</h2>
+        <p className="mt-1 text-sm text-text-admin-2">Phase 10-15 surfaces are exposed as explicit Ops sections so they are easy to validate during alpha.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {[
+            ["Jobs", "/admin/jobs", "Background worker monitor"],
+            ["Sandbox", "/admin/sandbox", "Execution isolation readiness"],
+            ["GitHub App", "/admin/github-app", "Repo access readiness"],
+            ["Billing", "/admin/billing", "Paid beta readiness"],
+            ["User Health", "/admin/user-health", "Live workspace probes"]
+          ].map(([label, href, detail]) => (
+            <Link key={href} href={href} className="rounded-lg bg-surface-admin p-3 hover:bg-signal-glow">
+              <p className="text-sm font-semibold text-text-admin-1">{label}</p>
+              <p className="mt-1 text-xs leading-5 text-text-admin-2">{detail}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-lg border border-border-admin bg-panel-admin p-4">
           <h2 className="text-sm font-semibold text-text-admin-1">Recent control events</h2>
@@ -204,4 +224,3 @@ export function AdminOverview() {
     </div>
   );
 }
-

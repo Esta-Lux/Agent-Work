@@ -12,11 +12,21 @@ interface WorkspaceHealthCheck {
   detail: string;
 }
 
+interface SyntheticWorkspaceProbe {
+  route: string;
+  method: "GET" | "POST";
+  status: number | null;
+  responseTimeMs: number;
+  result: "pass" | "fail" | "skip";
+  error?: string;
+}
+
 interface UserWorkspaceHealthResponse {
   report?: {
     healthy: boolean;
     score: number;
     checks: WorkspaceHealthCheck[];
+    syntheticChecks?: SyntheticWorkspaceProbe[];
   };
   error?: string;
 }
@@ -24,6 +34,7 @@ interface UserWorkspaceHealthResponse {
 export function UserWorkspaceHealthPage() {
   const [data, setData] = useState<UserWorkspaceHealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syntheticBusy, setSyntheticBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +53,21 @@ export function UserWorkspaceHealthPage() {
   }, []);
 
   const report = data?.report;
+
+  async function runSyntheticChecks() {
+    setSyntheticBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/user-workspace-health?synthetic=true");
+      const body = (await res.json()) as UserWorkspaceHealthResponse;
+      if (!res.ok) throw new Error(body.error ?? "Live health checks failed.");
+      setData(body);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Live health checks failed.");
+    } finally {
+      setSyntheticBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -65,6 +91,45 @@ export function UserWorkspaceHealthPage() {
           value={report ? `${report.checks.filter((check) => check.status === "healthy").length}/${report.checks.length}` : "--"}
           status={report?.healthy ? "healthy" : "warning"}
         />
+      </section>
+
+      <section className="rounded-lg border border-border-admin bg-panel-admin p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-text-admin-1">Live route probes</h2>
+            <p className="mt-1 text-xs text-text-admin-3">Synthetic checks run only when requested and reuse the current admin session.</p>
+          </div>
+          <button
+            type="button"
+            className="h-9 rounded-lg border border-border-admin px-3 text-sm font-medium text-text-admin-2 hover:bg-surface-admin disabled:opacity-60"
+            disabled={syntheticBusy}
+            onClick={runSyntheticChecks}
+          >
+            {syntheticBusy ? "Running..." : "Run live health checks"}
+          </button>
+        </div>
+        {report?.syntheticChecks?.length ? (
+          <div className="mt-4 overflow-hidden rounded-lg border border-border-admin">
+            <div className="grid grid-cols-[1fr_80px_80px_120px_90px] bg-surface-admin px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-text-admin-3">
+              <span>Route</span>
+              <span>Method</span>
+              <span>Status</span>
+              <span>Response</span>
+              <span>Result</span>
+            </div>
+            {report.syntheticChecks.map((probe) => (
+              <div key={`${probe.method}:${probe.route}`} className="grid grid-cols-[1fr_80px_80px_120px_90px] items-center gap-2 border-t border-border-admin px-3 py-2 text-xs">
+                <span className="truncate font-mono text-text-admin-2" title={probe.error ? `${probe.route} - ${probe.error}` : probe.route}>{probe.route}</span>
+                <span className="font-mono text-text-admin-3">{probe.method}</span>
+                <span className="font-mono text-text-admin-2">{probe.status ?? "--"}</span>
+                <span className="font-mono text-text-admin-2">{probe.responseTimeMs}ms</span>
+                <StatusPill variant={probe.result === "pass" ? "signal" : probe.result === "skip" ? "amber" : "red"} label={probe.result} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-text-admin-3">No live route probes have run in this session.</p>
+        )}
       </section>
 
       <section className="rounded-lg border border-border-admin bg-panel-admin p-4">

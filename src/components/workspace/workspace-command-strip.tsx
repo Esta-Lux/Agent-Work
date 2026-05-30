@@ -22,6 +22,7 @@ interface WorkspaceCommandStripProps {
   onProviderChange: (provider: WorkspaceProvider) => void;
   onSpeedChange: (speed: WorkspaceSpeed) => void;
   onPrimaryAction: () => void;
+  onShowOnboarding?: () => void;
 }
 
 const actionLabel: Record<WorkspaceV2Step, string> = {
@@ -49,7 +50,8 @@ export function WorkspaceCommandStrip({
   onRoleChange,
   onProviderChange,
   onSpeedChange,
-  onPrimaryAction
+  onPrimaryAction,
+  onShowOnboarding
 }: WorkspaceCommandStripProps) {
   const creditsLabel = typeof creditsRemaining === "number" ? creditsRemaining.toLocaleString() : "-";
   const nextAction =
@@ -58,7 +60,7 @@ export function WorkspaceCommandStrip({
       : "Connect a GitHub repository or upload files to begin.";
 
   return (
-    <section className="border-b border-border-ws bg-gradient-to-r from-card-ws to-signal-glow px-5 py-4">
+    <section data-tour="command-center" className="border-b border-border-ws bg-gradient-to-r from-card-ws to-signal-glow px-5 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="font-mono text-[9px] font-medium uppercase tracking-widest text-signal-text">BootRise Command Center</p>
@@ -66,6 +68,7 @@ export function WorkspaceCommandStrip({
           <p className="mt-1 text-xs text-text-ws-2">{nextAction}</p>
         </div>
         <div className="flex items-center gap-2">
+          {onShowOnboarding ? <CommandButton theme="workspace" variant="ghost" size="sm" label="Guide" onClick={onShowOnboarding} /> : null}
           <ModePopover role={role} provider={provider} speed={speed} onRoleChange={onRoleChange} onProviderChange={onProviderChange} onSpeedChange={onSpeedChange} />
           <CommandButton theme="workspace" variant="primary" size="lg" label={repoConnected ? actionLabel[activeStep] : "Connect repo"} loading={busy} onClick={onPrimaryAction} />
         </div>

@@ -14,6 +14,23 @@ export interface TaskCompletionEvaluation {
   summary: string;
   findings: TaskCompletionFinding[];
   coveredDomains: string[];
+  reachabilityChecks: ReachabilityCheck[];
+}
+
+export type ReachabilityCheckType =
+  | "component_not_imported"
+  | "hook_not_used"
+  | "route_no_caller"
+  | "env_var_undocumented"
+  | "db_field_no_migration"
+  | "auth_guard_removed"
+  | "dead_code_only_changed";
+
+export interface ReachabilityCheck {
+  type: ReachabilityCheckType;
+  filePath: string;
+  detail: string;
+  severity: "blocker" | "warning";
 }
 
 type TaskDomain = "frontend" | "backend" | "data" | "tests" | "docs" | "ops";
@@ -100,6 +117,13 @@ export function evaluateTaskCompletion(input: {
       message: "New environment variables appear in code, but docs or deployment config were not updated."
     });
   }
+  const reachabilityChecks = evaluateReachability(input.patches);
+  for (const check of reachabilityChecks) {
+    findings.push({
+      severity: check.severity === "blocker" ? "block" : "warning",
+      message: check.detail
+    });
+  }
 
   return {
     passed: findings.every((finding) => finding.severity !== "block"),
@@ -108,6 +132,69 @@ export function evaluateTaskCompletion(input: {
       ? "Task completion evaluator found gaps between the request, plan, and generated patch."
       : "Task completion evaluator found no obvious completion gaps.",
     findings,
-    coveredDomains: [...changedDomains]
+    coveredDomains: [...changedDomains],
+    reachabilityChecks
   };
+}
+
+function evaluateReachability(patches: ProposedPatch[]): ReachabilityCheck[] {
+  const checks: ReachabilityCheck[] = [];
+  const changedPaths = new Set(patches.map((patch) => patch.path));
+  const afterCorpus = patches.map((patch) => patch.after).join("\n");
+
+  for (const patch of patches) {
+    const isNew = !patch.before.trim() && patch.after.trim();
+    const basename = patch.path.split("/").pop()?.replace(/\.(tsx?|jsx?)$/, "") ?? patch.path;
+    if (isNew && /components\/.*\.tsx$/i.test(patch.path) && !afterCorpus.includes(`<${basename}`) && !afterCorpus.includes(`from "./${basename}`)) {
+      checks.push({
+        type: "component_not_imported",
+        filePath: patch.path,
+        detail: `New component ${patch.path} is not imported or rendered in the changed patch set.`,
+        severity: "blocker"
+      });
+    }
+    if (isNew && /use[A-Z].*\.ts$/i.test(basename) && !afterCorpus.includes(`${basename}(`)) {
+      checks.push({
+        type: "hook_not_used",
+        filePath: patch.path,
+        detail: `New hook ${patch.path} is not used in the changed patch set.`,
+        severity: "warning"
+      });
+    }
+    if (isNew && /\/api\/.*route\.ts$/i.test(patch.path) && !afterCorpus.includes(patch.path.replace(/^src\/app/, "").replace(/\/route\.ts$/, ""))) {
+      checks.push({
+        type: "route_no_caller",
+        filePath: patch.path,
+        detail: `New API route ${patch.path} has no changed caller.`,
+        severity: "warning"
+      });
+    }
+    if (ENV_VAR_PATTERN.test(patch.after) && !changedPaths.has(".env.example")) {
+      checks.push({
+        type: "env_var_undocumented",
+        filePath: patch.path,
+        detail: `Environment variables introduced in ${patch.path} are not documented in .env.example.`,
+        severity: "blocker"
+      });
+    }
+    if (/require(Admin|Workspace|Auth)|with(Admin|Workspace)Auth/.test(patch.before) && !/require(Admin|Workspace|Auth)|with(Admin|Workspace)Auth/.test(patch.after)) {
+      checks.push({
+        type: "auth_guard_removed",
+        filePath: patch.path,
+        detail: `Auth guard appears to be removed from ${patch.path}.`,
+        severity: "blocker"
+      });
+    }
+  }
+
+  if (patches.length > 0 && patches.every((patch) => /unused|dead code/i.test(patch.summary))) {
+    checks.push({
+      type: "dead_code_only_changed",
+      filePath: patches[0]?.path ?? "unknown",
+      detail: "Patch set appears to change only dead-code areas.",
+      severity: "warning"
+    });
+  }
+
+  return checks;
 }

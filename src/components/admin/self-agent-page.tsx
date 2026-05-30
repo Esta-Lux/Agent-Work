@@ -16,6 +16,23 @@ interface GithubStatus {
   error?: string;
 }
 
+interface SelfAgentScope {
+  missionId: string;
+  workUnits: Array<{
+    id: string;
+    label: string;
+    domain: string;
+    targetFiles: string[];
+    readOnlyFiles: string[];
+    description: string;
+    riskLevel: "low" | "medium" | "high";
+  }>;
+  totalFilesAffected: number;
+  estimatedRiskLevel: "low" | "medium" | "high";
+  scopeSummary: string;
+  safetyNote: string;
+}
+
 export function SelfAgentPage() {
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [missions, setMissions] = useState<AdminBuildMission[]>([]);
@@ -30,6 +47,7 @@ export function SelfAgentPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState<SelfAgentScope | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,33 +82,30 @@ export function SelfAgentPage() {
     }
   }
 
-  async function createMission() {
-    if (!selectedTemplate) return;
+  async function planMissionScope() {
     setBusy(true);
     setError(null);
     setMessage(null);
+    setScope(null);
     try {
-      const res = await fetch("/api/admin/build-missions", {
+      const res = await fetch("/api/admin/self-agent/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "create",
-          title,
-          targetSurface: selectedTemplate.targetSurface,
-          objective,
-          affectedFiles: selectedTemplate.likelyFiles,
-          forbiddenFiles: selectedTemplate.forbiddenFiles,
-          acceptanceCriteria: selectedTemplate.acceptanceCriteria,
-          riskLevel: selectedTemplate.riskLevel,
-          generatedFrom: "template"
+          mission: {
+            title,
+            description: objective,
+            targetBranch
+          }
         })
       });
-      const data = (await res.json()) as { mission?: AdminBuildMission; error?: string };
-      if (!res.ok || !data.mission) throw new Error(data.error ?? "Mission creation failed.");
-      setMissions((current) => [data.mission as AdminBuildMission, ...current.filter((mission) => mission.id !== data.mission?.id)].slice(0, 10));
-      setMessage(`Mission created for ${targetBranch}. Patch generation is intentionally not started yet.`);
+      const data = (await res.json()) as { adminBuildMission?: AdminBuildMission; scope?: SelfAgentScope; error?: string };
+      if (!res.ok || !data.adminBuildMission || !data.scope) throw new Error(data.error ?? "Scope planning failed.");
+      setMissions((current) => [data.adminBuildMission as AdminBuildMission, ...current.filter((mission) => mission.id !== data.adminBuildMission?.id)].slice(0, 10));
+      setScope(data.scope);
+      setMessage(`Scope planned for ${targetBranch}. Patch generation is intentionally not started yet.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Mission creation failed.");
+      setError(caught instanceof Error ? caught.message : "Scope planning failed.");
     } finally {
       setBusy(false);
     }
@@ -110,6 +125,7 @@ export function SelfAgentPage() {
         <StatusCard title="Target branch" value={targetBranch || "not set"} variant={targetBranch ? "signal" : "amber"} />
       </section>
       {status?.error ? <BlockerRow severity="warning" title="GitHub status unavailable" description={status.error} /> : null}
+      {isProtectedBranch(targetBranch) ? <BlockerRow severity="critical" title="Protected branch blocked" description="Self-Agent missions cannot target branch names containing main or master." /> : null}
       {error ? <BlockerRow severity="warning" title="Self-Agent action failed" description={error} /> : null}
       {message ? <BlockerRow severity="info" title="Mission staged" description={message} /> : null}
 
@@ -144,13 +160,15 @@ export function SelfAgentPage() {
               <input className="h-10 w-full rounded-lg border border-border-admin bg-white px-3 font-mono text-sm text-text-admin-1" value={targetBranch} onChange={(event) => setTargetBranch(event.target.value)} />
             </Field>
             <div className="flex justify-end">
-              <CommandButton theme="admin" variant="primary" size="md" label="Create mission" loading={busy} disabled={!title.trim() || !objective.trim()} onClick={createMission} />
+              <CommandButton theme="admin" variant="primary" size="md" label="Plan mission scope" loading={busy} disabled={!title.trim() || !objective.trim() || !targetBranch.trim() || isProtectedBranch(targetBranch)} onClick={planMissionScope} />
             </div>
           </div>
         </div>
 
         {selectedTemplate ? <TemplatePreview template={selectedTemplate} /> : null}
       </section>
+
+      {scope ? <ScopePreview scope={scope} /> : null}
 
       <section className="rounded-lg border border-border-admin bg-panel-admin p-4">
         <p className="font-mono text-xs font-medium uppercase tracking-widest text-text-admin-3">Mission surfaces</p>
@@ -207,6 +225,34 @@ function TemplatePreview({ template }: { template: AdminBuildTemplate }) {
   );
 }
 
+function ScopePreview({ scope }: { scope: SelfAgentScope }) {
+  return (
+    <section className="rounded-lg border border-border-admin bg-panel-admin p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-mono text-xs font-medium uppercase tracking-widest text-text-admin-3">Planned scope</p>
+          <h2 className="mt-1 text-sm font-semibold text-text-admin-1">{scope.scopeSummary}</h2>
+          <p className="mt-1 text-sm text-text-admin-2">{scope.safetyNote}</p>
+        </div>
+        <StatusPill variant={scope.estimatedRiskLevel === "high" ? "red" : scope.estimatedRiskLevel === "medium" ? "amber" : "signal"} label={`${scope.estimatedRiskLevel} risk`} />
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {scope.workUnits.map((unit) => (
+          <article key={unit.id} className="rounded-lg bg-surface-admin p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-text-admin-1">{unit.label}</p>
+              <StatusPill variant={unit.riskLevel === "high" ? "red" : unit.riskLevel === "medium" ? "amber" : "signal"} label={unit.domain} />
+            </div>
+            <p className="mt-2 text-xs leading-5 text-text-admin-2">{unit.description}</p>
+            <PreviewList title="Target files" items={unit.targetFiles} />
+            <PreviewList title="Read-only files" items={unit.readOnlyFiles} />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PreviewList({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="mt-4">
@@ -235,6 +281,10 @@ function riskVariant(risk: AdminBuildTemplate["riskLevel"]) {
   if (risk === "critical" || risk === "high") return "red";
   if (risk === "medium") return "amber";
   return "signal";
+}
+
+function isProtectedBranch(branch: string): boolean {
+  return /main|master/i.test(branch.trim());
 }
 
 function StatusCard({ title, value, variant }: { title: string; value: string; variant: "signal" | "amber" }) {

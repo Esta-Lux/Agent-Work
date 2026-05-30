@@ -7,6 +7,8 @@ import { createOrGetProjectBrain } from "@/lib/project-brain/project-brain-store
 import { indexProjectFiles } from "@/lib/project-brain/file-indexer";
 import { buildModuleIndex } from "@/lib/project-brain/module-indexer";
 import { addArchitectureMemory } from "@/lib/project-brain/memory-updater";
+import { ASYNC_THRESHOLD_FILES } from "@/lib/jobs/inngest-client";
+import { enqueueJob } from "@/lib/jobs/enqueue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +32,22 @@ export async function POST(request: Request) {
 
     const result = analyzeWorkspaceFiles(files);
     const projectId = body?.projectId?.trim() || repositoryId || `proj_analysis_${Date.now()}`;
+    if (files.length > ASYNC_THRESHOLD_FILES) {
+      const queued = await enqueueJob({
+        type: "projectBrain.build",
+        orgId: ctx.orgId,
+        userId: ctx.user.id,
+        projectId,
+        repositoryId,
+        files
+      });
+      return NextResponse.json({
+        product: "BootRise",
+        jobId: queued.jobId,
+        status: "queued",
+        ...result
+      });
+    }
     await createOrGetProjectBrain({
       orgId: ctx.orgId,
       projectId,
