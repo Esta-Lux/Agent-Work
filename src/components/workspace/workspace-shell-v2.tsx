@@ -21,13 +21,11 @@ import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
 import type { ProjectBrainV2 } from "@/lib/project-brain/project-brain-v2";
 import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
 import type { ProductBrain } from "@/lib/product-brain/product-brain-types";
-import { buildProductBrainContext } from "@/lib/product-brain/product-brain-query";
+import { buildProductBrainContext } from "@/lib/product-brain/product-brain-context";
 import {
   runArchitectConversationAgent,
   type ArchitectConversationResult
 } from "@/lib/agents/user/architect-conversation-agent";
-import { appendAgentEventLog } from "@/lib/memory/agent-event-log";
-import { upsertAgentMemory } from "@/lib/memory/agent-memory-store";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -356,9 +354,6 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Fix report ready");
       setDraftPrMessage(null);
-      if (repositoryId) {
-        appendAgentEventLog({ projectId: repositoryId, event: "task_patched", detail: fixRequest.slice(0, 160) });
-      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");
@@ -445,9 +440,6 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setWorkUnitApproved(true);
       setActiveStep("verify");
-      if (repositoryId) {
-        appendAgentEventLog({ projectId: repositoryId, event: "multi_pass_completed", detail: `${data.result.executions.length} work units` });
-      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Multi-pass execution failed.");
       setStatus("Blocked");
@@ -498,31 +490,12 @@ export function WorkspaceShellV2() {
   function approveArchitectAssumptions() {
     setArchitectAssumptionsApproved(true);
     void refreshProductBrain(`Approved assumption: ${architectConversation?.question ?? architectConversation?.message ?? "Architect assumptions approved."}`);
-    if (repositoryId) {
-      upsertAgentMemory({
-        projectId: repositoryId,
-        key: "approved_assumption",
-        value: architectConversation?.question ?? "Architect assumptions approved."
-      });
-      appendAgentEventLog({
-        projectId: repositoryId,
-        event: "architect_assumption_approved",
-        detail: architectConversation?.question
-      });
-    }
     setIssue(null);
     setStatus("Architect assumptions approved");
   }
 
   function saveProductBrainCorrection(input: string) {
     void refreshProductBrain(input);
-    if (repositoryId) {
-      appendAgentEventLog({
-        projectId: repositoryId,
-        event: "product_brain_corrected",
-        detail: input
-      });
-    }
     setStatus("Product Brain updated");
     setIssue(null);
   }
@@ -796,9 +769,6 @@ export function WorkspaceShellV2() {
       setProviderDuelResults(data.results ?? []);
       setIssue(null);
       setStatus("Provider Duel complete");
-      if (repositoryId) {
-        appendAgentEventLog({ projectId: repositoryId, event: "provider_duel_completed", detail: fixRequest.slice(0, 160) });
-      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Provider Duel failed.");
       setStatus("Blocked");

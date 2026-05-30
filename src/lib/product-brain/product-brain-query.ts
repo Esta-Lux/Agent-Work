@@ -1,4 +1,5 @@
 import { buildProductBrain } from "@/lib/product-brain/product-brain-builder";
+import { buildProductBrainContext as toProductBrainContext } from "@/lib/product-brain/product-brain-context";
 import { getProductBrain, upsertProductBrain } from "@/lib/product-brain/product-brain-store";
 import type { ProductBrain, ProductBrainContext } from "@/lib/product-brain/product-brain-types";
 import type { ProjectBrief } from "@/lib/workspace/workspace-types";
@@ -21,11 +22,5 @@ export function queryProductBrain(input: {
 }
 
 export function buildProductBrainContext(brain: ProductBrain | null): ProductBrainContext | undefined {
-  if (!brain) return undefined;
-  return {
-    summary: `${brain.productName}: ${brain.oneLineDescription}`,
-    policies: brain.policies.slice(0, 8),
-    definitionOfDone: brain.definitionOfDone.slice(0, 8),
-    knownRisks: brain.knownRisks.slice(0, 8)
-  };
+  return toProductBrainContext(brain);
 }
