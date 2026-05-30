@@ -1,14 +1,6 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-const originalCreditEnv = {
-  BOOTRISE_ENFORCE_CREDITS: process.env.BOOTRISE_ENFORCE_CREDITS
-};
-
-afterEach(() => {
-  restoreEnv("BOOTRISE_ENFORCE_CREDITS", originalCreditEnv.BOOTRISE_ENFORCE_CREDITS);
-});
-
 describe("security scan", () => {
   it("flags service role in client path", async () => {
     const { runSecurityScan } = await import("../src/lib/security/security-scan.ts");
@@ -45,6 +37,14 @@ describe("project brain file index", () => {
 });
 
 describe("credit store", () => {
+  const originalCreditEnv = {
+    BOOTRISE_ENFORCE_CREDITS: process.env.BOOTRISE_ENFORCE_CREDITS
+  };
+
+  afterEach(() => {
+    restoreEnv("BOOTRISE_ENFORCE_CREDITS", originalCreditEnv.BOOTRISE_ENFORCE_CREDITS);
+  });
+
   it("charges and reduces remaining balance", async () => {
     process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     const { getCreditBalance, chargeCredits } = await import("../src/lib/usage/credit-store.ts");
