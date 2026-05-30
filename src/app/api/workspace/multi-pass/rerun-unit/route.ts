@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { evaluateTaskCompletion } from "@/lib/control/task-completion-evaluator";
 import { applyPatchesToFiles } from "@/lib/workspace/apply-patches";
+import { buildReportFromMultiPassExecution, saveMultiPassPendingFix } from "@/lib/workspace/multi-pass-report-builder";
 import { runWorkUnitPatchRunner } from "@/lib/workspace/work-unit-patch-runner";
 import { getWorkUnitRun, updateWorkUnitRunResult } from "@/lib/workspace/work-unit-run-store";
 import type { MultiPassExecutionResult, WorkUnitExecution } from "@/lib/workspace/work-unit-state";
@@ -175,6 +176,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to persist rerun result." }, { status: 500 });
     }
 
-    return NextResponse.json({ result, runId: updated.id });
+    const report = buildReportFromMultiPassExecution({
+      execution: result,
+      taskDescription: run.taskDescription,
+      repositoryId: run.repositoryId,
+      workUnitPlan: run.workUnitPlan
+    });
+    saveMultiPassPendingFix({
+      report,
+      execution: result,
+      taskDescription: run.taskDescription,
+      repoFiles: run.repoFiles,
+      orgId: run.orgId,
+      projectId: run.projectId
+    });
+
+    return NextResponse.json({ result, runId: updated.id, report });
   });
 }

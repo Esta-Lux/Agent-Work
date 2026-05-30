@@ -37,6 +37,7 @@ export interface WorkUnitPlannerInput {
   scopedFiles: string[];
   repoFiles: Array<{ path: string; content: string }>;
   projectBrainContext?: string;
+  productBrainContext?: string;
 }
 
 export function planWorkUnits(input: WorkUnitPlannerInput): WorkUnitPlan {
@@ -96,7 +97,7 @@ function chooseFiles(input: WorkUnitPlannerInput): string[] {
   const scoped = input.scopedFiles.filter(Boolean);
   if (scoped.length > 0) return uniqueExisting(scoped, input.repoFiles).slice(0, 12);
 
-  const task = input.taskDescription.toLowerCase();
+  const task = `${input.taskDescription} ${input.productBrainContext ?? ""}`.toLowerCase();
   const scored = input.repoFiles
     .map((file) => ({ path: file.path, score: scoreFile(file.path, file.content, task) }))
     .filter((item) => item.score > 0)

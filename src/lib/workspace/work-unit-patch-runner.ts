@@ -1,5 +1,5 @@
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
-import { createPendingFixPlan } from "@/lib/workspace/workspace-fix.server";
+import { runScopedWorkUnitBuilder } from "@/lib/workspace/scoped-work-unit-builder";
 import type { WorkUnit } from "@/lib/workspace/work-unit-planner";
 import type { WorkUnitExecution } from "@/lib/workspace/work-unit-state";
 
@@ -12,33 +12,25 @@ export async function runWorkUnitPatchRunner(input: {
   projectId?: string;
   userId?: string;
 }): Promise<WorkUnitExecution> {
-  const scopedRequest = `${input.taskDescription}\n\nWork unit: ${input.workUnit.title}\nScope files: ${input.workUnit.targetFiles.join(", ")}`;
-  const result = await createPendingFixPlan(input.repoFiles, scopedRequest, "bootrise", {
+  const editableFiles = input.repoFiles.filter((file) => input.workUnit.targetFiles.includes(file.path));
+  const readOnlyFiles = input.repoFiles.filter((file) => input.workUnit.readOnlyFiles.includes(file.path));
+  const result = await runScopedWorkUnitBuilder({
+    taskDescription: input.taskDescription,
+    workUnit: input.workUnit,
+    editableFiles,
+    readOnlyFiles,
     orgId: input.orgId,
     projectId: input.projectId ?? input.repositoryId,
     userId: input.userId,
-    assumptionsApproved: true
+    repositoryId: input.repositoryId
   });
-
-  const scopedPatches = (result.report.patches ?? []).filter((patch) => input.workUnit.targetFiles.includes(patch.path));
-  const outOfScope = (result.report.patches ?? []).filter((patch) => !input.workUnit.targetFiles.includes(patch.path));
-  const blockers: string[] = [];
-  const warnings: string[] = [];
-
-  if (outOfScope.length > 0) {
-    blockers.push(`Generated ${outOfScope.length} out-of-scope patch(es): ${outOfScope.map((patch) => patch.path).join(", ")}`);
-  }
-  if ((result.report.controlLayer?.canApprove ?? true) === false) {
-    blockers.push(result.report.controlLayer?.stopReason ?? "Control Gate blocked this unit.");
-  }
-  warnings.push(...(result.report.controlLayer?.taskCompletion.findings ?? []).filter((finding) => finding.severity === "warning").map((finding) => finding.message));
 
   return {
     workUnitId: input.workUnit.id,
-    status: blockers.length > 0 ? "blocked" : scopedPatches.length > 0 ? "patched" : "passed",
-    patches: scopedPatches,
-    blockers,
-    warnings,
-    controlSummary: result.report.controlLayer?.agentCoordination?.leadSummary
+    status: result.status === "patched" || result.status === "passed" ? result.status : "blocked",
+    patches: result.patches,
+    blockers: result.blockers,
+    warnings: result.warnings,
+    controlSummary: result.controlSummary
   };
 }

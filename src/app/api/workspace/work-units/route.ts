@@ -12,6 +12,7 @@ interface WorkUnitsRequestBody {
   scopedFiles?: string[];
   repoFiles?: Array<{ path: string; content: string }>;
   projectBrainContext?: string;
+  productBrainContext?: string;
 }
 
 export async function POST(request: Request) {
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
         taskDescription,
         scopedFiles: body?.scopedFiles ?? [],
         repoFiles,
-        projectBrainContext: body?.projectBrainContext ?? JSON.stringify(brain.contextPack)
+        projectBrainContext: body?.projectBrainContext ?? JSON.stringify(brain.contextPack),
+        productBrainContext: body?.productBrainContext
       });
       const integration = checkWorkUnitIntegration(workUnitPlan);
       if (!integration.passed) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { runMultiPassExecutor } from "@/lib/workspace/multi-pass-executor";
 import { createWorkUnitRun } from "@/lib/workspace/work-unit-run-store";
+import { buildReportFromMultiPassExecution, saveMultiPassPendingFix } from "@/lib/workspace/multi-pass-report-builder";
 import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
 
 export const runtime = "nodejs";
@@ -41,6 +42,21 @@ export async function POST(request: Request) {
       result
     });
 
-    return NextResponse.json({ result, runId: run.id });
+    const report = buildReportFromMultiPassExecution({
+      execution: result,
+      taskDescription,
+      repositoryId: body.repositoryId,
+      workUnitPlan: body.workUnitPlan
+    });
+    saveMultiPassPendingFix({
+      report,
+      execution: result,
+      taskDescription,
+      repoFiles: body.repoFiles,
+      orgId: ctx.orgId,
+      projectId: body.repositoryId
+    });
+
+    return NextResponse.json({ result, runId: run.id, report });
   });
 }

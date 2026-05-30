@@ -20,6 +20,14 @@ import { deriveOnboardingState, type OnboardingState } from "@/lib/onboarding/on
 import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
 import type { ProjectBrainV2 } from "@/lib/project-brain/project-brain-v2";
 import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
+import type { ProductBrain } from "@/lib/product-brain/product-brain-types";
+import { buildProductBrainContext } from "@/lib/product-brain/product-brain-query";
+import {
+  runArchitectConversationAgent,
+  type ArchitectConversationResult
+} from "@/lib/agents/user/architect-conversation-agent";
+import { appendAgentEventLog } from "@/lib/memory/agent-event-log";
+import { upsertAgentMemory } from "@/lib/memory/agent-memory-store";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -92,6 +100,9 @@ export function WorkspaceShellV2() {
   const [deploymentCheckedAt, setDeploymentCheckedAt] = useState<string | null>(null);
   const [providerDuelResults, setProviderDuelResults] = useState<ProviderDuelResult[]>([]);
   const [projectBrain, setProjectBrain] = useState<ProjectBrainV2 | null>(null);
+  const [productBrain, setProductBrain] = useState<ProductBrain | null>(null);
+  const [architectConversation, setArchitectConversation] = useState<ArchitectConversationResult | null>(null);
+  const [architectAssumptionsApproved, setArchitectAssumptionsApproved] = useState(false);
   const [multiPassExecution, setMultiPassExecution] = useState<MultiPassExecutionResult | null>(null);
   const [multiPassRunId, setMultiPassRunId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -161,6 +172,7 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           files: apiFiles,
           brief,
+          productBrain,
           report: report
             ? {
                 approvalStatus: report.approvalStatus,
@@ -179,7 +191,7 @@ export function WorkspaceShellV2() {
     } finally {
       setRoadmapLoading(false);
     }
-  }, [apiFiles, brief, report]);
+  }, [apiFiles, brief, productBrain, report]);
 
   const refreshProjectBrain = useCallback(async () => {
     try {
@@ -200,6 +212,31 @@ export function WorkspaceShellV2() {
     }
   }, [repositoryId, apiFiles]);
 
+  const refreshProductBrain = useCallback(
+    async (correction?: string) => {
+      if (!repositoryId) return;
+      try {
+        const res = await fetch("/api/workspace/product-brain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            projectId: repositoryId,
+            brief,
+            files: apiFiles,
+            correction
+          })
+        });
+        const data = (await res.json()) as { productBrain?: ProductBrain };
+        if (!res.ok) return;
+        setProductBrain(data.productBrain ?? null);
+      } catch {
+        setProductBrain(null);
+      }
+    },
+    [repositoryId, brief, apiFiles]
+  );
+
   useEffect(() => {
     if (!repoConnected || !briefReady) return;
     void refreshRoadmap();
@@ -209,6 +246,22 @@ export function WorkspaceShellV2() {
     if (!repoConnected) return;
     void refreshProjectBrain();
   }, [repoConnected, refreshProjectBrain]);
+
+  useEffect(() => {
+    if (!repoConnected || !repositoryId) return;
+    void refreshProductBrain();
+  }, [repoConnected, repositoryId, refreshProductBrain]);
+
+  useEffect(() => {
+    setArchitectConversation(
+      runArchitectConversationAgent({
+        task: fixRequest,
+        workUnitPlan,
+        productContext: buildProductBrainContext(productBrain)
+      })
+    );
+    setArchitectAssumptionsApproved(false);
+  }, [fixRequest, workUnitPlan, productBrain]);
 
   async function loadBranches() {
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before loading branches.");
@@ -265,6 +318,13 @@ export function WorkspaceShellV2() {
   async function runFix(options?: { skipWorkUnitPlanning?: boolean }) {
     if (!repoConnected) return setIssue("Connect a repo before running Fix.");
     if (!fixRequest.trim()) return setIssue("Describe one scoped change before running Fix.");
+    if (
+      architectConversation &&
+      architectConversation.classification !== "clear_to_build" &&
+      !architectAssumptionsApproved
+    ) {
+      return setIssue(architectConversation.question ?? "Approve architect assumptions before patching this request.");
+    }
     if (!options?.skipWorkUnitPlanning && !workUnitApproved) {
       const planned = await planWorkUnitsForFix();
       if (planned?.requiresMultiPass) return;
@@ -296,6 +356,9 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Fix report ready");
       setDraftPrMessage(null);
+      if (repositoryId) {
+        appendAgentEventLog({ projectId: repositoryId, event: "task_patched", detail: fixRequest.slice(0, 160) });
+      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");
@@ -315,7 +378,8 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           taskDescription: fixRequest,
           scopedFiles: selectedPath ? [selectedPath] : [],
-          repoFiles: apiFiles
+          repoFiles: apiFiles,
+          productBrainContext: productBrain ? JSON.stringify(buildProductBrainContext(productBrain)) : undefined
         })
       });
       const data = (await res.json()) as { workUnitPlan?: WorkUnitPlan; error?: string };
@@ -344,6 +408,13 @@ export function WorkspaceShellV2() {
 
   async function runMultiPassExecution() {
     if (!workUnitPlan?.requiresMultiPass) return proceedWithScopedFix();
+    if (
+      architectConversation &&
+      architectConversation.classification !== "clear_to_build" &&
+      !architectAssumptionsApproved
+    ) {
+      return setIssue(architectConversation.question ?? "Approve architect assumptions before multi-pass execution.");
+    }
     setBusy(true);
     setStatus("Running multi-pass executor");
     try {
@@ -358,7 +429,7 @@ export function WorkspaceShellV2() {
           repositoryId: repositoryId ?? undefined
         })
       });
-      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; report?: WorkspaceFixReport; error?: string };
       if (!res.ok || !data.result) throw new Error(data.error ?? "Multi-pass execution failed.");
       setMultiPassExecution(data.result);
       setMultiPassRunId(data.runId ?? null);
@@ -367,10 +438,16 @@ export function WorkspaceShellV2() {
         setIssue(data.result.blockers[0] ?? "Work unit execution was blocked.");
         return;
       }
+      if (data.report) {
+        setReport(data.report);
+      }
       setStatus("Multi-pass execution complete");
       setIssue(null);
       setWorkUnitApproved(true);
-      await runFix({ skipWorkUnitPlanning: true });
+      setActiveStep("verify");
+      if (repositoryId) {
+        appendAgentEventLog({ projectId: repositoryId, event: "multi_pass_completed", detail: `${data.result.executions.length} work units` });
+      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Multi-pass execution failed.");
       setStatus("Blocked");
@@ -393,10 +470,13 @@ export function WorkspaceShellV2() {
           workUnitId
         })
       });
-      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; report?: WorkspaceFixReport; error?: string };
       if (!res.ok || !data.result) throw new Error(data.error ?? "Work unit rerun failed.");
       setMultiPassExecution(data.result);
       setMultiPassRunId(data.runId ?? multiPassRunId);
+      if (data.report) {
+        setReport(data.report);
+      }
       setIssue(data.result.status === "blocked" ? data.result.blockers[0] ?? "Work unit rerun blocked." : null);
       setStatus(data.result.status === "blocked" ? "Blocked" : "Work unit rerun complete");
     } catch (caught) {
@@ -413,6 +493,38 @@ export function WorkspaceShellV2() {
     setMultiPassRunId(null);
     setWorkUnitApproved(false);
     setStatus("Ready");
+  }
+
+  function approveArchitectAssumptions() {
+    setArchitectAssumptionsApproved(true);
+    void refreshProductBrain(`Approved assumption: ${architectConversation?.question ?? architectConversation?.message ?? "Architect assumptions approved."}`);
+    if (repositoryId) {
+      upsertAgentMemory({
+        projectId: repositoryId,
+        key: "approved_assumption",
+        value: architectConversation?.question ?? "Architect assumptions approved."
+      });
+      appendAgentEventLog({
+        projectId: repositoryId,
+        event: "architect_assumption_approved",
+        detail: architectConversation?.question
+      });
+    }
+    setIssue(null);
+    setStatus("Architect assumptions approved");
+  }
+
+  function saveProductBrainCorrection(input: string) {
+    void refreshProductBrain(input);
+    if (repositoryId) {
+      appendAgentEventLog({
+        projectId: repositoryId,
+        event: "product_brain_corrected",
+        detail: input
+      });
+    }
+    setStatus("Product Brain updated");
+    setIssue(null);
   }
 
   async function runVerify() {
@@ -576,7 +688,17 @@ export function WorkspaceShellV2() {
           projectId: repositoryId ?? report.repositoryId,
           commitMessage: input?.commitMessage,
           prTitle: input?.prTitle,
-          prBody: input?.prBody,
+          prBody:
+            input?.prBody ??
+            [
+              "# BootRise Draft PR",
+              "",
+              "## Product intent",
+              productBrain?.oneLineDescription ?? brief.primaryWorkflow ?? "Not provided",
+              "",
+              "## Definition of done",
+              ...(productBrain?.definitionOfDone?.slice(0, 5).map((item) => `- ${item}`) ?? ["- Follow existing workspace safety checklist"])
+            ].join("\n"),
           draft: input?.draft ?? true
         })
       });
@@ -665,7 +787,8 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           task: fixRequest,
           files: apiFiles,
-          premiumAllowed: provider === "openai" || speed === "premium"
+          premiumAllowed: provider === "openai" || speed === "premium",
+          productContext: buildProductBrainContext(productBrain)
         })
       });
       const data = (await res.json()) as { results?: ProviderDuelResult[]; error?: string };
@@ -673,6 +796,9 @@ export function WorkspaceShellV2() {
       setProviderDuelResults(data.results ?? []);
       setIssue(null);
       setStatus("Provider Duel complete");
+      if (repositoryId) {
+        appendAgentEventLog({ projectId: repositoryId, event: "provider_duel_completed", detail: fixRequest.slice(0, 160) });
+      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Provider Duel failed.");
       setStatus("Blocked");
@@ -695,6 +821,25 @@ export function WorkspaceShellV2() {
           name: "Project Brain Agent",
           status: projectBrain ? "passed" : repoConnected ? "running" : "idle",
           summary: projectBrain ? `Indexed ${projectBrain.indexedFiles} files with ${projectBrain.summary.totalApiRoutes} routes.` : "Building symbol, route, and env maps."
+        },
+        {
+          id: "product-brain",
+          name: "Product Brain Agent",
+          status: productBrain ? "passed" : repoConnected ? "running" : "idle",
+          summary: productBrain ? `Tracking ${productBrain.primaryWorkflows.length} workflow(s) and ${productBrain.policies.length} policies.` : "Building product memory from brief and repository context."
+        },
+        {
+          id: "architect-conversation",
+          name: "Architect Conversation Agent",
+          status:
+            architectConversation?.classification === "clear_to_build"
+              ? "passed"
+              : architectAssumptionsApproved
+                ? "passed"
+                : fixRequest.trim()
+                  ? "running"
+                  : "idle",
+          summary: architectConversation?.message ?? "Classifies risk and asks clarifying questions before patching."
         },
         {
           id: "scope",
@@ -729,7 +874,7 @@ export function WorkspaceShellV2() {
           blockedReason: deployStatus === "failed" ? "Deployment readiness blockers detected." : undefined
         }
       ],
-      [roadmap, roadmapLoading, repoConnected, projectBrain, workUnitPlan, fixRequest, report, busy, activeStep, securityCriticalCount, securityFindings, sandboxLog, deployStatus, deploymentReadiness]
+    [roadmap, roadmapLoading, repoConnected, projectBrain, productBrain, architectConversation, architectAssumptionsApproved, workUnitPlan, fixRequest, report, busy, activeStep, securityCriticalCount, securityFindings, sandboxLog, deployStatus, deploymentReadiness]
   );
 
   return (
@@ -831,6 +976,9 @@ export function WorkspaceShellV2() {
           deploymentCheckedAt={deploymentCheckedAt}
           providerDuelResults={providerDuelResults}
           projectBrain={projectBrain}
+          productBrain={productBrain}
+          architectConversation={architectConversation}
+          assumptionsApproved={architectAssumptionsApproved}
           multiPassExecution={multiPassExecution}
           busy={busy}
           onGithubUrlChange={setGithubUrl}
@@ -849,6 +997,8 @@ export function WorkspaceShellV2() {
           onRunDeploymentReadiness={runDeploymentReadiness}
           onRunProviderDuel={runProviderDuel}
           onRerunWorkUnit={rerunWorkUnit}
+          onSaveProductBrainCorrection={saveProductBrainCorrection}
+          onApproveArchitectAssumptions={approveArchitectAssumptions}
           agentDecisions={agentDecisions}
         />
       </div>

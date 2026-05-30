@@ -218,10 +218,18 @@ export function SelfAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
       });
-      const data = (await res.json()) as { draftPr?: { prUrl?: string }; error?: string };
+      const data = (await res.json()) as { draftPr?: { prUrl?: string; mode?: "draft_pr" | "compare_link" }; error?: string };
       if (!res.ok || !data.draftPr) throw new Error(data.error ?? "Draft PR open failed.");
-      setDraftPrState(data.draftPr.prUrl ?? "draft PR prepared");
-      setMessage("Draft PR metadata generated for approved mission.");
+      setDraftPrState(
+        data.draftPr.prUrl
+          ? `${data.draftPr.mode === "draft_pr" ? "Draft PR created" : "Compare link prepared"}: ${data.draftPr.prUrl}`
+          : "draft PR prepared"
+      );
+      setMessage(
+        data.draftPr.mode === "draft_pr"
+          ? "Self-agent opened a real draft PR."
+          : "GitHub credentials missing — returned compare-link fallback."
+      );
       void loadMissions();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Draft PR open failed.");

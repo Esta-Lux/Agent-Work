@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { updateAdminBuildMission } from "@/lib/admin-build/admin-build-store";
 import { withAdminAuth } from "@/lib/auth/with-admin-auth";
 import { validateSelfAgentBoundary } from "@/lib/agents/admin/self-agent-boundary";
-import { getSelfAgentPreview } from "@/lib/agents/admin/self-agent-preview-store";
+import { runSelfAgentPrAgent } from "@/lib/agents/admin/self-agent-pr-agent";
 
 export const runtime = "nodejs";
 
@@ -31,38 +30,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const preview = getSelfAgentPreview(mission.id);
-    if (!preview) {
-      return NextResponse.json({ error: "Patch preview not found for mission." }, { status: 400 });
-    }
-
-    const branch = body?.branchName?.trim() || mission.branchName?.trim() || preview.branchName;
+    const branch = body?.branchName?.trim() || mission.branchName?.trim() || "bootrise/self-agent-draft";
     const title = body?.title?.trim() || `BootRise self-agent: ${mission.title}`;
     const remoteUrl = body?.remoteUrl?.trim() || process.env.BOOTRISE_GITHUB_REMOTE_URL?.trim() || "https://github.com/Esta-Lux/Agent-Work";
-    const sanitizedRemote = remoteUrl.replace(/\.git$/i, "").replace(/\/+$/, "");
     const baseBranch =
       process.env.BOOTRISE_GITHUB_BASE_BRANCH?.trim() ||
       process.env.BOOTRISE_SELF_AGENT_BASE_BRANCH?.trim() ||
       "main";
-    const prUrl = `${sanitizedRemote}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(branch)}?expand=1`;
-    const updatedMission = updateAdminBuildMission(
-      mission.id,
-      {
-        status: "pr_opened",
-        branchName: branch,
-        prUrl
-      },
-      user.id
-    );
-
-    return NextResponse.json({
-      mission: updatedMission ?? mission,
-      draftPr: {
-        title,
-        branch,
-        remoteUrl,
-        prUrl
-      }
+    const result = await runSelfAgentPrAgent({
+      mission,
+      missionId: mission.id,
+      branchName: branch,
+      title,
+      remoteUrl,
+      baseBranch,
+      userId: user.id
     });
+
+    return NextResponse.json(result);
   });
 }
