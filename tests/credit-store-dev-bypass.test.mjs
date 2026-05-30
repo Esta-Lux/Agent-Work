@@ -49,7 +49,7 @@ describe("credit store dev auth bypass", () => {
     await assert.rejects(() => assertCreditsAvailable(orgId, "deploy_readiness", 20_001), /Insufficient credits/);
   });
 
-  it("keeps credit enforcement open for preview builds", async () => {
+  it("bypasses credit enforcement for preview builds", async () => {
     process.env.NODE_ENV = "production";
     process.env.VERCEL_ENV = "preview";
     delete process.env.BOOTRISE_DEV_AUTH_BYPASS;
@@ -65,6 +65,7 @@ describe("credit store dev auth bypass", () => {
 
     assert.equal(before.remaining, 2500);
     assert.equal(required, 5000);
+    assert.ok(before.remaining < required);
     assert.deepEqual(after, before);
   });
 });
