@@ -8,7 +8,7 @@ Next.js only exposes `NEXT_PUBLIC_*` vars to client components. If you already s
 
 ## Local auth bypass (default on `npm run dev`)
 
-**You do not need to sign in on localhost.** When `NODE_ENV=development`, BootRise acts as **dev@bootrise.local** for all workspace APIs and the UI. Preview deployments also keep the bypass open when `VERCEL_ENV=preview` (or `BOOTRISE_PREVIEW_DEV=1` for non-Vercel preview stacks). Live production builds never enable this.
+**You do not need to sign in on localhost.** When `NODE_ENV=development`, BootRise acts as **dev@bootrise.local** for all workspace APIs and the UI. Preview deployments also keep the bypass open when `VERCEL_ENV=preview` (or `BOOTRISE_PREVIEW_DEV=1` for non-Vercel preview stacks). Live production builds never enable this auth bypass.
 
 | Variable | When to set | Effect |
 | --- | --- | --- |
@@ -25,11 +25,13 @@ Optional identity overrides:
 | `BOOTRISE_DEV_USER_EMAIL` | `dev@bootrise.local` | Shown in header |
 | `BOOTRISE_DEV_ORG_ID` | `org_default` | Tenant org for API + project scope |
 | `BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS` | `1000000` | Synthetic credit balance shown while dev auth bypass is active |
+| `BOOTRISE_STAGED_INCLUDED_CREDITS` | `1000000` | Synthetic credit balance shown while billing remains staged |
+| `BOOTRISE_ENFORCE_CREDITS` | `0` | Set to `1` only when real credit enforcement should start |
 | `BOOTRISE_DEFAULT_ORG_ID` | `org_default` | Must match a row in `bootrise_organizations` if using Supabase DB |
 
-`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing. While bypass stays on, workspace credit checks do not block local dev or preview flows and charges are not persisted.
+`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing. Workspace credit checks are now staged by default across beta environments, so actions stay non-blocking and charges are not persisted until `BOOTRISE_ENFORCE_CREDITS=1`. While auth bypass stays on, the same non-blocking behavior also applies to local dev and preview flows.
 
-**Never rely on bypass in live production** — it stays disabled for `NODE_ENV=production` unless the runtime is an explicit preview environment.
+**Never rely on auth bypass in live production** — it stays disabled for `NODE_ENV=production` unless the runtime is an explicit preview environment. Real billing enforcement is also opt-in until the product is ready; enable it explicitly with `BOOTRISE_ENFORCE_CREDITS=1`.
 
 ## AI chat / fix (separate from Supabase auth)
 
