@@ -5,6 +5,7 @@ import { withAdminAuth } from "@/lib/auth/with-admin-auth";
 import { validateSelfAgentBoundary } from "@/lib/agents/admin/self-agent-boundary";
 import { validateSelfAgentPatch, type SelfAgentPatchValidation } from "@/lib/agents/admin/self-agent-control-bridge";
 import { runSelfAgentBuilder } from "@/lib/agents/admin/self-agent-builder";
+import { saveSelfAgentPreview } from "@/lib/agents/admin/self-agent-preview-store";
 import { runSelfAgentQa } from "@/lib/agents/admin/self-agent-qa";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -49,6 +50,15 @@ export async function POST(request: Request) {
       })
     );
     const qa = runSelfAgentQa({ missionId: mission.id, validations });
+    saveSelfAgentPreview({
+      missionId: mission.id,
+      branchName: body?.branchName?.trim() || mission.branchName || "bootrise/self-agent-draft",
+      patches: preview.patches,
+      blockers: qa.blockers,
+      warnings: [...preview.warnings, ...qa.warnings],
+      validations,
+      qaPassed: qa.passed
+    });
 
     updateAdminBuildMission(
       mission.id,

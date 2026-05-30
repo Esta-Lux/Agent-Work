@@ -10,59 +10,40 @@ export async function POST(request: Request) {
   return withAdminAuth(request, async (user) => {
     const body = (await request.json().catch(() => null)) as { missionId?: string; branchName?: string } | null;
     const boundary = validateSelfAgentBoundary({ missionId: body?.missionId, branchName: body?.branchName });
-
     if (!boundary.ok) {
       return NextResponse.json({ error: boundary.message }, { status: boundary.status });
     }
-
     const mission = boundary.mission;
     if (!mission) {
       return NextResponse.json({ error: "Mission not found." }, { status: 404 });
     }
 
-    if (mission.status !== "approved" && mission.status !== "branch_pushed" && mission.status !== "pr_opened") {
+    const preview = getSelfAgentPreview(mission.id);
+    if (!preview) {
+      return NextResponse.json({ error: "Generate patch preview before approval." }, { status: 400 });
+    }
+    if (!preview.qaPassed) {
       return NextResponse.json(
-        { error: "Approve the mission before running verify.", missionStatus: mission.status },
+        { error: "Self-agent guard checks failed. Resolve blockers before approval.", blockers: preview.blockers },
         { status: 400 }
       );
     }
 
-    const preview = getSelfAgentPreview(mission.id);
-    if (!preview) {
-      return NextResponse.json({ error: "Patch preview not found for mission." }, { status: 400 });
-    }
-
-    const verify = {
-      passed: preview.blockers.length === 0,
-      commands: [
-        {
-          label: "self-agent-guard",
-          exitCode: preview.blockers.length === 0 ? 0 : 1,
-          output:
-            preview.blockers.length === 0
-              ? "Guard checks passed for self-agent patch preview."
-              : preview.blockers.join("\n")
-        },
-        {
-          label: "self-agent-diff-scope",
-          exitCode: 0,
-          output: `Patch count: ${preview.patches.length}. Branch: ${preview.branchName}.`
-        }
-      ]
-    };
-
     const updatedMission = updateAdminBuildMission(
       mission.id,
       {
-        status: verify.passed ? "branch_pushed" : "guard_check",
+        status: "approved",
         branchName: preview.branchName
       },
       user.id
     );
+    if (!updatedMission) {
+      return NextResponse.json({ error: "Mission approval failed." }, { status: 500 });
+    }
 
     return NextResponse.json({
-      mission: updatedMission ?? mission,
-      verify
+      mission: updatedMission,
+      message: "Self-agent patch preview approved."
     });
   });
 }

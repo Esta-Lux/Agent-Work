@@ -7,11 +7,13 @@ import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
 export function WorkUnitExecutionPanel({
   plan,
   execution,
-  busy
+  busy,
+  onRerunUnit
 }: {
   plan: WorkUnitPlan | null;
   execution: MultiPassExecutionResult | null;
   busy?: boolean;
+  onRerunUnit?: (workUnitId: string) => void;
 }) {
   if (!plan?.requiresMultiPass) return null;
 
@@ -38,6 +40,16 @@ export function WorkUnitExecutionPanel({
                 {unit.targetFiles.join(", ")}
               </p>
               {run?.blockers?.[0] ? <p className="mt-1 text-[11px] text-red-300">{run.blockers[0]}</p> : null}
+              {onRerunUnit && run && (run.status === "blocked" || run.status === "skipped") ? (
+                <button
+                  type="button"
+                  className="mt-2 text-[11px] font-semibold text-signal hover:text-signal/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => onRerunUnit(unit.id)}
+                >
+                  Re-run unit
+                </button>
+              ) : null}
             </li>
           );
         })}

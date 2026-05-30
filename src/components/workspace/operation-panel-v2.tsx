@@ -67,6 +67,7 @@ interface OperationPanelV2Props {
   onRunSecurityScan: () => void;
   onRunDeploymentReadiness: () => void;
   onRunProviderDuel: () => void;
+  onRerunWorkUnit: (workUnitId: string) => void;
 }
 
 export function OperationPanelV2(props: OperationPanelV2Props) {
@@ -164,7 +165,7 @@ function BriefStep({ brief, onBriefChange }: OperationPanelV2Props) {
   );
 }
 
-function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan, busy, providerDuelResults, onProceedWithScopedFix, onRunMultiPassExecution, onSimplifyFixRequest, onRunProviderDuel, multiPassExecution }: OperationPanelV2Props) {
+function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan, busy, providerDuelResults, onProceedWithScopedFix, onRunMultiPassExecution, onSimplifyFixRequest, onRunProviderDuel, multiPassExecution, onRerunWorkUnit }: OperationPanelV2Props) {
   return (
     <div className="space-y-4">
       <Field label="Fix request">
@@ -212,7 +213,7 @@ function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan
           </div>
         </div>
       ) : null}
-      <WorkUnitExecutionPanel plan={workUnitPlan} execution={multiPassExecution} busy={busy} />
+      <WorkUnitExecutionPanel plan={workUnitPlan} execution={multiPassExecution} busy={busy} onRerunUnit={onRerunWorkUnit} />
     </div>
   );
 }

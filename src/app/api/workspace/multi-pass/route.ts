@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { runMultiPassExecutor } from "@/lib/workspace/multi-pass-executor";
+import { createWorkUnitRun } from "@/lib/workspace/work-unit-run-store";
 import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
 
 export const runtime = "nodejs";
@@ -30,6 +31,16 @@ export async function POST(request: Request) {
       userId: ctx.user.id
     });
 
-    return NextResponse.json({ result });
+    const run = createWorkUnitRun({
+      orgId: ctx.orgId,
+      projectId: body.repositoryId ?? "workspace-default",
+      repositoryId: body.repositoryId,
+      taskDescription,
+      workUnitPlan: body.workUnitPlan,
+      repoFiles: body.repoFiles,
+      result
+    });
+
+    return NextResponse.json({ result, runId: run.id });
   });
 }

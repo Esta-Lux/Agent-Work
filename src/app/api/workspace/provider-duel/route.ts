@@ -9,6 +9,11 @@ export async function POST(request: Request) {
   return withWorkspaceAuth(request, async (_ctx, req) => {
     const body = (await req.json().catch(() => null)) as { task?: string; files?: SourceFileInput[]; premiumAllowed?: boolean } | null;
     if (!body?.task?.trim()) return NextResponse.json({ error: "task is required." }, { status: 400 });
-    return NextResponse.json(runProviderDuel({ task: body.task, files: body.files ?? [], premiumAllowed: body.premiumAllowed }));
+    const result = await runProviderDuel({
+      task: body.task,
+      files: body.files ?? [],
+      premiumAllowed: body.premiumAllowed
+    });
+    return NextResponse.json(result);
   });
 }
