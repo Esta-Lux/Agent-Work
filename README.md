@@ -99,7 +99,7 @@ npm run dev
 
 ### Local dev (no sign-in)
 
-`npm run dev` skips auth on localhost and loads the workspace as **dev@bootrise.local**. Production still requires Supabase. To test real login locally, set `BOOTRISE_DEV_AUTH_STRICT=1` in `.env.local` and restart — see [docs/DEV.md](docs/DEV.md).
+`npm run dev` skips auth on localhost and loads the workspace as **dev@bootrise.local**. While that bypass is active, local workspace credit gates also stay open so dev testing does not fail on plan limits. Production still requires Supabase. To test real login and real credit enforcement locally, set `BOOTRISE_DEV_AUTH_STRICT=1` in `.env.local` and restart — see [docs/DEV.md](docs/DEV.md).
 
 Useful checks:
 

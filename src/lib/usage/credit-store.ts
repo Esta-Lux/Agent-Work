@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isServerDevAuthBypass } from "@/lib/auth/dev-bypass";
 import { getSupabaseServiceClient } from "@/lib/db/supabase";
 import { estimateCreditsForAction } from "@/lib/usage/credit-pricing";
 
@@ -40,7 +41,22 @@ function defaultBalance(orgId: string): CreditBalance {
   };
 }
 
+function devBypassBalance(orgId: string): CreditBalance {
+  const included = Number(process.env.BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS ?? 1_000_000);
+  return {
+    orgId,
+    includedCredits: included,
+    usedCredits: 0,
+    premiumCreditCap: Number(process.env.BOOTRISE_PREMIUM_CREDIT_CAP ?? 500),
+    premiumCreditsUsed: 0,
+    remaining: included
+  };
+}
+
 export async function getCreditBalance(orgId: string): Promise<CreditBalance> {
+  if (isServerDevAuthBypass()) {
+    return devBypassBalance(orgId);
+  }
   const supabase = getSupabaseServiceClient();
   if (supabase) {
     const { data } = await supabase
@@ -78,6 +94,7 @@ export async function assertCreditsAvailable(
   creditsOverride?: number
 ): Promise<number> {
   const cost = creditsOverride ?? estimateCreditsForAction(action);
+  if (isServerDevAuthBypass()) return cost;
   const balance = await getCreditBalance(orgId);
   if (balance.remaining < cost) {
     throw new Error(`Insufficient credits: need ${cost}, have ${balance.remaining}.`);
@@ -103,6 +120,9 @@ export interface ChargeCreditsInput {
 export async function chargeCredits(input: ChargeCreditsInput): Promise<CreditBalance> {
   const cost = input.credits ?? estimateCreditsForAction(input.action);
   const premiumCost = input.premiumCredits ?? 0;
+  if (isServerDevAuthBypass()) {
+    return devBypassBalance(input.orgId);
+  }
   const balance = await getCreditBalance(input.orgId);
   balance.usedCredits += cost;
   balance.premiumCreditsUsed += premiumCost;

@@ -12,7 +12,7 @@ Next.js only exposes `NEXT_PUBLIC_*` vars to client components. If you already s
 
 | Variable | When to set | Effect |
 | --- | --- | --- |
-| *(none)* | Normal local testing | Bypass **on** — workspace loads immediately |
+| *(none)* | Normal local testing | Bypass **on** — workspace loads immediately and local credit gates stay open |
 | `BOOTRISE_DEV_AUTH_STRICT=1` | Test magic link / GitHub / cookies | Bypass **off** — real Supabase auth required |
 | `BOOTRISE_DEV_AUTH_BYPASS=0` | Same as strict | Bypass **off** |
 | `BOOTRISE_DEV_AUTH_BYPASS=1` | Explicit (optional) | Bypass **on** (redundant in dev) |
@@ -24,9 +24,10 @@ Optional identity overrides:
 | `BOOTRISE_DEV_USER_ID` | `dev-user` | Synthetic user id for APIs |
 | `BOOTRISE_DEV_USER_EMAIL` | `dev@bootrise.local` | Shown in header |
 | `BOOTRISE_DEV_ORG_ID` | `org_default` | Tenant org for API + project scope |
+| `BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS` | `1000000` | Synthetic credit balance shown while dev auth bypass is active |
 | `BOOTRISE_DEFAULT_ORG_ID` | `org_default` | Must match a row in `bootrise_organizations` if using Supabase DB |
 
-`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing.
+`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing. While bypass stays on, workspace credit checks do not block local dev flows and charges are not persisted.
 
 **Never rely on bypass in production** — it is disabled when `NODE_ENV=production`.
 
