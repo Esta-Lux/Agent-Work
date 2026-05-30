@@ -1,5 +1,13 @@
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+
+const originalCreditEnv = {
+  BOOTRISE_ENFORCE_CREDITS: process.env.BOOTRISE_ENFORCE_CREDITS
+};
+
+afterEach(() => {
+  restoreEnv("BOOTRISE_ENFORCE_CREDITS", originalCreditEnv.BOOTRISE_ENFORCE_CREDITS);
+});
 
 describe("security scan", () => {
   it("flags service role in client path", async () => {
@@ -38,6 +46,7 @@ describe("project brain file index", () => {
 
 describe("credit store", () => {
   it("charges and reduces remaining balance", async () => {
+    process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     const { getCreditBalance, chargeCredits } = await import("../src/lib/usage/credit-store.ts");
     const orgId = `org_credit_test_${Date.now()}`;
     const before = await getCreditBalance(orgId);
@@ -47,6 +56,7 @@ describe("credit store", () => {
   });
 
   it("charges explicit credit amount from model route estimate", async () => {
+    process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     const { getCreditBalance, chargeCredits } = await import("../src/lib/usage/credit-store.ts");
     const orgId = `org_credit_exact_${Date.now()}`;
     const before = await getCreditBalance(orgId);
@@ -61,6 +71,14 @@ describe("credit store", () => {
     assert.equal(before.remaining - amount, after.remaining);
   });
 });
+
+function restoreEnv(key, value) {
+  if (typeof value === "undefined") {
+    delete process.env[key];
+    return;
+  }
+  process.env[key] = value;
+}
 
 describe("context gate", () => {
   it("blocks vague feature requests", async () => {

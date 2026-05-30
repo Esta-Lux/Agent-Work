@@ -99,7 +99,7 @@ npm run dev
 
 ### Local dev (no sign-in)
 
-`npm run dev` skips auth on localhost and loads the workspace as **dev@bootrise.local**. While that bypass is active, local workspace credit gates also stay open so dev testing does not fail on plan limits. Production still requires Supabase. To test real login and real credit enforcement locally, set `BOOTRISE_DEV_AUTH_STRICT=1` in `.env.local` and restart — see [docs/DEV.md](docs/DEV.md).
+`npm run dev` skips auth on localhost and loads the workspace as **dev@bootrise.local**. Credits are also staged by default during beta, so workspace actions do not block on balances until billing is ready. When you are ready to turn on real billing enforcement, set `BOOTRISE_ENFORCE_CREDITS=1` (and optionally `BOOTRISE_DEV_AUTH_STRICT=1` for real local auth) in `.env.local` and restart — see [docs/DEV.md](docs/DEV.md).
 
 Playwright now has a dedicated E2E harness for both the workspace (`/`) and admin (`/admin`) surfaces. Run `npx playwright install chromium` once, then use `npm run test:e2e`.
 

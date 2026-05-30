@@ -5,23 +5,49 @@ const originalEnv = {
   NODE_ENV: process.env.NODE_ENV,
   VERCEL_ENV: process.env.VERCEL_ENV,
   BOOTRISE_PREVIEW_DEV: process.env.BOOTRISE_PREVIEW_DEV,
+  BOOTRISE_ENFORCE_CREDITS: process.env.BOOTRISE_ENFORCE_CREDITS,
   BOOTRISE_DEV_AUTH_BYPASS: process.env.BOOTRISE_DEV_AUTH_BYPASS,
   BOOTRISE_DEV_AUTH_STRICT: process.env.BOOTRISE_DEV_AUTH_STRICT,
-  BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS: process.env.BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS
+  BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS: process.env.BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS,
+  BOOTRISE_STAGED_INCLUDED_CREDITS: process.env.BOOTRISE_STAGED_INCLUDED_CREDITS
 };
 
 afterEach(() => {
   restoreEnv("NODE_ENV", originalEnv.NODE_ENV);
   restoreEnv("VERCEL_ENV", originalEnv.VERCEL_ENV);
   restoreEnv("BOOTRISE_PREVIEW_DEV", originalEnv.BOOTRISE_PREVIEW_DEV);
+  restoreEnv("BOOTRISE_ENFORCE_CREDITS", originalEnv.BOOTRISE_ENFORCE_CREDITS);
   restoreEnv("BOOTRISE_DEV_AUTH_BYPASS", originalEnv.BOOTRISE_DEV_AUTH_BYPASS);
   restoreEnv("BOOTRISE_DEV_AUTH_STRICT", originalEnv.BOOTRISE_DEV_AUTH_STRICT);
   restoreEnv("BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS", originalEnv.BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS);
+  restoreEnv("BOOTRISE_STAGED_INCLUDED_CREDITS", originalEnv.BOOTRISE_STAGED_INCLUDED_CREDITS);
 });
 
 describe("credit store dev auth bypass", () => {
+  it("keeps credits non-blocking while billing is staged by default", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.VERCEL_ENV;
+    delete process.env.BOOTRISE_PREVIEW_DEV;
+    delete process.env.BOOTRISE_DEV_AUTH_BYPASS;
+    delete process.env.BOOTRISE_DEV_AUTH_STRICT;
+    delete process.env.BOOTRISE_ENFORCE_CREDITS;
+    process.env.BOOTRISE_STAGED_INCLUDED_CREDITS = "9876";
+
+    const { assertCreditsAvailable, chargeCredits, getCreditBalance } = await import("../src/lib/usage/credit-store.ts");
+    const orgId = `org_credit_staged_${Date.now()}`;
+
+    const before = await getCreditBalance(orgId);
+    const required = await assertCreditsAvailable(orgId, "deploy_readiness", 20_001);
+    const after = await chargeCredits({ orgId, userId: "beta-user", action: "deploy_readiness", credits: 20_001 });
+
+    assert.equal(before.remaining, 9876);
+    assert.equal(required, 20_001);
+    assert.deepEqual(after, before);
+  });
+
   it("skips credit enforcement and charging while dev auth bypass is active", async () => {
     process.env.NODE_ENV = "development";
+    process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     process.env.BOOTRISE_DEV_AUTH_BYPASS = "1";
     delete process.env.BOOTRISE_DEV_AUTH_STRICT;
     process.env.BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS = "4321";
@@ -40,6 +66,7 @@ describe("credit store dev auth bypass", () => {
 
   it("restores credit enforcement when strict mode disables the bypass", async () => {
     process.env.NODE_ENV = "development";
+    process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     process.env.BOOTRISE_DEV_AUTH_BYPASS = "1";
     process.env.BOOTRISE_DEV_AUTH_STRICT = "1";
 
@@ -51,6 +78,7 @@ describe("credit store dev auth bypass", () => {
 
   it("bypasses credit enforcement for preview builds", async () => {
     process.env.NODE_ENV = "production";
+    process.env.BOOTRISE_ENFORCE_CREDITS = "1";
     process.env.VERCEL_ENV = "preview";
     delete process.env.BOOTRISE_DEV_AUTH_BYPASS;
     delete process.env.BOOTRISE_DEV_AUTH_STRICT;
