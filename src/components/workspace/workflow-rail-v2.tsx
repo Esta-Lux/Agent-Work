@@ -32,19 +32,19 @@ interface LegacyRailProps {
 type WorkflowRailV2Props = WorkspaceRailProps | LegacyRailProps;
 
 const steps: Array<{ id: WorkspaceV2Step; name: string; detail: string }> = [
-  { id: "connect", name: "Connect", detail: "GitHub + files" },
-  { id: "brief", name: "Brief", detail: "Files + product" },
-  { id: "fix", name: "Fix", detail: "Report + diff" },
-  { id: "verify", name: "Verify", detail: "Sandbox" },
-  { id: "export", name: "Export", detail: "Bundle / push" }
+  { id: "connect", name: "Connect", detail: "Repo + import" },
+  { id: "brief", name: "Brain", detail: "Context + roadmap" },
+  { id: "fix", name: "Fix", detail: "Work units + patch" },
+  { id: "verify", name: "Security", detail: "Scan + verify" },
+  { id: "export", name: "PR", detail: "Preflight + draft PR" }
 ];
 
 const focus: Record<WorkspaceV2Step, string> = {
   connect: "Import real code so BootRise can index files and unlock scoped work.",
-  brief: "Shape the product context that guides planning and export quality.",
-  fix: "Describe one controlled change and review the blast radius before approval.",
-  verify: "Run sandbox checks and inspect runtime proof before shipping.",
-  export: "Download the bundle or push the approved work to a branch."
+  brief: "Build Project Brain and architecture roadmap from live repository files.",
+  fix: "Split complex tasks into work units and execute controlled patches.",
+  verify: "Run Security Center and deployment checks before final verification.",
+  export: "Review PR safety evidence, then open a draft pull request."
 };
 
 export function WorkflowRailV2(props: WorkflowRailV2Props) {

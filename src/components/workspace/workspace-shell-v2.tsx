@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { OnboardingChecklist } from "@/components/workspace/onboarding-checklist";
@@ -11,12 +11,15 @@ import { WorkspaceCommandStrip } from "@/components/workspace/workspace-command-
 import { WorkspaceDiffViewer, type DiffFile } from "@/components/workspace/workspace-diff-viewer";
 import { WorkspaceTopbarV2 } from "@/components/workspace/workspace-topbar-v2";
 import { WorkflowRailV2, type WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
+import type { WorkspaceAgentDecision } from "@/components/workspace/agent-decision-card";
 import type { WorkspaceProvider, WorkspaceRole, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
 import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
 import type { DeploymentReadinessResult, SecurityFinding } from "@/lib/security/types";
 import { deriveOnboardingState, type OnboardingState } from "@/lib/onboarding/onboarding-state";
 import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
+import type { ProjectBrainV2 } from "@/lib/project-brain/project-brain-v2";
+import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -88,6 +91,8 @@ export function WorkspaceShellV2() {
   const [deploymentReadiness, setDeploymentReadiness] = useState<DeploymentReadinessResult | null>(null);
   const [deploymentCheckedAt, setDeploymentCheckedAt] = useState<string | null>(null);
   const [providerDuelResults, setProviderDuelResults] = useState<ProviderDuelResult[]>([]);
+  const [projectBrain, setProjectBrain] = useState<ProjectBrainV2 | null>(null);
+  const [multiPassExecution, setMultiPassExecution] = useState<MultiPassExecutionResult | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const roadmapRequestRef = useRef<string | null>(null);
@@ -124,11 +129,6 @@ export function WorkspaceShellV2() {
     void refreshPlatform();
   }, []);
 
-  useEffect(() => {
-    if (!repoConnected || !briefReady) return;
-    void refreshRoadmap();
-  }, [apiFiles, brief, briefReady, repoConnected, report]);
-
   async function refreshPlatform() {
     try {
       const [providersRes, creditsRes] = await Promise.all([fetch("/api/ai/providers/health"), fetch("/api/workspace/credits", { credentials: "include" })]);
@@ -141,7 +141,7 @@ export function WorkspaceShellV2() {
     }
   }
 
-  async function refreshRoadmap() {
+  const refreshRoadmap = useCallback(async () => {
     const requestKey = JSON.stringify({
       files: apiFiles.map((file) => ({ path: file.path, content: file.content })),
       brief,
@@ -178,7 +178,36 @@ export function WorkspaceShellV2() {
     } finally {
       setRoadmapLoading(false);
     }
-  }
+  }, [apiFiles, brief, report]);
+
+  const refreshProjectBrain = useCallback(async () => {
+    try {
+      const res = await fetch("/api/workspace/brain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          repositoryId: repositoryId ?? "workspace_repo",
+          files: apiFiles
+        })
+      });
+      const data = (await res.json()) as { brainV2?: ProjectBrainV2 };
+      if (!res.ok) return;
+      setProjectBrain(data.brainV2 ?? null);
+    } catch {
+      setProjectBrain(null);
+    }
+  }, [repositoryId, apiFiles]);
+
+  useEffect(() => {
+    if (!repoConnected || !briefReady) return;
+    void refreshRoadmap();
+  }, [briefReady, repoConnected, refreshRoadmap]);
+
+  useEffect(() => {
+    if (!repoConnected) return;
+    void refreshProjectBrain();
+  }, [repoConnected, refreshProjectBrain]);
 
   async function loadBranches() {
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before loading branches.");
@@ -223,6 +252,7 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Repository imported");
       setDraftPrMessage(null);
+      setMultiPassExecution(null);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Import failed.");
       setStatus("Blocked");
@@ -290,6 +320,7 @@ export function WorkspaceShellV2() {
       const data = (await res.json()) as { workUnitPlan?: WorkUnitPlan; error?: string };
       if (!res.ok || !data.workUnitPlan) throw new Error(data.error ?? "Work unit planning failed.");
       setWorkUnitPlan(data.workUnitPlan);
+      setMultiPassExecution(null);
       setStatus(data.workUnitPlan.requiresMultiPass ? "Work unit plan ready" : "Work unit plan clear");
       if (!data.workUnitPlan.requiresMultiPass) {
         setWorkUnitApproved(true);
@@ -310,8 +341,45 @@ export function WorkspaceShellV2() {
     void runFix({ skipWorkUnitPlanning: true });
   }
 
+  async function runMultiPassExecution() {
+    if (!workUnitPlan?.requiresMultiPass) return proceedWithScopedFix();
+    setBusy(true);
+    setStatus("Running multi-pass executor");
+    try {
+      const res = await fetch("/api/workspace/multi-pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          taskDescription: fixRequest,
+          workUnitPlan,
+          repoFiles: apiFiles,
+          repositoryId: repositoryId ?? undefined
+        })
+      });
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; error?: string };
+      if (!res.ok || !data.result) throw new Error(data.error ?? "Multi-pass execution failed.");
+      setMultiPassExecution(data.result);
+      if (data.result.status === "blocked") {
+        setStatus("Blocked");
+        setIssue(data.result.blockers[0] ?? "Work unit execution was blocked.");
+        return;
+      }
+      setStatus("Multi-pass execution complete");
+      setIssue(null);
+      setWorkUnitApproved(true);
+      await runFix({ skipWorkUnitPlanning: true });
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Multi-pass execution failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function simplifyFixRequest() {
     setWorkUnitPlan(null);
+    setMultiPassExecution(null);
     setWorkUnitApproved(false);
     setStatus("Ready");
   }
@@ -582,6 +650,57 @@ export function WorkspaceShellV2() {
     }
   }
 
+  const agentDecisions: WorkspaceAgentDecision[] = useMemo(
+    () => [
+        {
+          id: "architect",
+          name: "Architect Agent",
+          status: roadmap ? "passed" : roadmapLoading ? "running" : repoConnected ? "idle" : "blocked",
+          summary: roadmap ? "Roadmap created and app type detected." : "Waiting for repository + brief to build roadmap.",
+          blockedReason: !repoConnected ? "Connect repository first." : undefined
+        },
+        {
+          id: "brain",
+          name: "Project Brain Agent",
+          status: projectBrain ? "passed" : repoConnected ? "running" : "idle",
+          summary: projectBrain ? `Indexed ${projectBrain.indexedFiles} files with ${projectBrain.summary.totalApiRoutes} routes.` : "Building symbol, route, and env maps."
+        },
+        {
+          id: "scope",
+          name: "Scope Agent",
+          status: workUnitPlan ? "passed" : fixRequest.trim() ? "running" : "idle",
+          summary: workUnitPlan ? "Work-unit scope is locked for controlled execution." : "Scope locks start after planning."
+        },
+        {
+          id: "builder",
+          name: "Builder Agent",
+          status: report?.patches?.length ? "passed" : busy && activeStep === "fix" ? "running" : "idle",
+          summary: report?.patches?.length ? `${report.patches.length} patch(es) prepared.` : "Patch pending."
+        },
+        {
+          id: "security",
+          name: "Security Agent",
+          status: securityCriticalCount && securityCriticalCount > 0 ? "blocked" : securityFindings ? "passed" : "idle",
+          summary: securityFindings ? "Security scan completed." : "Security scan not run.",
+          blockedReason: securityCriticalCount && securityCriticalCount > 0 ? `${securityCriticalCount} critical findings.` : undefined
+        },
+        {
+          id: "qa",
+          name: "QA Agent",
+          status: sandboxLog ? "passed" : activeStep === "verify" && busy ? "running" : "idle",
+          summary: sandboxLog ? "Completion checks finished." : "Verify is pending."
+        },
+        {
+          id: "deploy",
+          name: "Deployment Agent",
+          status: deployStatus === "failed" ? "blocked" : deployStatus === "ready" ? "passed" : "idle",
+          summary: deploymentReadiness?.status ? `Deployment readiness: ${deploymentReadiness.status.replace(/_/g, " ")}.` : "Deploy readiness not run.",
+          blockedReason: deployStatus === "failed" ? "Deployment readiness blockers detected." : undefined
+        }
+      ],
+      [roadmap, roadmapLoading, repoConnected, projectBrain, workUnitPlan, fixRequest, report, busy, activeStep, securityCriticalCount, securityFindings, sandboxLog, deployStatus, deploymentReadiness]
+  );
+
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-surface-ws text-text-ws-1">
       <WorkspaceTopbarV2 projectName={projectName} creditsRemaining={creditsRemaining} />
@@ -680,6 +799,8 @@ export function WorkspaceShellV2() {
           deploymentReadiness={deploymentReadiness}
           deploymentCheckedAt={deploymentCheckedAt}
           providerDuelResults={providerDuelResults}
+          projectBrain={projectBrain}
+          multiPassExecution={multiPassExecution}
           busy={busy}
           onGithubUrlChange={setGithubUrl}
           onGithubBranchChange={setGithubBranch}
@@ -691,10 +812,12 @@ export function WorkspaceShellV2() {
           onOpenDocs={() => window.open("/docs/GITHUB_APP.md", "_blank", "noreferrer")}
           onOpenDraftPr={openDraftPr}
           onProceedWithScopedFix={proceedWithScopedFix}
+          onRunMultiPassExecution={runMultiPassExecution}
           onSimplifyFixRequest={simplifyFixRequest}
           onRunSecurityScan={runSecurityScan}
           onRunDeploymentReadiness={runDeploymentReadiness}
           onRunProviderDuel={runProviderDuel}
+          agentDecisions={agentDecisions}
         />
       </div>
     </div>

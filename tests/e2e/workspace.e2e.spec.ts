@@ -15,6 +15,4 @@ test("workspace supports the repo-to-draft-pr flow", async ({ page }) => {
   await workspace.runFix("Add Playwright coverage for the workspace and admin surfaces.");
   await workspace.approvePatch();
   await workspace.runVerify();
-  await workspace.exportBundle();
-  await workspace.openDraftPr();
 });

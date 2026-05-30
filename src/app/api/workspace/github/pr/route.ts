@@ -55,9 +55,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Commit message must be 72 characters or fewer." }, { status: 400 });
     }
 
-    const forbiddenTargetBranch = body.branch?.trim() && /^(main|master)$/i.test(body.branch.trim());
-    if (forbiddenTargetBranch && body.branch?.startsWith("bootrise/")) {
-      return NextResponse.json({ error: "Self-agent target branches cannot be main or master." }, { status: 400 });
+    const targetBranch = body.branch?.trim() || "main";
+    if (/^(main|master)$/i.test(targetBranch)) {
+      return NextResponse.json({ error: "Target branch cannot be main or master. Choose a protected integration branch." }, { status: 400 });
+    }
+
+    const allowedScope = new Set([
+      ...(pending.controlLayer?.scopeContract.allowedEditFiles ?? []),
+      ...(pending.plan.impact.files ?? [])
+    ]);
+    if (allowedScope.size > 0) {
+      const outOfScope = pending.patches.map((patch) => patch.path).filter((path) => !allowedScope.has(path));
+      if (outOfScope.length > 0) {
+        return NextResponse.json({ error: `Patch includes files outside approved scope: ${outOfScope.join(", ")}` }, { status: 400 });
+      }
     }
 
     const action = "draft_pr";
@@ -86,7 +97,7 @@ export async function POST(request: Request) {
       },
       bootRiseVersion: "alpha"
     }) || buildBootRisePrBodyFromPendingFix(pending);
-    const baseBranch = body.branch?.trim() || "main";
+    const baseBranch = targetBranch;
 
     try {
       const push = await pushFilesToGithub({

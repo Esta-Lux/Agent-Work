@@ -116,6 +116,33 @@ export async function mockWorkspaceApis(page: Page) {
     })
   );
   await page.route("**/api/workspace/fix", (route) => json(route, { report: pendingReport, repositoryId: "repo_playwright" }));
+  await page.route("**/api/workspace/work-units", (route) =>
+    json(route, {
+      workUnitPlan: {
+        taskSummary: "Single unit",
+        totalUnits: 1,
+        units: [
+          {
+            id: "wu_1",
+            domain: "frontend_ui",
+            title: "Frontend update",
+            description: "Update UI copy",
+            targetFiles: ["src/app/page.tsx"],
+            readOnlyFiles: [],
+            dependsOn: [],
+            estimatedComplexity: "low",
+            acceptanceCriteria: ["Page copy updated"]
+          }
+        ],
+        executionOrder: [["wu_1"]],
+        crossFileDependencyWarnings: [],
+        estimatedRiskLevel: "low",
+        requiresMultiPass: false
+      },
+      integration: { passed: true, blockers: [], warnings: [] },
+      multiPass: { enabled: false, passes: [], note: "" }
+    })
+  );
   await page.route("**/api/workspace/fix/approve", (route) =>
     json(route, { report: approvedReport, files: patchedFiles })
   );
@@ -141,6 +168,9 @@ export async function mockWorkspaceApis(page: Page) {
 }
 
 export async function mockAdminApis(page: Page) {
+  await page.route("**/api/github/status", (route) =>
+    json(route, { connected: true, account: "Esta-Lux", installationId: "inst_1" })
+  );
   await page.route("**/api/ai/providers/health", (route) =>
     json(route, {
       providers: [
@@ -201,6 +231,53 @@ export async function mockAdminApis(page: Page) {
           summary: "Bringing workspace and admin flows under Playwright."
         }
       ]
+    })
+  );
+  await page.route("**/api/admin/self-agent/plan", (route) =>
+    json(route, {
+      adminBuildMission: {
+        id: "mission_scope",
+        title: "Self-agent mission",
+        status: "scoped",
+        branchName: "bootrise/self-agent-draft",
+        createdAt: "2026-05-30T07:06:00.000Z",
+        objective: "Create scoped patch preview",
+        affectedFiles: ["src/components/admin/self-agent-page.tsx"]
+      },
+      scope: {
+        missionId: "mission_scope",
+        totalFilesAffected: 1,
+        estimatedRiskLevel: "medium",
+        scopeSummary: "Scope for self-agent mission",
+        safetyNote: "No direct mutation",
+        workUnits: [
+          {
+            id: "wu_1",
+            label: "backend scope",
+            domain: "backend",
+            targetFiles: ["src/components/admin/self-agent-page.tsx"],
+            readOnlyFiles: ["src/lib/auth/with-admin-auth.ts"],
+            description: "Patch preview scope",
+            riskLevel: "medium"
+          }
+        ]
+      }
+    })
+  );
+  await page.route("**/api/admin/self-agent/patch", (route) =>
+    json(route, {
+      patchPreview: {
+        patches: [
+          {
+            path: "src/components/admin/self-agent-page.tsx",
+            before: "before",
+            after: "after",
+            summary: "Self-agent preview patch"
+          }
+        ],
+        warnings: []
+      },
+      qa: { passed: true, blockers: [], warnings: [] }
     })
   );
   await page.route("**/api/admin/kill-switches", (route) =>
