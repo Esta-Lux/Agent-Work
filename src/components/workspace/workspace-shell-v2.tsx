@@ -93,6 +93,7 @@ export function WorkspaceShellV2() {
   const [providerDuelResults, setProviderDuelResults] = useState<ProviderDuelResult[]>([]);
   const [projectBrain, setProjectBrain] = useState<ProjectBrainV2 | null>(null);
   const [multiPassExecution, setMultiPassExecution] = useState<MultiPassExecutionResult | null>(null);
+  const [multiPassRunId, setMultiPassRunId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const roadmapRequestRef = useRef<string | null>(null);
@@ -357,9 +358,10 @@ export function WorkspaceShellV2() {
           repositoryId: repositoryId ?? undefined
         })
       });
-      const data = (await res.json()) as { result?: MultiPassExecutionResult; error?: string };
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
       if (!res.ok || !data.result) throw new Error(data.error ?? "Multi-pass execution failed.");
       setMultiPassExecution(data.result);
+      setMultiPassRunId(data.runId ?? null);
       if (data.result.status === "blocked") {
         setStatus("Blocked");
         setIssue(data.result.blockers[0] ?? "Work unit execution was blocked.");
@@ -377,9 +379,38 @@ export function WorkspaceShellV2() {
     }
   }
 
+  async function rerunWorkUnit(workUnitId: string) {
+    if (!multiPassRunId) return setIssue("Run multi-pass once before re-running a unit.");
+    setBusy(true);
+    setStatus(`Re-running ${workUnitId}`);
+    try {
+      const res = await fetch("/api/workspace/multi-pass/rerun-unit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          runId: multiPassRunId,
+          workUnitId
+        })
+      });
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
+      if (!res.ok || !data.result) throw new Error(data.error ?? "Work unit rerun failed.");
+      setMultiPassExecution(data.result);
+      setMultiPassRunId(data.runId ?? multiPassRunId);
+      setIssue(data.result.status === "blocked" ? data.result.blockers[0] ?? "Work unit rerun blocked." : null);
+      setStatus(data.result.status === "blocked" ? "Blocked" : "Work unit rerun complete");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Work unit rerun failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function simplifyFixRequest() {
     setWorkUnitPlan(null);
     setMultiPassExecution(null);
+    setMultiPassRunId(null);
     setWorkUnitApproved(false);
     setStatus("Ready");
   }
@@ -817,6 +848,7 @@ export function WorkspaceShellV2() {
           onRunSecurityScan={runSecurityScan}
           onRunDeploymentReadiness={runDeploymentReadiness}
           onRunProviderDuel={runProviderDuel}
+          onRerunWorkUnit={rerunWorkUnit}
           agentDecisions={agentDecisions}
         />
       </div>

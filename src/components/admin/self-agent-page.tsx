@@ -153,6 +153,83 @@ export function SelfAgentPage() {
     }
   }
 
+  async function approvePatchPreview() {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/self-agent/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
+      });
+      const data = (await res.json()) as { message?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Approval failed.");
+      setMessage(data.message ?? "Patch preview approved.");
+      setVerifyState("approved");
+      setDraftPrState("ready for verify");
+      void loadMissions();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Approval failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runVerify() {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/self-agent/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
+      });
+      const data = (await res.json()) as {
+        verify?: { passed?: boolean; commands?: Array<{ label: string; exitCode: number; output: string }> };
+        error?: string;
+      };
+      if (!res.ok || !data.verify) throw new Error(data.error ?? "Verify failed.");
+      setVerifyState(data.verify.passed ? "passed" : "failed");
+      setDraftPrState(data.verify.passed ? "ready to open draft PR" : "verify blocked");
+      setMessage(
+        data.verify.commands?.map((command) => `${command.label} (${command.exitCode})`).join(" · ") ??
+          "Verification complete."
+      );
+      void loadMissions();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Verify failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openDraftPr() {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/self-agent/pr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
+      });
+      const data = (await res.json()) as { draftPr?: { prUrl?: string }; error?: string };
+      if (!res.ok || !data.draftPr) throw new Error(data.error ?? "Draft PR open failed.");
+      setDraftPrState(data.draftPr.prUrl ?? "draft PR prepared");
+      setMessage("Draft PR metadata generated for approved mission.");
+      void loadMissions();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Draft PR open failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -214,6 +291,37 @@ export function SelfAgentPage() {
       {scope ? (
         <div className="flex justify-end">
           <CommandButton theme="admin" variant="primary" size="md" label="Generate patch preview" loading={busy} onClick={generatePatchPreview} />
+        </div>
+      ) : null}
+      {scope ? (
+        <div className="grid gap-2 md:grid-cols-3">
+          <CommandButton
+            theme="admin"
+            variant="secondary"
+            size="sm"
+            label="Approve patch"
+            loading={busy}
+            disabled={patches.length === 0 || patchBlockers.length > 0}
+            onClick={approvePatchPreview}
+          />
+          <CommandButton
+            theme="admin"
+            variant="secondary"
+            size="sm"
+            label="Run verify"
+            loading={busy}
+            disabled={patches.length === 0}
+            onClick={runVerify}
+          />
+          <CommandButton
+            theme="admin"
+            variant="secondary"
+            size="sm"
+            label="Prepare draft PR"
+            loading={busy}
+            disabled={verifyState !== "passed"}
+            onClick={openDraftPr}
+          />
         </div>
       ) : null}
       <SelfAgentDiffPanel patches={patches} blockers={patchBlockers} warnings={patchWarnings} verifyStatus={verifyState} draftPrStatus={draftPrState} />
