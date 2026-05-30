@@ -28,6 +28,21 @@ export function updateJobStatus(id: string, status: JobStatus, error?: string) {
   if (!job) return null;
   job.status = status;
   job.error = error;
+  if (status === "completed" || status === "failed") {
+    job.completedAt = new Date().toISOString();
+  }
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+  return job;
+}
+
+export function updateJob(
+  id: string,
+  patch: Partial<Pick<BootriseJob, "status" | "error" | "progressPercent" | "progressMessage" | "result" | "completedAt">>
+) {
+  const job = getJob(id);
+  if (!job) return null;
+  Object.assign(job, patch);
   job.updatedAt = new Date().toISOString();
   saveJob(job);
   return job;

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { updateAdminBuildMission } from "@/lib/admin-build/admin-build-store";
 import { withAdminAuth } from "@/lib/auth/with-admin-auth";
 import { validateSelfAgentBoundary } from "@/lib/agents/admin/self-agent-boundary";
-import { getSelfAgentPreview } from "@/lib/agents/admin/self-agent-preview-store";
+import { enqueueJob } from "@/lib/jobs/enqueue";
 
 export const runtime = "nodejs";
 
@@ -27,42 +26,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const preview = getSelfAgentPreview(mission.id);
-    if (!preview) {
-      return NextResponse.json({ error: "Patch preview not found for mission." }, { status: 400 });
-    }
-
-    const verify = {
-      passed: preview.blockers.length === 0,
-      commands: [
-        {
-          label: "self-agent-guard",
-          exitCode: preview.blockers.length === 0 ? 0 : 1,
-          output:
-            preview.blockers.length === 0
-              ? "Guard checks passed for self-agent patch preview."
-              : preview.blockers.join("\n")
-        },
-        {
-          label: "self-agent-diff-scope",
-          exitCode: 0,
-          output: `Patch count: ${preview.patches.length}. Branch: ${preview.branchName}.`
-        }
-      ]
-    };
-
-    const updatedMission = updateAdminBuildMission(
-      mission.id,
-      {
-        status: verify.passed ? "branch_pushed" : "guard_check",
-        branchName: preview.branchName
-      },
-      user.id
-    );
-
-    return NextResponse.json({
-      mission: updatedMission ?? mission,
-      verify
+    const queued = await enqueueJob({
+      type: "selfAgent.verify",
+      orgId: mission.orgId,
+      userId: user.id,
+      projectId: mission.id,
+      repositoryId: mission.repositoryId,
+      payload: {
+        missionId: mission.id,
+        branchName: mission.branchName
+      }
     });
+    return NextResponse.json({ product: "BootRise", jobId: queued.jobId, status: "queued" });
   });
 }

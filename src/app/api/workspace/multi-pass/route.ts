@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
-import { runMultiPassExecutor } from "@/lib/workspace/multi-pass-executor";
-import { createWorkUnitRun } from "@/lib/workspace/work-unit-run-store";
-import { buildReportFromMultiPassExecution, saveMultiPassPendingFix } from "@/lib/workspace/multi-pass-report-builder";
 import type { WorkUnitPlan } from "@/lib/workspace/work-unit-planner";
+import { enqueueJob } from "@/lib/jobs/enqueue";
 
 export const runtime = "nodejs";
 
@@ -22,41 +20,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "taskDescription, workUnitPlan, and repoFiles are required." }, { status: 400 });
     }
 
-    const result = await runMultiPassExecutor({
-      taskDescription,
-      workUnitPlan: body.workUnitPlan,
-      repoFiles: body.repoFiles,
-      repositoryId: body.repositoryId,
+    const queued = await enqueueJob({
+      type: "multiPass.execute",
       orgId: ctx.orgId,
-      projectId: body.repositoryId,
-      userId: ctx.user.id
-    });
-
-    const run = createWorkUnitRun({
-      orgId: ctx.orgId,
+      userId: ctx.user.id,
       projectId: body.repositoryId ?? "workspace-default",
       repositoryId: body.repositoryId,
-      taskDescription,
-      workUnitPlan: body.workUnitPlan,
-      repoFiles: body.repoFiles,
-      result
+      payload: {
+        taskDescription,
+        workUnitPlan: body.workUnitPlan,
+        repoFiles: body.repoFiles
+      }
     });
-
-    const report = buildReportFromMultiPassExecution({
-      execution: result,
-      taskDescription,
-      repositoryId: body.repositoryId,
-      workUnitPlan: body.workUnitPlan
-    });
-    saveMultiPassPendingFix({
-      report,
-      execution: result,
-      taskDescription,
-      repoFiles: body.repoFiles,
-      orgId: ctx.orgId,
-      projectId: body.repositoryId
-    });
-
-    return NextResponse.json({ result, runId: run.id, report });
+    return NextResponse.json({ product: "BootRise", jobId: queued.jobId, status: "queued" });
   });
 }

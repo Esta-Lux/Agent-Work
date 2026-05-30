@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
 import { getProductBrain } from "@/lib/product-brain/product-brain-store";
-import { queryProductBrain } from "@/lib/product-brain/product-brain-query";
 import type { ProjectBrief } from "@/lib/workspace/workspace-types";
+import { enqueueJob } from "@/lib/jobs/enqueue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return withWorkspaceAuth(request, async (_ctx, req) => {
+  return withWorkspaceAuth(request, async (ctx, req) => {
     const body = (await req.json().catch(() => null)) as {
       projectId?: string;
       brief?: Partial<ProjectBrief>;
@@ -29,12 +29,18 @@ export async function POST(request: Request) {
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required." }, { status: 400 });
     }
-    const productBrain = queryProductBrain({
+    const queued = await enqueueJob({
+      type: "productBrain.build",
+      orgId: ctx.orgId,
+      userId: ctx.user.id,
       projectId,
-      brief: body?.brief,
+      repositoryId: projectId,
       files: body?.files,
-      correction: body?.correction
+      payload: {
+        brief: body?.brief,
+        correction: body?.correction
+      }
     });
-    return NextResponse.json({ productBrain });
+    return NextResponse.json({ product: "BootRise", jobId: queued.jobId, status: "queued" });
   });
 }

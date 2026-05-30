@@ -45,9 +45,13 @@ export interface JobSummary {
   status: string;
   projectId: string;
   orgId: string;
+  repositoryId?: string;
+  progressPercent?: number;
+  progressMessage?: string;
   error?: string;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
 }
 
 export interface UsageBreakdown {
@@ -142,9 +146,13 @@ export function listJobsAdmin(limit = 100): JobSummary[] {
         status: job.status,
         projectId: job.projectId,
         orgId: job.orgId,
+        repositoryId: job.repositoryId,
+        progressPercent: job.progressPercent,
+        progressMessage: job.progressMessage,
         error: job.error,
         createdAt: job.createdAt,
-        updatedAt: job.updatedAt
+        updatedAt: job.updatedAt,
+        completedAt: job.completedAt
       });
     } catch {
       /* ignore */
