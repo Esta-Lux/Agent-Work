@@ -3,6 +3,7 @@ import { checkWorkUnitIntegration } from "@/lib/workspace/integration-checker";
 import { createMultiPassSkeleton } from "@/lib/workspace/multi-pass-modifier";
 import { planWorkUnits } from "@/lib/workspace/work-unit-planner";
 import { withWorkspaceAuth } from "@/lib/auth/with-workspace-auth";
+import { queryProjectBrain } from "@/lib/project-brain/brain-query";
 
 export const runtime = "nodejs";
 
@@ -27,11 +28,16 @@ export async function POST(request: Request) {
     }
 
     try {
+      const brain = queryProjectBrain({
+        repositoryId: `repo_${Date.now()}`,
+        taskText: taskDescription,
+        files: repoFiles
+      });
       const workUnitPlan = planWorkUnits({
         taskDescription,
         scopedFiles: body?.scopedFiles ?? [],
         repoFiles,
-        projectBrainContext: body?.projectBrainContext
+        projectBrainContext: body?.projectBrainContext ?? JSON.stringify(brain.contextPack)
       });
       const integration = checkWorkUnitIntegration(workUnitPlan);
       if (!integration.passed) {
@@ -41,7 +47,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         workUnitPlan,
         integration,
-        multiPass: createMultiPassSkeleton(workUnitPlan)
+        multiPass: createMultiPassSkeleton(workUnitPlan),
+        projectBrainContextPack: brain.contextPack
       });
     } catch (error) {
       return NextResponse.json(

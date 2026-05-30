@@ -8,6 +8,8 @@ import { CommandButton } from "@/components/ui/command-button";
 import { MissionCard } from "@/components/ui/mission-card";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusPill } from "@/components/ui/status-pill";
+import { SelfAgentDiffPanel } from "@/components/admin/self-agent-diff-panel";
+import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 
 interface GithubStatus {
   connected?: boolean;
@@ -48,6 +50,11 @@ export function SelfAgentPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<SelfAgentScope | null>(null);
+  const [patches, setPatches] = useState<ProposedPatch[]>([]);
+  const [patchBlockers, setPatchBlockers] = useState<string[]>([]);
+  const [patchWarnings, setPatchWarnings] = useState<string[]>([]);
+  const [verifyState, setVerifyState] = useState<string | undefined>();
+  const [draftPrState, setDraftPrState] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +94,11 @@ export function SelfAgentPage() {
     setError(null);
     setMessage(null);
     setScope(null);
+    setPatches([]);
+    setPatchBlockers([]);
+    setPatchWarnings([]);
+    setVerifyState(undefined);
+    setDraftPrState(undefined);
     try {
       const res = await fetch("/api/admin/self-agent/plan", {
         method: "POST",
@@ -103,9 +115,39 @@ export function SelfAgentPage() {
       if (!res.ok || !data.adminBuildMission || !data.scope) throw new Error(data.error ?? "Scope planning failed.");
       setMissions((current) => [data.adminBuildMission as AdminBuildMission, ...current.filter((mission) => mission.id !== data.adminBuildMission?.id)].slice(0, 10));
       setScope(data.scope);
-      setMessage(`Scope planned for ${targetBranch}. Patch generation is intentionally not started yet.`);
+      setMessage(`Scope planned for ${targetBranch}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Scope planning failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generatePatchPreview() {
+    if (!scope) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/self-agent/patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
+      });
+      const data = (await res.json()) as {
+        patchPreview?: { patches?: ProposedPatch[]; warnings?: string[] };
+        qa?: { blockers?: string[]; warnings?: string[]; passed?: boolean };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Patch preview failed.");
+      setPatches(data.patchPreview?.patches ?? []);
+      setPatchWarnings([...(data.patchPreview?.warnings ?? []), ...(data.qa?.warnings ?? [])]);
+      setPatchBlockers(data.qa?.blockers ?? []);
+      setVerifyState(data.qa?.passed ? "ready" : "blocked");
+      setDraftPrState("awaiting admin approval");
+      setMessage("Patch preview generated. Review guard output before approval.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Patch preview failed.");
     } finally {
       setBusy(false);
     }
@@ -169,10 +211,16 @@ export function SelfAgentPage() {
       </section>
 
       {scope ? <ScopePreview scope={scope} /> : null}
+      {scope ? (
+        <div className="flex justify-end">
+          <CommandButton theme="admin" variant="primary" size="md" label="Generate patch preview" loading={busy} onClick={generatePatchPreview} />
+        </div>
+      ) : null}
+      <SelfAgentDiffPanel patches={patches} blockers={patchBlockers} warnings={patchWarnings} verifyStatus={verifyState} draftPrStatus={draftPrState} />
 
       <section className="rounded-lg border border-border-admin bg-panel-admin p-4">
         <p className="font-mono text-xs font-medium uppercase tracking-widest text-text-admin-3">Mission surfaces</p>
-        <p className="mt-2 text-sm text-text-admin-2">No mission running yet. Create a mission to unlock plan, diff, trace, verify, agents, and memory.</p>
+        <p className="mt-2 text-sm text-text-admin-2">Create mission scope, then generate patch preview and guard evidence before verify and draft PR.</p>
         <div className="mt-4 grid gap-2 md:grid-cols-3">
           {[
             ["Plan", "Create a mission to generate a scope next."],
