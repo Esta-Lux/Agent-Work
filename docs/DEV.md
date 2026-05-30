@@ -8,7 +8,7 @@ Next.js only exposes `NEXT_PUBLIC_*` vars to client components. If you already s
 
 ## Local auth bypass (default on `npm run dev`)
 
-**You do not need to sign in on localhost.** When `NODE_ENV=development`, BootRise acts as **dev@bootrise.local** for all workspace APIs and the UI. Production builds never enable this.
+**You do not need to sign in on localhost.** When `NODE_ENV=development`, BootRise acts as **dev@bootrise.local** for all workspace APIs and the UI. Preview deployments also keep the bypass open when `VERCEL_ENV=preview` (or `BOOTRISE_PREVIEW_DEV=1` for non-Vercel preview stacks). Live production builds never enable this.
 
 | Variable | When to set | Effect |
 | --- | --- | --- |
@@ -27,9 +27,9 @@ Optional identity overrides:
 | `BOOTRISE_DEV_BYPASS_INCLUDED_CREDITS` | `1000000` | Synthetic credit balance shown while dev auth bypass is active |
 | `BOOTRISE_DEFAULT_ORG_ID` | `org_default` | Must match a row in `bootrise_organizations` if using Supabase DB |
 
-`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing. While bypass stays on, workspace credit checks do not block local dev flows and charges are not persisted.
+`/auth/sign-in` redirects to the workspace automatically while bypass is active. Auth code paths remain in the repo for production and for strict local testing. While bypass stays on, workspace credit checks do not block local dev or preview flows and charges are not persisted.
 
-**Never rely on bypass in production** — it is disabled when `NODE_ENV=production`.
+**Never rely on bypass in live production** — it stays disabled for `NODE_ENV=production` unless the runtime is an explicit preview environment.
 
 ## AI chat / fix (separate from Supabase auth)
 
