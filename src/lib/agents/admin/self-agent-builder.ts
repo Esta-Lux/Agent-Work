@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, relative } from "node:path";
 import { getAdminBuildMission } from "@/lib/admin-build/admin-build-store";
 import type { SelfAgentWorkUnit } from "@/lib/agents/admin/self-agent-architect";
 import { generateSelfAgentPatch, isReviewOnlyMission } from "@/lib/agents/admin/self-agent-patch-generator";
@@ -11,6 +11,7 @@ import type { LlmProviderId } from "@/lib/ai/providers";
 import type { SourceFileInput } from "@/lib/intelligence/repo-intelligence";
 import { buildRepoIntelligenceSnapshot } from "@/lib/intelligence/repo-intelligence";
 import { createInitialChangePlan } from "@/lib/planning/planner";
+import { DEFAULT_ORG_ID } from "@/lib/tenancy/org-context";
 import type { AuthUser } from "@/lib/auth/types";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
 
@@ -22,6 +23,15 @@ export interface SelfAgentPatchPreview {
   source: "llm" | "fallback";
 }
 
+/** Resolve a relative path and ensure it stays inside the project root. */
+function safeResolve(relativePath: string): string | null {
+  const root = process.cwd();
+  const absolute = resolve(root, relativePath);
+  // Reject any path that escapes the project root (directory traversal guard)
+  if (relative(root, absolute).startsWith("..")) return null;
+  return absolute;
+}
+
 function loadWorkUnitFiles(workUnits: SelfAgentWorkUnit[]): SourceFileInput[] {
   const seen = new Set<string>();
   const files: SourceFileInput[] = [];
@@ -29,8 +39,8 @@ function loadWorkUnitFiles(workUnits: SelfAgentWorkUnit[]): SourceFileInput[] {
     for (const path of [...unit.targetFiles, ...unit.readOnlyFiles]) {
       if (seen.has(path)) continue;
       seen.add(path);
-      const absolute = resolve(process.cwd(), path);
-      if (!existsSync(absolute)) continue;
+      const absolute = safeResolve(path);
+      if (!absolute || !existsSync(absolute)) continue;
       files.push({ path, content: readFileSync(absolute, "utf8") });
     }
   }
@@ -93,8 +103,8 @@ function runMarkerPatches(
   const warnings: string[] = [];
   for (const unit of workUnits) {
     for (const path of unit.targetFiles.slice(0, 6)) {
-      const absolute = resolve(process.cwd(), path);
-      if (!existsSync(absolute)) {
+      const absolute = safeResolve(path);
+      if (!absolute || !existsSync(absolute)) {
         warnings.push(`Skipped ${path}: file not found in local workspace.`);
         continue;
       }
@@ -140,7 +150,7 @@ export async function runSelfAgentBuilder(input: {
         missionObjective: mission.objective,
         workUnits: input.workUnits,
         user: input.user,
-        orgId: input.orgId ?? "org_default",
+        orgId: input.orgId ?? DEFAULT_ORG_ID,
         provider
       });
       if (patches.length > 0) {

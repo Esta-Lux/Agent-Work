@@ -1,4 +1,4 @@
-import { expect, test } from "playwright/test";
+import { expect, test, type Route } from "playwright/test";
 import { WorkspacePage } from "./page-objects/workspace-page";
 import { mockWorkspaceApis } from "./support/mock-api";
 
@@ -63,7 +63,7 @@ test("workspace security scan and deploy readiness gate the PR path", async ({ p
 
 test("architect blocks a high-risk task and approves assumptions before patching", async ({ page }) => {
   // Route the fix endpoint to return an architect-blocked state first
-  await page.route("**/api/workspace/fix", (route: import("playwright/test").Route) => {
+  await page.route("**/api/workspace/fix", (route: Route) => {
     const body = route.request().postDataJSON() as { assumptionsApproved?: boolean } | null;
     if (!body?.assumptionsApproved) {
       return route.fulfill({
