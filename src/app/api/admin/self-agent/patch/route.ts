@@ -7,6 +7,7 @@ import { validateSelfAgentPatch, type SelfAgentPatchValidation } from "@/lib/age
 import { runSelfAgentBuilder } from "@/lib/agents/admin/self-agent-builder";
 import { saveSelfAgentPreview } from "@/lib/agents/admin/self-agent-preview-store";
 import { runSelfAgentQa } from "@/lib/agents/admin/self-agent-qa";
+import { DEFAULT_ORG_ID } from "@/lib/tenancy/org-context";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
@@ -16,7 +17,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   return withAdminAuth(request, async (user) => {
-    const body = (await request.json().catch(() => null)) as { missionId?: string; branchName?: string } | null;
+    const body = (await request.json().catch(() => null)) as { missionId?: string; branchName?: string; provider?: string } | null;
     const boundary = validateSelfAgentBoundary({ missionId: body?.missionId, branchName: body?.branchName });
 
     if (!boundary.ok) {
@@ -35,9 +36,12 @@ export async function POST(request: Request) {
       description: mission.objective,
       repoFiles
     });
-    const preview = runSelfAgentBuilder({
+    const preview = await runSelfAgentBuilder({
       missionId: mission.id,
-      workUnits: scope.workUnits
+      workUnits: scope.workUnits,
+      user,
+      orgId: DEFAULT_ORG_ID,
+      provider: body?.provider
     });
 
     const validations: SelfAgentPatchValidation[] = scope.workUnits.map((workUnit) =>

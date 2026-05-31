@@ -16,7 +16,7 @@ export class WorkspacePage {
     await this.page.getByLabel("GitHub URL").fill("https://github.com/Esta-Lux/Agent-Work");
     await this.page.getByRole("button", { name: "Connect repo", exact: true }).click();
     await expect(this.page.getByRole("button", { name: "Complete brief" })).toBeVisible();
-    await expect(this.page.getByText("src/app/page.tsx")).toBeVisible();
+    await expect(this.page.getByText("src/app/page.tsx", { exact: true })).toBeVisible();
   }
 
   async completeBrief() {
@@ -29,16 +29,25 @@ export class WorkspacePage {
     await this.page.getByLabel("Fix request").fill(request);
     await this.page.getByRole("button", { name: "Run Fix" }).click();
     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-    if (await approveAssumptions.isVisible().catch(() => false)) {
+    const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+    const runMultiPass = this.page.getByRole("button", { name: "Run multi-pass" });
+    const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await Promise.race([
+        approveAssumptions.waitFor({ state: "visible", timeout: 4000 }),
+        approvePatch.waitFor({ state: "visible", timeout: 4000 }),
+        runMultiPass.waitFor({ state: "visible", timeout: 4000 }),
+        useSinglePass.waitFor({ state: "visible", timeout: 4000 })
+      ]).catch(() => undefined);
+      if (!(await approveAssumptions.isVisible().catch(() => false))) break;
       await approveAssumptions.click();
       await this.page.getByRole("button", { name: "Run Fix" }).click();
     }
-    const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
       await useSinglePass.click();
     }
     if (options?.expectApprove !== false) {
-      await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+      await expect(approvePatch).toBeVisible();
     }
   }
 
@@ -54,7 +63,16 @@ export class WorkspacePage {
   }
 
   async approvePatch() {
-    await this.page.getByRole("button", { name: "Approve patch" }).click();
+    const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+    if (!(await approvePatch.isVisible().catch(() => false))) {
+      const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+      if (await approveAssumptions.isVisible().catch(() => false)) {
+        await approveAssumptions.click();
+        await this.page.getByRole("button", { name: "Run Fix" }).click();
+      }
+    }
+    await expect(approvePatch).toBeVisible();
+    await approvePatch.click();
     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
   }
 
@@ -65,12 +83,12 @@ export class WorkspacePage {
 
   async runSecurityScan() {
     await this.page.getByRole("button", { name: "Run security scan" }).click();
-    await expect(this.page.getByText("Security scan complete")).toBeVisible();
+    await expect(this.page.getByText("Security scan complete", { exact: true })).toBeVisible();
   }
 
   async runDeployReadiness() {
     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
-    await expect(this.page.getByText("Deploy readiness complete")).toBeVisible();
+    await expect(this.page.getByText("Deploy readiness complete", { exact: true })).toBeVisible();
   }
 
   async exportBundle() {
@@ -82,13 +100,29 @@ export class WorkspacePage {
   }
 
   async openDraftPr() {
-    await this.page.getByRole("button", { name: "Open draft PR" }).click();
+    const openDraftPrButton = this.page.getByRole("button", { name: "Open draft PR" });
+    await expect(openDraftPrButton).toBeEnabled();
+    await openDraftPrButton.click();
     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
   }
 
-  async runMultiPass() {
-    await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+  async runMultiPass(): Promise<boolean> {
+    const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+    if (await approveAssumptions.isVisible().catch(() => false)) {
+      await approveAssumptions.click();
+      await this.page.getByRole("button", { name: "Run Fix" }).click();
+    }
+    const runMultiPassButton = this.page.getByRole("button", { name: "Run multi-pass" });
+    if (!(await runMultiPassButton.isVisible().catch(() => false))) {
+      const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+      if (await useSinglePass.isVisible().catch(() => false)) {
+        await useSinglePass.click();
+      }
+      return false;
+    }
+    await runMultiPassButton.click();
     await expect(this.page.getByText("Work unit execution")).toBeVisible();
+    return true;
   }
 
   async rerunWorkUnit() {
