@@ -74,7 +74,52 @@ function json(route: Route, body: unknown, status = 200) {
   });
 }
 
+type MockJob = {
+  id: string;
+  type: string;
+  status: "queued" | "running" | "completed" | "failed";
+  projectId: string;
+  repositoryId?: string;
+  progressPercent: number;
+  progressMessage: string;
+  result?: unknown;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  error?: string;
+};
+
+function queueCompletedJob(
+  jobs: Map<string, MockJob>,
+  input: { type: string; projectId: string; repositoryId?: string; result: unknown; progressMessage?: string }
+) {
+  const id = `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  jobs.set(id, {
+    id,
+    type: input.type,
+    status: "completed",
+    projectId: input.projectId,
+    repositoryId: input.repositoryId,
+    progressPercent: 100,
+    progressMessage: input.progressMessage ?? "Completed",
+    result: input.result,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: now
+  });
+  return id;
+}
+
 export async function mockWorkspaceApis(page: Page) {
+  const jobs = new Map<string, MockJob>();
+  await page.route("**/api/workspace/jobs**", (route) => {
+    const url = new URL(route.request().url());
+    const jobId = url.searchParams.get("jobId") ?? "";
+    const job = jobs.get(jobId);
+    if (!job) return json(route, { error: "Job not found" }, 404);
+    return json(route, { product: "BootRise", job });
+  });
   await page.route("**/api/ai/providers/health", (route) =>
     json(route, {
       providers: [
@@ -115,9 +160,34 @@ export async function mockWorkspaceApis(page: Page) {
       }
     })
   );
+  await page.route("**/api/workspace/product-brain", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "productBrain.build",
+      projectId: "repo_playwright",
+      repositoryId: "repo_playwright",
+      result: {
+        productBrain: {
+          projectId: "repo_playwright",
+          oneLineDescription: "BootRise command workspace",
+          targetUsers: ["Operators"],
+          coreProblem: "Move from scoped fix to guarded PR quickly",
+          primaryWorkflows: ["import", "fix", "verify", "draft_pr"],
+          constraints: [],
+          policies: ["Approval required before PR"],
+          assumptions: [],
+          definitionOfDone: ["Patch approved", "Verify passed", "Draft PR opened"],
+          currentRoadmap: [{ title: "Ship workspace E2E", status: "in_progress", owner: "BootRise" }],
+          knownRisks: ["Auth redirects need strict coverage"],
+          recentCorrections: [],
+          generatedAt: new Date().toISOString()
+        }
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
   await page.route("**/api/workspace/fix", (route) => json(route, { report: pendingReport, repositoryId: "repo_playwright" }));
-  await page.route("**/api/workspace/work-units", (route) =>
-    json(route, {
+  await page.route("**/api/workspace/work-units", async (route) => {
+    return json(route, {
       workUnitPlan: {
         taskSummary: "Single unit",
         totalUnits: 1,
@@ -141,8 +211,8 @@ export async function mockWorkspaceApis(page: Page) {
       },
       integration: { passed: true, blockers: [], warnings: [] },
       multiPass: { enabled: false, passes: [], note: "" }
-    })
-  );
+    });
+  });
   await page.route("**/api/workspace/fix/approve", (route) =>
     json(route, { report: approvedReport, files: patchedFiles })
   );
@@ -156,6 +226,145 @@ export async function mockWorkspaceApis(page: Page) {
       message: "Verification completed."
     })
   );
+  await page.route("**/api/workspace/multi-pass", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "multiPass.execute",
+      projectId: "repo_playwright",
+      repositoryId: "repo_playwright",
+      result: {
+        result: {
+          taskId: "mp_1",
+          status: "completed",
+          executions: [
+            {
+              workUnitId: "wu_1",
+              status: "patched",
+              patches: pendingReport.patches,
+              blockers: [],
+              warnings: []
+            },
+            {
+              workUnitId: "wu_2",
+              status: "skipped",
+              patches: [],
+              blockers: ["Marked for rerun after upstream change."],
+              warnings: []
+            }
+          ],
+          mergedPatches: pendingReport.patches,
+          finalCompletionPassed: true,
+          blockers: [],
+          warnings: []
+        },
+        runId: "run_playwright",
+        report: pendingReport
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
+  await page.route("**/api/workspace/multi-pass/rerun-unit", (route) =>
+    json(route, {
+      result: {
+        taskId: "mp_1",
+        status: "completed",
+        executions: [
+          {
+            workUnitId: "wu_1",
+            status: "patched",
+            patches: pendingReport.patches,
+            blockers: [],
+            warnings: []
+          },
+          {
+            workUnitId: "wu_2",
+            status: "patched",
+            patches: [],
+            blockers: [],
+            warnings: []
+          }
+        ],
+        mergedPatches: pendingReport.patches,
+        finalCompletionPassed: true,
+        blockers: [],
+        warnings: []
+      },
+      runId: "run_playwright",
+      report: pendingReport
+    })
+  );
+  await page.route("**/api/workspace/security/scan", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "security.scan",
+      projectId: "repo_playwright",
+      repositoryId: "repo_playwright",
+      result: {
+        findings: [],
+        criticalCount: 0,
+        score: 96,
+        semgrep: [],
+        estimatedCredits: 8
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
+  await page.route("**/api/workspace/deploy/readiness", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "deployment.readiness",
+      projectId: "repo_playwright",
+      repositoryId: "repo_playwright",
+      result: {
+        report: {
+          status: "ready_for_production",
+          score: 94,
+          blockers: [],
+          warnings: [],
+          checklist: ["Build pipeline configured", "Auth redirects configured"]
+        },
+        estimatedCredits: 6
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
+  await page.route("**/api/workspace/provider-duel", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "provider.duel",
+      projectId: "repo_playwright",
+      repositoryId: "repo_playwright",
+      result: {
+        results: [
+          {
+            provider: "bootrise",
+            available: true,
+            model: "nvidia/bootrise",
+            estimatedCredits: 10,
+            completionScore: 91,
+            vagueOutputFindings: 0,
+            securityConcerns: [],
+            recommendation: "cheapest_safe",
+            tokenEstimate: 620,
+            costEstimate: 0.01,
+            confidence: 90,
+            summary: "Plan passed non-mutating guard checks."
+          },
+          {
+            provider: "openai",
+            available: true,
+            model: "gpt-5.4",
+            estimatedCredits: 20,
+            completionScore: 94,
+            vagueOutputFindings: 0,
+            securityConcerns: [],
+            recommendation: "most_complete",
+            tokenEstimate: 680,
+            costEstimate: 0.02,
+            confidence: 92,
+            summary: "Plan passed non-mutating guard checks."
+          }
+        ]
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
   await page.route("**/api/workspace/export", (route) =>
     json(route, { message: "Export bundle saved to /tmp/bootrise-export.zip" })
   );
@@ -168,6 +377,17 @@ export async function mockWorkspaceApis(page: Page) {
 }
 
 export async function mockAdminApis(page: Page) {
+  const jobs = new Map<string, MockJob>();
+  await page.route("**/api/admin/workspace/jobs**", (route) => {
+    const url = new URL(route.request().url());
+    const jobId = url.searchParams.get("jobId");
+    if (jobId) {
+      const job = jobs.get(jobId);
+      if (!job) return json(route, { error: "Job not found" }, 404);
+      return json(route, { product: "BootRise", job });
+    }
+    return json(route, { product: "BootRise", jobs: Array.from(jobs.values()) });
+  });
   await page.route("**/api/github/status", (route) =>
     json(route, { connected: true, account: "Esta-Lux", installationId: "inst_1" })
   );
@@ -278,6 +498,41 @@ export async function mockAdminApis(page: Page) {
         warnings: []
       },
       qa: { passed: true, blockers: [], warnings: [] }
+    })
+  );
+  await page.route("**/api/admin/self-agent/approve", (route) =>
+    json(route, {
+      message: "Patch preview approved."
+    })
+  );
+  await page.route("**/api/admin/self-agent/verify", (route) => {
+    const jobId = queueCompletedJob(jobs, {
+      type: "selfAgent.verify",
+      projectId: "mission_scope",
+      repositoryId: "Esta-Lux/Agent-Work",
+      result: {
+        mission: {
+          id: "mission_scope",
+          status: "branch_pushed",
+          branchName: "bootrise/self-agent-draft"
+        },
+        verify: {
+          passed: true,
+          commands: [
+            { label: "self-agent-guard", exitCode: 0, output: "Guard checks passed for self-agent patch preview." },
+            { label: "self-agent-diff-scope", exitCode: 0, output: "Patch count: 1. Branch: bootrise/self-agent-draft." }
+          ]
+        }
+      }
+    });
+    return json(route, { product: "BootRise", jobId, status: "queued" });
+  });
+  await page.route("**/api/admin/self-agent/pr", (route) =>
+    json(route, {
+      draftPr: {
+        prUrl: "https://github.com/Esta-Lux/Agent-Work/pull/456",
+        mode: "draft_pr"
+      }
     })
   );
   await page.route("**/api/admin/kill-switches", (route) =>

@@ -11,6 +11,7 @@ import { WorkspaceCommandStrip } from "@/components/workspace/workspace-command-
 import { WorkspaceDiffViewer, type DiffFile } from "@/components/workspace/workspace-diff-viewer";
 import { WorkspaceTopbarV2 } from "@/components/workspace/workspace-topbar-v2";
 import { WorkflowRailV2, type WorkspaceV2Step } from "@/components/workspace/workflow-rail-v2";
+import { RuntimeMonitorPanel } from "@/components/runtime-monitor-panel";
 import type { WorkspaceAgentDecision } from "@/components/workspace/agent-decision-card";
 import type { WorkspaceProvider, WorkspaceRole, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import type { ArchitectureRoadmap, ProjectBrief, WorkspaceFixReport } from "@/lib/workspace/workspace-types";
@@ -20,6 +21,13 @@ import { deriveOnboardingState, type OnboardingState } from "@/lib/onboarding/on
 import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
 import type { ProjectBrainV2 } from "@/lib/project-brain/project-brain-v2";
 import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
+import type { ProductBrain } from "@/lib/product-brain/product-brain-types";
+import type { BootriseJob } from "@/lib/jobs/job-types";
+import { buildProductBrainContext } from "@/lib/product-brain/product-brain-context";
+import {
+  runArchitectConversationAgent,
+  type ArchitectConversationResult
+} from "@/lib/agents/user/architect-conversation-agent";
 import {
   createWorkspaceFileStates,
   getChangedWorkspaceFiles,
@@ -43,6 +51,11 @@ interface CreditsResponse {
   balance?: { remaining?: number } | number;
   credits?: number;
   remaining?: number;
+}
+
+interface WorkspaceJobEnvelope {
+  job?: BootriseJob;
+  error?: string;
 }
 
 const defaultBrief: ProjectBrief = {
@@ -92,10 +105,14 @@ export function WorkspaceShellV2() {
   const [deploymentCheckedAt, setDeploymentCheckedAt] = useState<string | null>(null);
   const [providerDuelResults, setProviderDuelResults] = useState<ProviderDuelResult[]>([]);
   const [projectBrain, setProjectBrain] = useState<ProjectBrainV2 | null>(null);
+  const [productBrain, setProductBrain] = useState<ProductBrain | null>(null);
+  const [architectConversation, setArchitectConversation] = useState<ArchitectConversationResult | null>(null);
+  const [architectAssumptionsApproved, setArchitectAssumptionsApproved] = useState(false);
   const [multiPassExecution, setMultiPassExecution] = useState<MultiPassExecutionResult | null>(null);
   const [multiPassRunId, setMultiPassRunId] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [runtimeRefreshToken, setRuntimeRefreshToken] = useState(0);
   const roadmapRequestRef = useRef<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
@@ -103,6 +120,24 @@ export function WorkspaceShellV2() {
   const changedPaths = useMemo(
     () => [...new Set([...getChangedWorkspaceFiles(workspaceFiles).map((file) => file.path), ...(report?.patches?.map((patch) => patch.path) ?? [])])],
     [workspaceFiles, report]
+  );
+
+  const recordRuntimeContinuity = useCallback(
+    async (message: string, likelyFiles?: string[]) => {
+      if (!repositoryId) return;
+      try {
+        await fetch("/api/workspace/runtime/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ projectId: repositoryId, message, likelyFiles })
+        });
+        setRuntimeRefreshToken((value) => value + 1);
+      } catch {
+        /* noop */
+      }
+    },
+    [repositoryId]
   );
   const fileTree = useMemo(() => buildTree(apiFiles, changedPaths), [apiFiles, changedPaths]);
   const selectedFile = workspaceFiles.find((file) => file.path === selectedPath);
@@ -161,6 +196,7 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           files: apiFiles,
           brief,
+          productBrain,
           report: report
             ? {
                 approvalStatus: report.approvalStatus,
@@ -179,7 +215,7 @@ export function WorkspaceShellV2() {
     } finally {
       setRoadmapLoading(false);
     }
-  }, [apiFiles, brief, report]);
+  }, [apiFiles, brief, productBrain, report]);
 
   const refreshProjectBrain = useCallback(async () => {
     try {
@@ -200,6 +236,48 @@ export function WorkspaceShellV2() {
     }
   }, [repositoryId, apiFiles]);
 
+  const waitForWorkspaceJob = useCallback(
+    async <T,>(jobId: string, fallbackError: string): Promise<T> => {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const res = await fetch(`/api/workspace/jobs?jobId=${encodeURIComponent(jobId)}`, { credentials: "include" });
+        const data = (await res.json().catch(() => ({}))) as WorkspaceJobEnvelope;
+        if (!res.ok || !data.job) throw new Error(data.error ?? fallbackError);
+        if (data.job.status === "failed") throw new Error(data.job.error ?? fallbackError);
+        if (data.job.progressMessage) setStatus(data.job.progressMessage);
+        if (data.job.status === "completed") return (data.job.result ?? {}) as T;
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+      }
+      throw new Error("Job timed out. Try again.");
+    },
+    []
+  );
+
+  const refreshProductBrain = useCallback(
+    async (correction?: string) => {
+      if (!repositoryId) return;
+      try {
+        const res = await fetch("/api/workspace/product-brain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            projectId: repositoryId,
+            brief,
+            files: apiFiles,
+            correction
+          })
+        });
+        const data = (await res.json()) as { jobId?: string; error?: string };
+        if (!res.ok || !data.jobId) throw new Error(data.error ?? "Product Brain failed.");
+        const job = await waitForWorkspaceJob<{ productBrain?: ProductBrain }>(data.jobId, "Product Brain failed.");
+        setProductBrain(job.productBrain ?? null);
+      } catch {
+        setProductBrain(null);
+      }
+    },
+    [repositoryId, brief, apiFiles, waitForWorkspaceJob]
+  );
+
   useEffect(() => {
     if (!repoConnected || !briefReady) return;
     void refreshRoadmap();
@@ -209,6 +287,22 @@ export function WorkspaceShellV2() {
     if (!repoConnected) return;
     void refreshProjectBrain();
   }, [repoConnected, refreshProjectBrain]);
+
+  useEffect(() => {
+    if (!repoConnected || !repositoryId) return;
+    void refreshProductBrain();
+  }, [repoConnected, repositoryId, refreshProductBrain]);
+
+  useEffect(() => {
+    setArchitectConversation(
+      runArchitectConversationAgent({
+        task: fixRequest,
+        workUnitPlan,
+        productContext: buildProductBrainContext(productBrain)
+      })
+    );
+    setArchitectAssumptionsApproved(false);
+  }, [fixRequest, workUnitPlan, productBrain]);
 
   async function loadBranches() {
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before loading branches.");
@@ -254,6 +348,7 @@ export function WorkspaceShellV2() {
       setStatus("Repository imported");
       setDraftPrMessage(null);
       setMultiPassExecution(null);
+      void recordRuntimeContinuity("Repository import completed and workspace files are loaded.", nextFiles.slice(0, 6).map((file) => file.path));
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Import failed.");
       setStatus("Blocked");
@@ -265,6 +360,13 @@ export function WorkspaceShellV2() {
   async function runFix(options?: { skipWorkUnitPlanning?: boolean }) {
     if (!repoConnected) return setIssue("Connect a repo before running Fix.");
     if (!fixRequest.trim()) return setIssue("Describe one scoped change before running Fix.");
+    if (
+      architectConversation &&
+      architectConversation.classification !== "clear_to_build" &&
+      !architectAssumptionsApproved
+    ) {
+      return setIssue(architectConversation.question ?? "Approve architect assumptions before patching this request.");
+    }
     if (!options?.skipWorkUnitPlanning && !workUnitApproved) {
       const planned = await planWorkUnitsForFix();
       if (planned?.requiresMultiPass) return;
@@ -296,6 +398,7 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Fix report ready");
       setDraftPrMessage(null);
+      void recordRuntimeContinuity("Fix report generated and pending approval.", data.report.patches?.map((patch) => patch.path));
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");
@@ -315,7 +418,8 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           taskDescription: fixRequest,
           scopedFiles: selectedPath ? [selectedPath] : [],
-          repoFiles: apiFiles
+          repoFiles: apiFiles,
+          productBrainContext: productBrain ? JSON.stringify(buildProductBrainContext(productBrain)) : undefined
         })
       });
       const data = (await res.json()) as { workUnitPlan?: WorkUnitPlan; error?: string };
@@ -344,6 +448,13 @@ export function WorkspaceShellV2() {
 
   async function runMultiPassExecution() {
     if (!workUnitPlan?.requiresMultiPass) return proceedWithScopedFix();
+    if (
+      architectConversation &&
+      architectConversation.classification !== "clear_to_build" &&
+      !architectAssumptionsApproved
+    ) {
+      return setIssue(architectConversation.question ?? "Approve architect assumptions before multi-pass execution.");
+    }
     setBusy(true);
     setStatus("Running multi-pass executor");
     try {
@@ -358,19 +469,28 @@ export function WorkspaceShellV2() {
           repositoryId: repositoryId ?? undefined
         })
       });
-      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
-      if (!res.ok || !data.result) throw new Error(data.error ?? "Multi-pass execution failed.");
-      setMultiPassExecution(data.result);
-      setMultiPassRunId(data.runId ?? null);
-      if (data.result.status === "blocked") {
+      const data = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Multi-pass execution failed.");
+      const job = await waitForWorkspaceJob<{ result?: MultiPassExecutionResult; runId?: string; report?: WorkspaceFixReport }>(
+        data.jobId,
+        "Multi-pass execution failed."
+      );
+      if (!job.result) throw new Error("Multi-pass execution failed.");
+      const result = job.result;
+      setMultiPassExecution(result);
+      setMultiPassRunId(job.runId ?? null);
+      if (result.status === "blocked") {
         setStatus("Blocked");
-        setIssue(data.result.blockers[0] ?? "Work unit execution was blocked.");
+        setIssue(result.blockers[0] ?? "Work unit execution was blocked.");
         return;
+      }
+      if (job.report) {
+        setReport(job.report);
       }
       setStatus("Multi-pass execution complete");
       setIssue(null);
       setWorkUnitApproved(true);
-      await runFix({ skipWorkUnitPlanning: true });
+      setActiveStep("verify");
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Multi-pass execution failed.");
       setStatus("Blocked");
@@ -393,10 +513,13 @@ export function WorkspaceShellV2() {
           workUnitId
         })
       });
-      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; error?: string };
+      const data = (await res.json()) as { result?: MultiPassExecutionResult; runId?: string; report?: WorkspaceFixReport; error?: string };
       if (!res.ok || !data.result) throw new Error(data.error ?? "Work unit rerun failed.");
       setMultiPassExecution(data.result);
       setMultiPassRunId(data.runId ?? multiPassRunId);
+      if (data.report) {
+        setReport(data.report);
+      }
       setIssue(data.result.status === "blocked" ? data.result.blockers[0] ?? "Work unit rerun blocked." : null);
       setStatus(data.result.status === "blocked" ? "Blocked" : "Work unit rerun complete");
     } catch (caught) {
@@ -415,6 +538,19 @@ export function WorkspaceShellV2() {
     setStatus("Ready");
   }
 
+  function approveArchitectAssumptions() {
+    setArchitectAssumptionsApproved(true);
+    void refreshProductBrain(`Approved assumption: ${architectConversation?.question ?? architectConversation?.message ?? "Architect assumptions approved."}`);
+    setIssue(null);
+    setStatus("Architect assumptions approved");
+  }
+
+  function saveProductBrainCorrection(input: string) {
+    void refreshProductBrain(input);
+    setStatus("Product Brain updated");
+    setIssue(null);
+  }
+
   async function runVerify() {
     if (!repoConnected) return setIssue("Connect a repo before running Verify.");
     setBusy(true);
@@ -431,6 +567,10 @@ export function WorkspaceShellV2() {
       setActiveStep("export");
       setIssue(null);
       setStatus(data.status === "passed" ? "Verified" : "Verify completed");
+      void recordRuntimeContinuity(
+        `Sandbox verify ${data.status === "passed" ? "passed" : "completed"} with ${data.commands?.length ?? 0} command(s).`,
+        apiFiles.slice(0, 6).map((file) => file.path)
+      );
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Verify failed.");
       setStatus("Blocked");
@@ -509,6 +649,7 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Patch approved");
       setActiveStep("verify");
+      void recordRuntimeContinuity("Patch approved and moved to verify step.", approvedReport.patches?.map((patch) => patch.path));
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Patch approval failed.");
       setStatus("Blocked");
@@ -576,7 +717,17 @@ export function WorkspaceShellV2() {
           projectId: repositoryId ?? report.repositoryId,
           commitMessage: input?.commitMessage,
           prTitle: input?.prTitle,
-          prBody: input?.prBody,
+          prBody:
+            input?.prBody ??
+            [
+              "# BootRise Draft PR",
+              "",
+              "## Product intent",
+              productBrain?.oneLineDescription ?? brief.primaryWorkflow ?? "Not provided",
+              "",
+              "## Definition of done",
+              ...(productBrain?.definitionOfDone?.slice(0, 5).map((item) => `- ${item}`) ?? ["- Follow existing workspace safety checklist"])
+            ].join("\n"),
           draft: input?.draft ?? true
         })
       });
@@ -613,13 +764,18 @@ export function WorkspaceShellV2() {
         credentials: "include",
         body: JSON.stringify({ files: apiFiles, projectId: repositoryId ?? undefined })
       });
-      const data = (await res.json()) as { findings?: SecurityFinding[]; score?: number; criticalCount?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Security scan failed.");
-      setSecurityFindings(data.findings ?? []);
-      setSecurityScore(typeof data.score === "number" ? data.score : null);
-      setSecurityCriticalCount(typeof data.criticalCount === "number" ? data.criticalCount : 0);
+      const data = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Security scan failed.");
+      const job = await waitForWorkspaceJob<{ findings?: SecurityFinding[]; score?: number; criticalCount?: number }>(
+        data.jobId,
+        "Security scan failed."
+      );
+      setSecurityFindings(job.findings ?? []);
+      setSecurityScore(typeof job.score === "number" ? job.score : null);
+      setSecurityCriticalCount(typeof job.criticalCount === "number" ? job.criticalCount : 0);
       setIssue(null);
       setStatus("Security scan complete");
+      void recordRuntimeContinuity(`Security scan complete. Critical findings: ${job.criticalCount ?? 0}.`, job.findings?.slice(0, 6).map((finding) => finding.file).filter(Boolean) as string[]);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Security scan failed.");
       setStatus("Blocked");
@@ -637,14 +793,17 @@ export function WorkspaceShellV2() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ files: apiFiles })
+        body: JSON.stringify({ files: apiFiles, projectId: repositoryId ?? undefined })
       });
-      const data = (await res.json()) as { report?: DeploymentReadinessResult; error?: string };
-      if (!res.ok || !data.report) throw new Error(data.error ?? "Deployment readiness failed.");
-      setDeploymentReadiness(data.report);
+      const data = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Deployment readiness failed.");
+      const job = await waitForWorkspaceJob<{ report?: DeploymentReadinessResult }>(data.jobId, "Deployment readiness failed.");
+      if (!job.report) throw new Error("Deployment readiness failed.");
+      setDeploymentReadiness(job.report);
       setDeploymentCheckedAt(new Date().toLocaleString());
       setIssue(null);
       setStatus("Deploy readiness complete");
+      void recordRuntimeContinuity(`Deploy readiness ${job.report.status.replace(/_/g, " ")}.`, job.report.blockers.slice(0, 6).map((finding) => finding.file).filter(Boolean) as string[]);
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Deployment readiness failed.");
       setStatus("Blocked");
@@ -665,14 +824,19 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           task: fixRequest,
           files: apiFiles,
-          premiumAllowed: provider === "openai" || speed === "premium"
+          projectId: repositoryId ?? undefined,
+          repositoryId: repositoryId ?? undefined,
+          premiumAllowed: provider === "openai" || speed === "premium",
+          productContext: buildProductBrainContext(productBrain)
         })
       });
-      const data = (await res.json()) as { results?: ProviderDuelResult[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Provider Duel failed.");
-      setProviderDuelResults(data.results ?? []);
+      const data = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Provider Duel failed.");
+      const job = await waitForWorkspaceJob<{ results?: ProviderDuelResult[] }>(data.jobId, "Provider Duel failed.");
+      setProviderDuelResults(job.results ?? []);
       setIssue(null);
       setStatus("Provider Duel complete");
+      void recordRuntimeContinuity("Provider duel comparison completed.", apiFiles.slice(0, 6).map((file) => file.path));
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Provider Duel failed.");
       setStatus("Blocked");
@@ -695,6 +859,25 @@ export function WorkspaceShellV2() {
           name: "Project Brain Agent",
           status: projectBrain ? "passed" : repoConnected ? "running" : "idle",
           summary: projectBrain ? `Indexed ${projectBrain.indexedFiles} files with ${projectBrain.summary.totalApiRoutes} routes.` : "Building symbol, route, and env maps."
+        },
+        {
+          id: "product-brain",
+          name: "Product Brain Agent",
+          status: productBrain ? "passed" : repoConnected ? "running" : "idle",
+          summary: productBrain ? `Tracking ${productBrain.primaryWorkflows.length} workflow(s) and ${productBrain.policies.length} policies.` : "Building product memory from brief and repository context."
+        },
+        {
+          id: "architect-conversation",
+          name: "Architect Conversation Agent",
+          status:
+            architectConversation?.classification === "clear_to_build"
+              ? "passed"
+              : architectAssumptionsApproved
+                ? "passed"
+                : fixRequest.trim()
+                  ? "running"
+                  : "idle",
+          summary: architectConversation?.message ?? "Classifies risk and asks clarifying questions before patching."
         },
         {
           id: "scope",
@@ -729,7 +912,7 @@ export function WorkspaceShellV2() {
           blockedReason: deployStatus === "failed" ? "Deployment readiness blockers detected." : undefined
         }
       ],
-      [roadmap, roadmapLoading, repoConnected, projectBrain, workUnitPlan, fixRequest, report, busy, activeStep, securityCriticalCount, securityFindings, sandboxLog, deployStatus, deploymentReadiness]
+    [roadmap, roadmapLoading, repoConnected, projectBrain, productBrain, architectConversation, architectAssumptionsApproved, workUnitPlan, fixRequest, report, busy, activeStep, securityCriticalCount, securityFindings, sandboxLog, deployStatus, deploymentReadiness]
   );
 
   return (
@@ -802,6 +985,17 @@ export function WorkspaceShellV2() {
               </div>
             </div>
           )}
+          <section className="border-t border-border-ws px-6 py-4">
+            <RuntimeMonitorPanel
+              projectId={repositoryId}
+              refreshToken={runtimeRefreshToken}
+              onSuggestFix={(suggestedRequest) => {
+                setFixRequest(suggestedRequest);
+                setActiveStep("fix");
+                setStatus("Loaded continuity suggestion");
+              }}
+            />
+          </section>
         </main>
         <OperationPanelV2
           activeStep={activeStep}
@@ -831,6 +1025,9 @@ export function WorkspaceShellV2() {
           deploymentCheckedAt={deploymentCheckedAt}
           providerDuelResults={providerDuelResults}
           projectBrain={projectBrain}
+          productBrain={productBrain}
+          architectConversation={architectConversation}
+          assumptionsApproved={architectAssumptionsApproved}
           multiPassExecution={multiPassExecution}
           busy={busy}
           onGithubUrlChange={setGithubUrl}
@@ -849,6 +1046,8 @@ export function WorkspaceShellV2() {
           onRunDeploymentReadiness={runDeploymentReadiness}
           onRunProviderDuel={runProviderDuel}
           onRerunWorkUnit={rerunWorkUnit}
+          onSaveProductBrainCorrection={saveProductBrainCorrection}
+          onApproveArchitectAssumptions={approveArchitectAssumptions}
           agentDecisions={agentDecisions}
         />
       </div>

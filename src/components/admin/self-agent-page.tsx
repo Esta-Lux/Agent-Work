@@ -10,6 +10,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StatusPill } from "@/components/ui/status-pill";
 import { SelfAgentDiffPanel } from "@/components/admin/self-agent-diff-panel";
 import type { ProposedPatch } from "@/lib/workspace/workspace-types";
+import type { BootriseJob } from "@/lib/jobs/job-types";
 
 interface GithubStatus {
   connected?: boolean;
@@ -33,6 +34,11 @@ interface SelfAgentScope {
   estimatedRiskLevel: "low" | "medium" | "high";
   scopeSummary: string;
   safetyNote: string;
+}
+
+interface AdminJobEnvelope {
+  job?: BootriseJob;
+  error?: string;
 }
 
 export function SelfAgentPage() {
@@ -189,14 +195,17 @@ export function SelfAgentPage() {
         body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
       });
       const data = (await res.json()) as {
+        jobId?: string;
+        status?: string;
         verify?: { passed?: boolean; commands?: Array<{ label: string; exitCode: number; output: string }> };
         error?: string;
       };
-      if (!res.ok || !data.verify) throw new Error(data.error ?? "Verify failed.");
-      setVerifyState(data.verify.passed ? "passed" : "failed");
-      setDraftPrState(data.verify.passed ? "ready to open draft PR" : "verify blocked");
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Verify failed.");
+      const verify = await waitForAdminJobVerify(data.jobId);
+      setVerifyState(verify.passed ? "passed" : "failed");
+      setDraftPrState(verify.passed ? "ready to open draft PR" : "verify blocked");
       setMessage(
-        data.verify.commands?.map((command) => `${command.label} (${command.exitCode})`).join(" · ") ??
+        verify.commands?.map((command) => `${command.label} (${command.exitCode})`).join(" · ") ??
           "Verification complete."
       );
       void loadMissions();
@@ -204,6 +213,23 @@ export function SelfAgentPage() {
       setError(caught instanceof Error ? caught.message : "Verify failed.");
     } finally {
       setBusy(false);
+    }
+
+    async function waitForAdminJobVerify(jobId: string) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const res = await fetch(`/api/admin/workspace/jobs?jobId=${encodeURIComponent(jobId)}`);
+        const data = (await res.json().catch(() => ({}))) as AdminJobEnvelope;
+        if (!res.ok || !data.job) throw new Error(data.error ?? "Verify failed.");
+        if (data.job.status === "failed") throw new Error(data.job.error ?? "Verify failed.");
+        if (data.job.progressMessage) setMessage(data.job.progressMessage);
+        if (data.job.status === "completed") {
+          const verify = (data.job.result as { verify?: { passed?: boolean; commands?: Array<{ label: string; exitCode: number; output: string }> } })?.verify;
+          if (!verify) throw new Error("Verify failed.");
+          return verify;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+      }
+      throw new Error("Verify timed out. Try again.");
     }
   }
 
@@ -218,10 +244,18 @@ export function SelfAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ missionId: scope.missionId, branchName: targetBranch })
       });
-      const data = (await res.json()) as { draftPr?: { prUrl?: string }; error?: string };
+      const data = (await res.json()) as { draftPr?: { prUrl?: string; mode?: "draft_pr" | "compare_link" }; error?: string };
       if (!res.ok || !data.draftPr) throw new Error(data.error ?? "Draft PR open failed.");
-      setDraftPrState(data.draftPr.prUrl ?? "draft PR prepared");
-      setMessage("Draft PR metadata generated for approved mission.");
+      setDraftPrState(
+        data.draftPr.prUrl
+          ? `${data.draftPr.mode === "draft_pr" ? "Draft PR created" : "Compare link prepared"}: ${data.draftPr.prUrl}`
+          : "draft PR prepared"
+      );
+      setMessage(
+        data.draftPr.mode === "draft_pr"
+          ? "Self-agent opened a real draft PR."
+          : "GitHub credentials missing — returned compare-link fallback."
+      );
       void loadMissions();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Draft PR open failed.");

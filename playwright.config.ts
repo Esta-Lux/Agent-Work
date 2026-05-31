@@ -66,14 +66,14 @@ export default defineConfig({
     },
     {
       name: "admin-bypass",
-      testMatch: /(^|\/)admin\.e2e\.spec\.ts$/,
+      testMatch: /(^|\/)(admin|self-agent)\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3100"
       }
     },
     {
       name: "admin-strict",
-      testMatch: /(^|\/)admin\.e2e\.spec\.ts$/,
+      testMatch: /(^|\/)(admin|self-agent)\.e2e\.spec\.ts$/,
       use: {
         baseURL: "http://127.0.0.1:3101",
         storageState: adminAuthFile

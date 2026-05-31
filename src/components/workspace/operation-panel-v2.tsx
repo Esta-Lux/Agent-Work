@@ -9,6 +9,8 @@ import { DeploymentReadinessPanel } from "@/components/workspace/deployment-read
 import type { WorkspaceProvider, WorkspaceSpeed } from "@/components/workspace/mode-popover";
 import { PrComposerPanel } from "@/components/workspace/pr-composer-panel";
 import { ProjectBrainPanelV2 } from "@/components/workspace/project-brain-panel-v2";
+import { ProductBrainPanel } from "@/components/workspace/product-brain-panel";
+import { ArchitectConversationPanel } from "@/components/workspace/architect-conversation-panel";
 import { SecurityCenterPanel } from "@/components/workspace/security-center-panel";
 import { ProviderDuelPanel } from "@/components/workspace/provider-duel-panel";
 import { WorkUnitExecutionPanel } from "@/components/workspace/work-unit-execution-panel";
@@ -20,6 +22,8 @@ import type { ProviderDuelResult } from "@/lib/ai/provider-duel";
 import type { ProjectBrainV2 } from "@/lib/project-brain/project-brain-v2";
 import type { MultiPassExecutionResult } from "@/lib/workspace/work-unit-state";
 import type { WorkspaceAgentDecision } from "@/components/workspace/agent-decision-card";
+import type { ProductBrain } from "@/lib/product-brain/product-brain-types";
+import type { ArchitectConversationResult } from "@/lib/agents/user/architect-conversation-agent";
 
 interface OperationPanelV2Props {
   activeStep: WorkspaceV2Step;
@@ -49,6 +53,9 @@ interface OperationPanelV2Props {
   deploymentCheckedAt: string | null;
   providerDuelResults: ProviderDuelResult[];
   projectBrain: ProjectBrainV2 | null;
+  productBrain: ProductBrain | null;
+  architectConversation: ArchitectConversationResult | null;
+  assumptionsApproved: boolean;
   multiPassExecution: MultiPassExecutionResult | null;
   agentDecisions: WorkspaceAgentDecision[];
   busy: boolean;
@@ -68,6 +75,8 @@ interface OperationPanelV2Props {
   onRunDeploymentReadiness: () => void;
   onRunProviderDuel: () => void;
   onRerunWorkUnit: (workUnitId: string) => void;
+  onSaveProductBrainCorrection: (input: string) => void;
+  onApproveArchitectAssumptions: () => void;
 }
 
 export function OperationPanelV2(props: OperationPanelV2Props) {
@@ -90,6 +99,7 @@ export function OperationPanelV2(props: OperationPanelV2Props) {
           {props.activeStep === "verify" ? <VerifyStep {...props} /> : null}
           {props.activeStep === "export" ? <ExportStep {...props} /> : null}
           <ProjectBrainPanelV2 brain={props.projectBrain} />
+          <ProductBrainPanel brain={props.productBrain} busy={props.busy} onSaveCorrection={props.onSaveProductBrainCorrection} />
           <ArchitectureRoadmapPanel roadmap={props.roadmap} loading={props.roadmapLoading} onCreateFixMission={props.onFixRequestChange} />
         </div>
       </div>
@@ -165,7 +175,7 @@ function BriefStep({ brief, onBriefChange }: OperationPanelV2Props) {
   );
 }
 
-function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan, busy, providerDuelResults, onProceedWithScopedFix, onRunMultiPassExecution, onSimplifyFixRequest, onRunProviderDuel, multiPassExecution, onRerunWorkUnit }: OperationPanelV2Props) {
+function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan, busy, providerDuelResults, architectConversation, assumptionsApproved, onApproveArchitectAssumptions, onProceedWithScopedFix, onRunMultiPassExecution, onSimplifyFixRequest, onRunProviderDuel, multiPassExecution, onRerunWorkUnit }: OperationPanelV2Props) {
   return (
     <div className="space-y-4">
       <Field label="Fix request">
@@ -180,6 +190,7 @@ function FixStep({ fixRequest, onFixRequestChange, provider, speed, workUnitPlan
         <CommandButton theme="workspace" variant="secondary" size="sm" label="Compare providers" loading={busy} className="mt-3 w-full" onClick={onRunProviderDuel} />
       </div>
       <ProviderDuelPanel results={providerDuelResults} />
+      <ArchitectConversationPanel result={architectConversation} assumptionsApproved={assumptionsApproved} onApproveAssumptions={onApproveArchitectAssumptions} />
       {workUnitPlan?.requiresMultiPass ? (
         <div className="rounded-lg bg-card-ws p-3">
           <div className="flex items-center justify-between gap-2">

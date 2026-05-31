@@ -25,14 +25,32 @@ export class WorkspacePage {
     await expect(this.page.getByLabel("Fix request")).toBeVisible();
   }
 
-  async runFix(request: string) {
+  async runFix(request: string, options?: { expectApprove?: boolean; autoSinglePass?: boolean }) {
     await this.page.getByLabel("Fix request").fill(request);
     await this.page.getByRole("button", { name: "Run Fix" }).click();
+    const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+    if (await approveAssumptions.isVisible().catch(() => false)) {
+      await approveAssumptions.click();
+      await this.page.getByRole("button", { name: "Run Fix" }).click();
+    }
     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
-    if (await useSinglePass.isVisible().catch(() => false)) {
+    if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
       await useSinglePass.click();
     }
-    await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+    if (options?.expectApprove !== false) {
+      await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+    }
+  }
+
+  async openGuide() {
+    await this.page.getByRole("button", { name: "Guide" }).click();
+    await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
+    await this.page.getByRole("button", { name: "Skip tour" }).click();
+  }
+
+  async compareProviders() {
+    await this.page.getByRole("button", { name: "Compare providers" }).click();
+    await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
   }
 
   async approvePatch() {
@@ -43,6 +61,16 @@ export class WorkspacePage {
   async runVerify() {
     await this.page.getByRole("button", { name: "Run Verify" }).click();
     await this.page.waitForTimeout(500);
+  }
+
+  async runSecurityScan() {
+    await this.page.getByRole("button", { name: "Run security scan" }).click();
+    await expect(this.page.getByText("Security scan complete")).toBeVisible();
+  }
+
+  async runDeployReadiness() {
+    await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
+    await expect(this.page.getByText("Deploy readiness complete")).toBeVisible();
   }
 
   async exportBundle() {
@@ -56,5 +84,22 @@ export class WorkspacePage {
   async openDraftPr() {
     await this.page.getByRole("button", { name: "Open draft PR" }).click();
     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
+  }
+
+  async runMultiPass() {
+    await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+    await expect(this.page.getByText("Work unit execution")).toBeVisible();
+  }
+
+  async rerunWorkUnit() {
+    await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
+    await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
+  }
+
+  async saveProductBrainCorrection() {
+    await this.page
+      .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
+      .fill("Correction: add edge-case review.");
+    await this.page.getByRole("button", { name: "Save correction" }).click();
   }
 }
