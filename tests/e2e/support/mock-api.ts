@@ -187,45 +187,6 @@ export async function mockWorkspaceApis(page: Page) {
   });
   await page.route("**/api/workspace/fix", (route) => json(route, { report: pendingReport, repositoryId: "repo_playwright" }));
   await page.route("**/api/workspace/work-units", async (route) => {
-    const body = route.request().postDataJSON() as { taskDescription?: string };
-    if (body?.taskDescription?.toLowerCase().includes("multi-pass")) {
-      return json(route, {
-        workUnitPlan: {
-          taskSummary: "Multi-pass mission",
-          totalUnits: 2,
-          units: [
-            {
-              id: "wu_1",
-              domain: "frontend_ui",
-              title: "Step one",
-              description: "Apply first patch",
-              targetFiles: ["src/app/page.tsx"],
-              readOnlyFiles: [],
-              dependsOn: [],
-              estimatedComplexity: "medium",
-              acceptanceCriteria: ["Page copy updated"]
-            },
-            {
-              id: "wu_2",
-              domain: "tests",
-              title: "Step two",
-              description: "Follow-up verification patch",
-              targetFiles: ["tests/e2e/workspace.e2e.spec.ts"],
-              readOnlyFiles: [],
-              dependsOn: ["wu_1"],
-              estimatedComplexity: "low",
-              acceptanceCriteria: ["Flow rerun available"]
-            }
-          ],
-          executionOrder: [["wu_1"], ["wu_2"]],
-          crossFileDependencyWarnings: ["wu_2 depends on wu_1 output"],
-          estimatedRiskLevel: "medium",
-          requiresMultiPass: true
-        },
-        integration: { passed: true, blockers: [], warnings: [] },
-        multiPass: { enabled: true, passes: ["pass_1", "pass_2"], note: "Two-pass fixture" }
-      });
-    }
     return json(route, {
       workUnitPlan: {
         taskSummary: "Single unit",

@@ -11,7 +11,7 @@ test("self-agent scope to patch-preview flow is visible", async ({ page }) => {
   await page.getByRole("button", { name: "Plan mission scope" }).click();
   await expect(page.getByText("Planned scope")).toBeVisible();
   await page.getByRole("button", { name: "Generate patch preview" }).click();
-  await expect(page.getByText("Patch preview")).toBeVisible();
+  await expect(page.getByText("Patch preview").first()).toBeVisible();
   await page.getByRole("button", { name: "Approve patch" }).click();
   await page.getByRole("button", { name: "Run verify" }).click();
   await expect(page.getByText("self-agent-guard (0)")).toBeVisible();

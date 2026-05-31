@@ -28,10 +28,10 @@ export async function POST(request: Request) {
 
     const queued = await enqueueJob({
       type: "selfAgent.verify",
-      orgId: mission.orgId,
+      orgId: "org_default",
       userId: user.id,
       projectId: mission.id,
-      repositoryId: mission.repositoryId,
+      repositoryId: mission.id,
       payload: {
         missionId: mission.id,
         branchName: mission.branchName

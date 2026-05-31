@@ -398,7 +398,7 @@ export function WorkspaceShellV2() {
       setIssue(null);
       setStatus("Fix report ready");
       setDraftPrMessage(null);
-      void recordRuntimeContinuity("Fix report generated and pending approval.", data.report.patches.map((patch) => patch.path));
+      void recordRuntimeContinuity("Fix report generated and pending approval.", data.report.patches?.map((patch) => patch.path));
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");

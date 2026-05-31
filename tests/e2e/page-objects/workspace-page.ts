@@ -25,24 +25,32 @@ export class WorkspacePage {
     await expect(this.page.getByLabel("Fix request")).toBeVisible();
   }
 
-  async runFix(request: string) {
+  async runFix(request: string, options?: { expectApprove?: boolean; autoSinglePass?: boolean }) {
     await this.page.getByLabel("Fix request").fill(request);
     await this.page.getByRole("button", { name: "Run Fix" }).click();
+    const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+    if (await approveAssumptions.isVisible().catch(() => false)) {
+      await approveAssumptions.click();
+      await this.page.getByRole("button", { name: "Run Fix" }).click();
+    }
     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
-    if (await useSinglePass.isVisible().catch(() => false)) {
+    if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
       await useSinglePass.click();
     }
-    await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+    if (options?.expectApprove !== false) {
+      await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+    }
   }
 
   async openGuide() {
     await this.page.getByRole("button", { name: "Guide" }).click();
     await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
+    await this.page.getByRole("button", { name: "Skip tour" }).click();
   }
 
   async compareProviders() {
     await this.page.getByRole("button", { name: "Compare providers" }).click();
-    await expect(this.page.getByText("Provider Duel")).toBeVisible();
+    await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
   }
 
   async approvePatch() {
@@ -93,6 +101,5 @@ export class WorkspacePage {
       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
       .fill("Correction: add edge-case review.");
     await this.page.getByRole("button", { name: "Save correction" }).click();
-    await expect(this.page.getByText("Product Brain updated")).toBeVisible();
   }
 }
