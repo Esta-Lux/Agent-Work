@@ -1062,6 +1062,9 @@ video {
 .max-w-sm {
   max-width: 24rem;
 }
+.max-w-xl {
+  max-width: 36rem;
+}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -2342,6 +2345,10 @@ video {
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
+.backdrop-blur {
+  --tw-backdrop-blur: blur(8px);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+}
 .backdrop-blur-\[1px\] {
   --tw-backdrop-blur: blur(1px);
   backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
@@ -2446,8 +2453,17 @@ video {
   --tw-ring-color: rgb(13 122 95 / 0.1);
 }
 
+.hover\:-translate-y-0\.5:hover {
+  --tw-translate-y: -0.125rem;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
 .hover\:border-graphite\/30:hover {
   border-color: rgb(42 49 57 / 0.3);
+}
+
+.hover\:border-signal\/30:hover {
+  border-color: rgb(13 122 95 / 0.3);
 }
 
 .hover\:border-signal\/35:hover {
@@ -2539,6 +2555,11 @@ video {
 .hover\:text-signal-bright:hover {
   --tw-text-opacity: 1;
   color: rgb(18 163 127 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-signal-text:hover {
+  --tw-text-opacity: 1;
+  color: rgb(31 217 157 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-signal\/80:hover {
@@ -2746,6 +2767,10 @@ video {
 
 @media (min-width: 768px) {
 
+  .md\:flex {
+    display: flex;
+  }
+
   .md\:grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2847,6 +2872,10 @@ video {
 
   .lg\:grid-cols-\[420px_1fr\] {
     grid-template-columns: 420px 1fr;
+  }
+
+  .lg\:grid-cols-\[minmax\(0\2c 1fr\)_280px\] {
+    grid-template-columns: minmax(0,1fr) 280px;
   }
 
   .lg\:grid-cols-\[minmax\(0\2c 1fr\)_auto\] {
