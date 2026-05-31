@@ -64,20 +64,11 @@ function storePath(projectId: string) {
 }
 
 export function listAgentActivityEvents(projectId: string): AgentActivityEvent[] {
-  const path = storePath(projectId);
-  if (!existsSync(path)) return [];
-  try {
-    const events = JSON.parse(readFileSync(path, "utf8")) as AgentActivityEvent[];
-    return events
-      .map(normalizeEvent)
-      .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
-  } catch {
-    return [];
-  }
+  return sortEvents(readStoredEvents(projectId).map(normalizeEvent));
 }
 
 export function recordAgentActivityEvent(input: Omit<AgentActivityEvent, "timestamp"> & { timestamp?: string }): AgentActivityEvent {
-  const events = listAgentActivityEvents(input.projectId);
+  const events = readStoredEvents(input.projectId).map(normalizeEvent);
   const event = normalizeEvent({
     ...input,
     timestamp: input.timestamp ?? new Date().toISOString()
@@ -92,13 +83,20 @@ export function recordAgentActivityEvent(input: Omit<AgentActivityEvent, "timest
   } else {
     events.unshift(event);
   }
-  const nextEvents = events
-    .map(normalizeEvent)
-    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
-    .slice(0, 200);
+  const nextEvents = sortEvents(events).slice(0, 200);
   mkdirSync(root, { recursive: true });
   writeFileSync(storePath(input.projectId), JSON.stringify(nextEvents, null, 2), "utf8");
   return nextEvents.find((item) => item.id === event.id) ?? event;
+}
+
+function readStoredEvents(projectId: string): AgentActivityEvent[] {
+  const path = storePath(projectId);
+  if (!existsSync(path)) return [];
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as AgentActivityEvent[];
+  } catch {
+    return [];
+  }
 }
 
 function normalizeEvent(event: AgentActivityEvent): AgentActivityEvent {
@@ -115,4 +113,12 @@ function normalizeEvent(event: AgentActivityEvent): AgentActivityEvent {
 function normalizeFilePaths(filePaths?: string[]) {
   if (!Array.isArray(filePaths) || filePaths.length === 0) return undefined;
   return Array.from(new Set(filePaths.map((path) => path.trim()).filter(Boolean))).slice(0, 12);
+}
+
+function sortEvents(events: AgentActivityEvent[]) {
+  return [...events].sort((left, right) => toEpoch(right.timestamp) - toEpoch(left.timestamp));
+}
+
+function toEpoch(timestamp: string) {
+  return Date.parse(timestamp);
 }

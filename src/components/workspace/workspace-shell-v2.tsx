@@ -483,7 +483,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setMultiPassExecution(null);
       void recordRuntimeContinuity("Repository import completed and workspace files are loaded.", nextFiles.slice(0, 6).map((file) => file.path));
       void recordActivity({
-        id: `repository_cloned_${data.projectId ?? data.repositoryId ?? crypto.randomUUID()}`,
+        id: makeActivityId("repository_cloned", data.projectId ?? data.repositoryId ?? githubUrl.trim(), data.branch ?? githubBranch),
         projectId: data.projectId ?? projectId ?? data.repositoryId ?? undefined,
         actor: "system",
         type: "repository_cloned",
@@ -516,7 +516,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     }
     setBusy(true);
     setStatus("Running Fix");
-    const diffEventId = crypto.randomUUID();
+    const diffEventId = makeActivityId("diff_generated", effectiveProjectId ?? repositoryId ?? "workspace", fixRequest);
     void recordActivity({
       id: diffEventId,
       actor: "builder_agent",
@@ -579,7 +579,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
   async function planWorkUnitsForFix(): Promise<WorkUnitPlan | null> {
     setBusy(true);
     setStatus("Planning work units");
-    const workUnitEventId = crypto.randomUUID();
+    const workUnitEventId = makeActivityId("work_unit_plan", effectiveProjectId ?? repositoryId ?? "workspace", fixRequest);
     void recordActivity({
       id: workUnitEventId,
       actor: "architect_agent",
@@ -682,7 +682,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       if (job.report) {
         setReport(job.report);
         void recordActivity({
-          id: `multi_pass_diff_${job.runId ?? Date.now()}`,
+          id: makeActivityId("multi_pass_diff", job.runId ?? multiPassRunId ?? fixRequest),
           actor: "builder_agent",
           type: "diff_generated",
           status: "success",
@@ -724,7 +724,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       if (data.report) {
         setReport(data.report);
         void recordActivity({
-          id: `work_unit_rerun_${data.runId ?? workUnitId}_${Date.now()}`,
+          id: makeActivityId("work_unit_rerun", data.runId ?? multiPassRunId ?? "run", workUnitId),
           actor: "builder_agent",
           type: data.result.status === "blocked" ? "work_unit_blocked" : "work_unit_completed",
           status: data.result.status === "blocked" ? "warning" : "success",
@@ -769,7 +769,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!repoConnected) return setIssue("Connect a repo before running Verify.");
     setBusy(true);
     setStatus("Sandbox verify");
-    const verifyEventId = crypto.randomUUID();
+    const verifyEventId = makeActivityId("verify", effectiveProjectId ?? repositoryId ?? "workspace", report?.pendingFixId ?? "workspace");
     void recordActivity({
       id: verifyEventId,
       actor: "qa_agent",
@@ -803,9 +803,9 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
         detail: `${data.commands?.length ?? 0} command(s) executed.`,
         outputPreview: data.commands?.map((command) => `${command.label} (${command.exitCode})\n${command.output}`).join("\n\n")
       });
-      for (const command of data.commands ?? []) {
+      for (const [index, command] of (data.commands ?? []).entries()) {
         void recordActivity({
-          id: `verify_command_${command.label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          id: makeActivityId("verify_command", verifyEventId, `${index}`, command.label),
           actor: "qa_agent",
           type: command.exitCode === 0 ? "command_completed" : "command_failed",
           status: command.exitCode === 0 ? "success" : "failed",
@@ -1381,6 +1381,16 @@ function readCreditsRemaining(data: CreditsResponse): number | null {
   if (typeof data.balance === "number") return data.balance;
   if (typeof data.balance?.remaining === "number") return data.balance.remaining;
   return null;
+}
+
+function makeActivityId(...parts: Array<string | number | null | undefined>) {
+  const base = parts
+    .filter((part): part is string | number => part !== null && typeof part !== "undefined")
+    .join("_")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 180);
+  return base || "activity_event";
 }
 
 function applyReportPatchesToWorkspaceFileStates(
