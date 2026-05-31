@@ -113,12 +113,41 @@ function queueCompletedJob(
 
 export async function mockWorkspaceApis(page: Page) {
   const jobs = new Map<string, MockJob>();
+  const activityEvents = new Map<string, Array<Record<string, unknown>>>();
+  const upsertActivity = (projectId: string, event: Record<string, unknown>) => {
+    const current = activityEvents.get(projectId) ?? [];
+    const id = typeof event.id === "string" ? event.id : "";
+    const index = id ? current.findIndex((item) => item.id === id) : -1;
+    if (index >= 0) {
+      current[index] = event;
+    } else {
+      current.unshift(event);
+    }
+    activityEvents.set(projectId, current.slice(0, 200));
+  };
   await page.route("**/api/workspace/jobs**", (route) => {
     const url = new URL(route.request().url());
     const jobId = url.searchParams.get("jobId") ?? "";
     const job = jobs.get(jobId);
     if (!job) return json(route, { error: "Job not found" }, 404);
     return json(route, { product: "BootRise", job });
+  });
+  await page.route("**/api/workspace/agent-activity**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "GET") {
+      const projectId = url.searchParams.get("projectId") ?? "";
+      return json(route, { product: "BootRise", events: activityEvents.get(projectId) ?? [] });
+    }
+    if (request.method() === "POST") {
+      const body = (request.postDataJSON() ?? {}) as Record<string, unknown>;
+      const projectId = typeof body.projectId === "string" ? body.projectId : "";
+      const createdAt = typeof body.createdAt === "string" ? body.createdAt : new Date().toISOString();
+      const event = { ...body, createdAt };
+      if (projectId) upsertActivity(projectId, event);
+      return json(route, { product: "BootRise", event });
+    }
+    return route.fallback();
   });
   await page.route("**/api/ai/providers/health", (route) =>
     json(route, {

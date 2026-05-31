@@ -1,11 +1,15 @@
 {
   "/page": "app/page.js",
-  "/api/workspace/me/route": "app/api/workspace/me/route.js",
   "/api/workspace/projects/route": "app/api/workspace/projects/route.js",
   "/api/workspace/runtime/events/route": "app/api/workspace/runtime/events/route.js",
-  "/api/workspace/activity/events/route": "app/api/workspace/activity/events/route.js",
   "/api/workspace/brain/route": "app/api/workspace/brain/route.js",
+  "/api/workspace/me/route": "app/api/workspace/me/route.js",
   "/auth/sign-in/page": "app/auth/sign-in/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/workspace/[projectId]/page": "app/workspace/[projectId]/page.js",
+  "/login/page": "app/login/page.js",
+  "/signup/page": "app/signup/page.js",
+  "/auth/sign-up/page": "app/auth/sign-up/page.js",
   "/admin/page": "app/admin/page.js",
   "/admin/[section]/page": "app/admin/[section]/page.js"
 }
