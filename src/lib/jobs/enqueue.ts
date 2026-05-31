@@ -20,6 +20,7 @@ import { validateSelfAgentBoundary } from "@/lib/agents/admin/self-agent-boundar
 import { getSelfAgentPreview } from "@/lib/agents/admin/self-agent-preview-store";
 import { appendLedgerEvent } from "@/lib/workspace/living-ledger-timeline";
 import { addArchitectureMemory } from "@/lib/project-brain/memory-updater";
+import { recordAgentActivityEvent, type AgentActivityActor, type AgentActivityStatus, type AgentEventType } from "@/lib/workspace/agent-activity";
 
 interface EnqueueJobInput {
   type: JobType;
@@ -57,6 +58,7 @@ export async function enqueueJob(input: EnqueueJobInput): Promise<{ jobId: strin
     createdAt: now,
     updatedAt: now
   });
+  syncJobActivity(id, input, { status: "pending", timestamp: now });
 
   void runJobAsync(id, input);
   return { jobId: id };
@@ -67,7 +69,9 @@ function setProgress(jobId: string, progressPercent: number, progressMessage: st
 }
 
 async function runJobAsync(jobId: string, input: EnqueueJobInput) {
+  const startedAt = Date.now();
   updateJobStatus(jobId, "running");
+  syncJobActivity(jobId, input, { status: "running" });
   setProgress(jobId, 15, "Starting");
   try {
     const files = input.files ?? [];
@@ -97,6 +101,11 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         completedAt: new Date().toISOString(),
         result: { projectBrain: { projectId: input.projectId, filesIndexed: index.entries.length, modules: modules.length } }
       });
+      syncJobActivity(jobId, input, {
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        detail: `Indexed ${index.entries.length} files and built ${modules.length} modules.`
+      });
       return;
     }
 
@@ -114,6 +123,11 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         progressMessage: "Completed",
         completedAt: new Date().toISOString(),
         result: { productBrain }
+      });
+      syncJobActivity(jobId, input, {
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        detail: `Tracked ${productBrain.primaryWorkflows.length} workflows and ${productBrain.policies.length} policies.`
       });
       return;
     }
@@ -158,6 +172,13 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         completedAt: new Date().toISOString(),
         result: { findings, criticalCount, score, semgrep, estimatedCredits: estimateCreditsForAction(scanAction) }
       });
+      syncJobActivity(jobId, input, {
+        status: criticalCount > 0 ? "warning" : "success",
+        type: "security_scan_completed",
+        durationMs: Date.now() - startedAt,
+        detail: `${findings.length} findings, ${criticalCount} critical blockers, score ${score}.`,
+        filePaths: findings.map((finding) => finding.file).filter(Boolean) as string[]
+      });
       return;
     }
 
@@ -179,6 +200,12 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         completedAt: new Date().toISOString(),
         result: { report, estimatedCredits: estimateCreditsForAction(deployAction) }
       });
+      syncJobActivity(jobId, input, {
+        status: report.status === "production_ready" || report.status === "production_candidate" || report.status === "safe_for_staging" ? "success" : "warning",
+        durationMs: Date.now() - startedAt,
+        detail: `Deployment readiness is ${report.status.replace(/_/g, " ")} with ${report.blockers.length} blocker(s).`,
+        filePaths: report.blockers.map((blocker) => blocker.file).filter(Boolean) as string[]
+      });
       return;
     }
 
@@ -196,6 +223,11 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         progressMessage: "Completed",
         completedAt: new Date().toISOString(),
         result: { results: (duel.results ?? []) as ProviderDuelResult[] }
+      });
+      syncJobActivity(jobId, input, {
+        status: "success",
+        durationMs: Date.now() - startedAt,
+        detail: `Compared ${duel.results?.length ?? 0} provider responses.`
       });
       return;
     }
@@ -246,6 +278,17 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         completedAt: new Date().toISOString(),
         result: { result, runId: run.id, report }
       });
+      syncJobActivity(jobId, input, {
+        status: result.status === "blocked" ? "warning" : "success",
+        type: result.status === "blocked" ? "work_unit_blocked" : "work_unit_completed",
+        durationMs: Date.now() - startedAt,
+        detail:
+          result.status === "blocked"
+            ? result.blockers[0] ?? "Multi-pass execution was blocked."
+            : `${result.executions.length} work unit(s) executed and ${report.patches?.length ?? 0} patch(es) prepared.`,
+        runId: run.id,
+        filePaths: report.patches?.map((patch) => patch.path)
+      });
       return;
     }
 
@@ -295,6 +338,13 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         completedAt: new Date().toISOString(),
         result: { mission: updatedMission ?? mission, verify }
       });
+      syncJobActivity(jobId, input, {
+        status: verify.passed ? "success" : "warning",
+        type: "test_completed",
+        durationMs: Date.now() - startedAt,
+        detail: verify.passed ? "Self-agent guard checks passed." : "Self-agent guard checks reported blockers.",
+        outputPreview: verify.commands.map((command) => `${command.label} (${command.exitCode})\n${command.output}`).join("\n\n")
+      });
       return;
     }
 
@@ -307,5 +357,109 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
       completedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : "Job failed"
     });
+    syncJobActivity(jobId, input, {
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      detail: error instanceof Error ? error.message : "Job failed"
+    });
+  }
+}
+
+function syncJobActivity(
+  jobId: string,
+  input: EnqueueJobInput,
+  patch: {
+    status: AgentActivityStatus;
+    type?: AgentEventType;
+    timestamp?: string;
+    detail?: string;
+    durationMs?: number;
+    filePaths?: string[];
+    outputPreview?: string;
+    runId?: string;
+  }
+) {
+  const descriptor = describeJobActivity(input.type);
+  if (!descriptor || !input.projectId) return;
+  recordAgentActivityEvent({
+    id: `job_activity_${jobId}`,
+    projectId: input.projectId,
+    jobId,
+    runId: patch.runId,
+    actor: descriptor.actor,
+    type: patch.type ?? descriptor.type,
+    status: patch.status,
+    title: descriptor.title,
+    detail: patch.detail ?? descriptor.detail,
+    filePaths: patch.filePaths,
+    durationMs: patch.durationMs,
+    outputPreview: patch.outputPreview,
+    metadata: {
+      jobType: input.type,
+      ...(input.repositoryId ? { repositoryId: input.repositoryId } : {})
+    },
+    timestamp: patch.timestamp
+  });
+}
+
+function describeJobActivity(type: JobType): {
+  actor: AgentActivityActor;
+  type: AgentEventType;
+  title: string;
+  detail: string;
+} | null {
+  switch (type) {
+    case "repo.index":
+    case "projectBrain.build":
+      return {
+        actor: "project_brain_agent",
+        type: "progress_update",
+        title: "Project Brain indexing",
+        detail: "Building repository structure and symbol maps."
+      };
+    case "productBrain.build":
+      return {
+        actor: "project_brain_agent",
+        type: "progress_update",
+        title: "Product Brain refresh",
+        detail: "Refreshing product memory from the brief and repo context."
+      };
+    case "security.scan":
+      return {
+        actor: "security_agent",
+        type: "security_scan_started",
+        title: "Security scan running",
+        detail: "Reviewing files for deploy blockers and risky patterns."
+      };
+    case "deployment.readiness":
+      return {
+        actor: "deployment_agent",
+        type: "progress_update",
+        title: "Deployment readiness check",
+        detail: "Checking blockers, score, and release readiness."
+      };
+    case "provider.duel":
+      return {
+        actor: "architect_agent",
+        type: "progress_update",
+        title: "Provider duel running",
+        detail: "Comparing BootRise and ChatGPT task plans."
+      };
+    case "multiPass.execute":
+      return {
+        actor: "builder_agent",
+        type: "work_unit_started",
+        title: "Multi-pass execution running",
+        detail: "Executing planned work units in sequence."
+      };
+    case "selfAgent.verify":
+      return {
+        actor: "qa_agent",
+        type: "test_started",
+        title: "Guard verification running",
+        detail: "Running self-agent safety checks."
+      };
+    default:
+      return null;
   }
 }

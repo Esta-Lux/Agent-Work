@@ -3,6 +3,7 @@
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { StatusPill, type StatusPillVariant } from "@/components/ui/status-pill";
+import { AgentActivityTimelinePanel } from "@/components/workspace/agent-activity-timeline-panel";
 import { ArchitectureRoadmapPanel } from "@/components/workspace/architecture-roadmap-panel";
 import { WorkspaceAgentCouncilPanel } from "@/components/workspace/agent-council-panel";
 import { DeploymentReadinessPanel } from "@/components/workspace/deployment-readiness-panel";
@@ -27,6 +28,8 @@ import type { ArchitectConversationResult } from "@/lib/agents/user/architect-co
 
 interface OperationPanelV2Props {
   activeStep: WorkspaceV2Step;
+  projectId: string | null;
+  activityRefreshToken?: number;
   repoConnected: boolean;
   githubUrl: string;
   githubBranch: string;
@@ -98,6 +101,7 @@ export function OperationPanelV2(props: OperationPanelV2Props) {
           {props.activeStep === "fix" ? <FixStep {...props} /> : null}
           {props.activeStep === "verify" ? <VerifyStep {...props} /> : null}
           {props.activeStep === "export" ? <ExportStep {...props} /> : null}
+          <AgentActivityTimelinePanel projectId={props.projectId} refreshToken={props.activityRefreshToken} />
           <ProjectBrainPanelV2 brain={props.projectBrain} />
           <ProductBrainPanel brain={props.productBrain} busy={props.busy} onSaveCorrection={props.onSaveProductBrainCorrection} />
           <ArchitectureRoadmapPanel roadmap={props.roadmap} loading={props.roadmapLoading} onCreateFixMission={props.onFixRequestChange} />
