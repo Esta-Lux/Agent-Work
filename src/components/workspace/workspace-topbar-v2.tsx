@@ -1,12 +1,14 @@
+import Link from "next/link";
 import { AuthHeaderActions } from "@/components/auth-gate";
 import { StatusPill } from "@/components/ui/status-pill";
 
 interface WorkspaceTopbarV2Props {
   projectName: string;
   creditsRemaining: number | null;
+  projectId?: string | null;
 }
 
-export function WorkspaceTopbarV2({ projectName, creditsRemaining }: WorkspaceTopbarV2Props) {
+export function WorkspaceTopbarV2({ projectName, creditsRemaining, projectId }: WorkspaceTopbarV2Props) {
   const creditsLabel = typeof creditsRemaining === "number" ? creditsRemaining.toLocaleString() : "...";
   return (
     <header data-tour="topbar" className="flex h-[52px] shrink-0 items-center justify-between border-b border-border-ws bg-panel-ws px-5">
@@ -21,6 +23,22 @@ export function WorkspaceTopbarV2({ projectName, creditsRemaining }: WorkspaceTo
         <StatusPill variant="signal" label="fast" />
       </div>
       <div className="flex items-center gap-3">
+        <nav className="hidden items-center gap-2 md:flex">
+          <Link
+            href="/dashboard"
+            className="rounded-lg border border-border-ws bg-transparent px-3 py-1.5 text-xs font-semibold text-text-ws-2 transition hover:border-signal/30 hover:text-signal-text"
+          >
+            Dashboard
+          </Link>
+          {projectId ? (
+            <Link
+              href={`/workspace/${encodeURIComponent(projectId)}`}
+              className="rounded-lg border border-border-ws bg-transparent px-3 py-1.5 text-xs font-semibold text-text-ws-2 transition hover:border-signal/30 hover:text-signal-text"
+            >
+              Workspace URL
+            </Link>
+          ) : null}
+        </nav>
         <div className="font-mono text-xs text-text-ws-2">
           <span className="text-signal-text">{creditsLabel}</span> credits
         </div>

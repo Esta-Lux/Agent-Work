@@ -74,10 +74,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
             layer.
           </p>
           <Link
-            href="/auth/sign-in"
+            href="/login"
             className="mt-8 inline-flex w-full items-center justify-center rounded-xl bg-signal px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-signal-bright"
           >
             Sign in
+          </Link>
+          <Link
+            href="/signup"
+            className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-line bg-white px-6 py-2.5 text-sm font-semibold text-graphite transition hover:border-signal/40 hover:text-signal"
+          >
+            Create account
           </Link>
           <p className="mt-4 text-xs text-steel">
             On localhost, auth is bypassed by default in <code className="text-graphite">npm run dev</code>. If you see
@@ -126,18 +132,18 @@ export function AuthHeaderActions() {
     }
     if (e2eAuth) {
       document.cookie = `${E2E_AUTH_ROLE_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
-      window.location.href = "/auth/sign-in";
+      window.location.href = "/login";
       return;
     }
     const supabase = getSupabaseBrowserClient();
     if (supabase) await supabase.auth.signOut();
-    window.location.href = "/auth/sign-in";
+    window.location.href = "/login";
   }
 
   if (!email && !devBypass) {
     return (
       <Link
-        href="/auth/sign-in"
+        href="/login"
         className="rounded-xl border border-line bg-white px-4 py-2 text-sm font-semibold text-graphite transition hover:border-signal/40 hover:text-signal"
       >
         Sign in

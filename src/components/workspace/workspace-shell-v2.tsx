@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createDefaultProjectBrief } from "@/lib/workspace/project-launch";
 import { BlockerRow } from "@/components/ui/blocker-row";
 import { CommandButton } from "@/components/ui/command-button";
 import { OnboardingChecklist } from "@/components/workspace/onboarding-checklist";
@@ -58,25 +59,15 @@ interface WorkspaceJobEnvelope {
   error?: string;
 }
 
-const defaultBrief: ProjectBrief = {
-  productName: "",
-  audience: "",
-  primaryWorkflow: "",
-  authRequired: false,
-  paymentsRequired: false,
-  deploymentTarget: "vercel",
-  constraints: [],
-  longBuild: false
-};
-
-export function WorkspaceShellV2() {
+export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId?: string | null }) {
   const [activeStep, setActiveStep] = useState<WorkspaceV2Step>("connect");
   const [githubUrl, setGithubUrl] = useState("https://github.com/Esta-Lux/SnapRoad-Beta-Functional");
   const [githubBranch, setGithubBranch] = useState("main");
   const [githubBranches, setGithubBranches] = useState<string[]>([]);
   const [importMode, setImportMode] = useState<"full" | "key">("full");
   const [projectName, setProjectName] = useState("My startup");
-  const [brief, setBrief] = useState<ProjectBrief>(defaultBrief);
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId);
+  const [brief, setBrief] = useState<ProjectBrief>(createDefaultProjectBrief);
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileState[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   const [repositoryId, setRepositoryId] = useState<string | null>(null);
@@ -116,6 +107,7 @@ export function WorkspaceShellV2() {
   const roadmapRequestRef = useRef<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
+  const effectiveProjectId = projectId ?? repositoryId;
   const repoConnected = workspaceFiles.length > 0;
   const changedPaths = useMemo(
     () => [...new Set([...getChangedWorkspaceFiles(workspaceFiles).map((file) => file.path), ...(report?.patches?.map((patch) => patch.path) ?? [])])],
@@ -124,20 +116,20 @@ export function WorkspaceShellV2() {
 
   const recordRuntimeContinuity = useCallback(
     async (message: string, likelyFiles?: string[]) => {
-      if (!repositoryId) return;
+      if (!effectiveProjectId) return;
       try {
         await fetch("/api/workspace/runtime/events", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ projectId: repositoryId, message, likelyFiles })
+          body: JSON.stringify({ projectId: effectiveProjectId, message, likelyFiles })
         });
         setRuntimeRefreshToken((value) => value + 1);
       } catch {
         /* noop */
       }
     },
-    [repositoryId]
+    [effectiveProjectId]
   );
   const fileTree = useMemo(() => buildTree(apiFiles, changedPaths), [apiFiles, changedPaths]);
   const selectedFile = workspaceFiles.find((file) => file.path === selectedPath);
@@ -164,6 +156,11 @@ export function WorkspaceShellV2() {
   useEffect(() => {
     void refreshPlatform();
   }, []);
+
+  useEffect(() => {
+    if (!initialProjectId) return;
+    void loadProject(initialProjectId);
+  }, [initialProjectId]);
 
   async function refreshPlatform() {
     try {
@@ -224,7 +221,7 @@ export function WorkspaceShellV2() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          repositoryId: repositoryId ?? "workspace_repo",
+          repositoryId: effectiveProjectId ?? "workspace_repo",
           files: apiFiles
         })
       });
@@ -234,7 +231,7 @@ export function WorkspaceShellV2() {
     } catch {
       setProjectBrain(null);
     }
-  }, [repositoryId, apiFiles]);
+  }, [effectiveProjectId, apiFiles]);
 
   const waitForWorkspaceJob = useCallback(
     async <T,>(jobId: string, fallbackError: string): Promise<T> => {
@@ -254,14 +251,14 @@ export function WorkspaceShellV2() {
 
   const refreshProductBrain = useCallback(
     async (correction?: string) => {
-      if (!repositoryId) return;
+      if (!effectiveProjectId) return;
       try {
         const res = await fetch("/api/workspace/product-brain", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            projectId: repositoryId,
+            projectId: effectiveProjectId,
             brief,
             files: apiFiles,
             correction
@@ -275,7 +272,7 @@ export function WorkspaceShellV2() {
         setProductBrain(null);
       }
     },
-    [repositoryId, brief, apiFiles, waitForWorkspaceJob]
+    [effectiveProjectId, brief, apiFiles, waitForWorkspaceJob]
   );
 
   useEffect(() => {
@@ -289,9 +286,84 @@ export function WorkspaceShellV2() {
   }, [repoConnected, refreshProjectBrain]);
 
   useEffect(() => {
-    if (!repoConnected || !repositoryId) return;
+    if (!repoConnected || !effectiveProjectId) return;
     void refreshProductBrain();
-  }, [repoConnected, repositoryId, refreshProductBrain]);
+  }, [repoConnected, effectiveProjectId, refreshProductBrain]);
+
+  async function loadProject(id: string) {
+    setBusy(true);
+    setStatus("Loading project");
+    try {
+      const res = await fetch(`/api/workspace/projects?id=${encodeURIComponent(id)}`, { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as {
+        project?: {
+          id: string;
+          name: string;
+          brief: ProjectBrief;
+          files: WorkspaceFile[];
+          lastReport: WorkspaceFixReport | null;
+          preferredProvider: WorkspaceProvider;
+          githubUrl?: string | null;
+          repositoryId?: string | null;
+        };
+        error?: string;
+      };
+      if (!res.ok || !data.project) throw new Error(data.error ?? "Project not found.");
+      setProjectId(data.project.id);
+      setProjectName(data.project.name);
+      setBrief(data.project.brief);
+      setWorkspaceFiles(createWorkspaceFileStates(data.project.files ?? []));
+      setSelectedPath(data.project.files?.[0]?.path);
+      setReport(data.project.lastReport ?? null);
+      setProvider(data.project.preferredProvider ?? "bootrise");
+      setGithubUrl(data.project.githubUrl ?? "");
+      setRepositoryId(data.project.repositoryId ?? null);
+      setIssue(null);
+      setStatus(data.project.files?.length ? "Project loaded" : "Project ready for import");
+    } catch (caught) {
+      setIssue(caught instanceof Error ? caught.message : "Project load failed.");
+      setStatus("Blocked");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function persistProjectSnapshot(overrides?: {
+    name?: string;
+    brief?: ProjectBrief;
+    files?: WorkspaceFile[];
+    repositoryId?: string | null;
+    githubUrl?: string | null;
+    lastReport?: WorkspaceFixReport | null;
+  }) {
+    const name = overrides?.name?.trim() || projectName.trim() || "Untitled project";
+    const nextBrief = overrides?.brief ?? {
+      ...brief,
+      productName: brief.productName.trim() || name,
+      primaryWorkflow: brief.primaryWorkflow.trim() || "Ship the core user workflow"
+    };
+    const res = await fetch("/api/workspace/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        id: projectId ?? undefined,
+        name,
+        brief: nextBrief,
+        files: overrides?.files ?? apiFiles,
+        lastReport: overrides?.lastReport ?? report ?? undefined,
+        preferredProvider: provider,
+        githubUrl: overrides?.githubUrl ?? githubUrl ?? null,
+        repositoryId: overrides?.repositoryId ?? repositoryId ?? null
+      })
+    });
+    const data = (await res.json().catch(() => ({}))) as { project?: { id: string }; error?: string };
+    if (!res.ok || !data.project?.id) {
+      throw new Error(data.error ?? "Project save failed.");
+    }
+    setProjectId(data.project.id);
+    return data.project.id;
+  }
 
   useEffect(() => {
     setArchitectConversation(
@@ -334,15 +406,25 @@ export function WorkspaceShellV2() {
       const data = (await res.json()) as { files?: WorkspaceFile[]; repositoryId?: string; projectId?: string; branch?: string; mode?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Import failed.");
       const nextFiles = data.files ?? [];
+      const repoName = githubUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") ?? "Imported project";
+      const nextBrief = brief.productName.trim()
+        ? brief
+        : { ...brief, productName: repoName, primaryWorkflow: brief.primaryWorkflow || "Ship the core user workflow" };
+      const nextProjectName = projectName.trim() || repoName;
       setWorkspaceFiles(createWorkspaceFileStates(nextFiles));
       setRepositoryId(data.repositoryId ?? repositoryId ?? `repo_${Date.now()}`);
+      setProjectId(data.projectId ?? projectId);
       setGithubBranch(data.branch ?? githubBranch);
       setSelectedPath(nextFiles[0]?.path);
-      if (!brief.productName.trim()) {
-        const repoName = githubUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") ?? "Imported project";
-        setBrief((value) => ({ ...value, productName: repoName, primaryWorkflow: value.primaryWorkflow || "Ship the core user workflow" }));
-        setProjectName(repoName);
-      }
+      setBrief(nextBrief);
+      setProjectName(nextProjectName);
+      await persistProjectSnapshot({
+        name: nextProjectName,
+        brief: nextBrief,
+        files: nextFiles,
+        repositoryId: data.repositoryId ?? repositoryId ?? null,
+        githubUrl: githubUrl.trim()
+      });
       setActiveStep("brief");
       setIssue(null);
       setStatus("Repository imported");
@@ -382,7 +464,7 @@ export function WorkspaceShellV2() {
           files: apiFiles,
           provider,
           mode: speed,
-          projectId: repositoryId ?? undefined,
+          projectId: effectiveProjectId ?? undefined,
           repositoryId: repositoryId ?? undefined,
           assumptionsApproved: false,
           premiumApproved: provider === "openai" || speed === "premium"
@@ -638,13 +720,20 @@ export function WorkspaceShellV2() {
       }
 
       const approvedReport = data.report ?? report;
+      const nextFiles = Array.isArray(data.files)
+        ? data.files
+        : applyReportPatchesToWorkspaceFileStates(workspaceFiles, approvedReport).map((file) => ({
+            path: file.path,
+            content: file.currentContent
+          }));
       setReport(approvedReport);
 
       if (Array.isArray(data.files)) {
         setWorkspaceFiles(createWorkspaceFileStates(data.files));
       } else {
-        setWorkspaceFiles((current) => applyReportPatchesToWorkspaceFileStates(current, report));
+        setWorkspaceFiles((current) => applyReportPatchesToWorkspaceFileStates(current, approvedReport));
       }
+      await persistProjectSnapshot({ files: nextFiles, lastReport: approvedReport, repositoryId: repositoryId ?? null });
 
       setIssue(null);
       setStatus("Patch approved");
@@ -686,6 +775,7 @@ export function WorkspaceShellV2() {
       }
 
       setReport(null);
+      await persistProjectSnapshot({ lastReport: null, repositoryId: repositoryId ?? null });
       setIssue(null);
       setStatus("Patch rejected");
       setActiveStep("fix");
@@ -714,7 +804,7 @@ export function WorkspaceShellV2() {
           pendingFixId: report.pendingFixId,
           remoteUrl: githubUrl.trim(),
           branch: githubBranch,
-          projectId: repositoryId ?? report.repositoryId,
+          projectId: effectiveProjectId ?? report.repositoryId,
           commitMessage: input?.commitMessage,
           prTitle: input?.prTitle,
           prBody:
@@ -762,7 +852,7 @@ export function WorkspaceShellV2() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ files: apiFiles, projectId: repositoryId ?? undefined })
+        body: JSON.stringify({ files: apiFiles, projectId: effectiveProjectId ?? undefined })
       });
       const data = (await res.json()) as { jobId?: string; error?: string };
       if (!res.ok || !data.jobId) throw new Error(data.error ?? "Security scan failed.");
@@ -793,7 +883,7 @@ export function WorkspaceShellV2() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ files: apiFiles, projectId: repositoryId ?? undefined })
+        body: JSON.stringify({ files: apiFiles, projectId: effectiveProjectId ?? undefined })
       });
       const data = (await res.json()) as { jobId?: string; error?: string };
       if (!res.ok || !data.jobId) throw new Error(data.error ?? "Deployment readiness failed.");
@@ -824,7 +914,7 @@ export function WorkspaceShellV2() {
         body: JSON.stringify({
           task: fixRequest,
           files: apiFiles,
-          projectId: repositoryId ?? undefined,
+          projectId: effectiveProjectId ?? undefined,
           repositoryId: repositoryId ?? undefined,
           premiumAllowed: provider === "openai" || speed === "premium",
           productContext: buildProductBrainContext(productBrain)
@@ -917,7 +1007,7 @@ export function WorkspaceShellV2() {
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-surface-ws text-text-ws-1">
-      <WorkspaceTopbarV2 projectName={projectName} creditsRemaining={creditsRemaining} />
+      <WorkspaceTopbarV2 projectName={projectName} creditsRemaining={creditsRemaining} projectId={projectId} />
       {!providerConfigured && !offlineDismissed ? (
         <div className="border-b border-amber-400/25 bg-amber-400/10 px-5 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -987,7 +1077,7 @@ export function WorkspaceShellV2() {
           )}
           <section className="border-t border-border-ws px-6 py-4">
             <RuntimeMonitorPanel
-              projectId={repositoryId}
+              projectId={effectiveProjectId}
               refreshToken={runtimeRefreshToken}
               onSuggestFix={(suggestedRequest) => {
                 setFixRequest(suggestedRequest);

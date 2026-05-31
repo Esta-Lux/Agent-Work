@@ -1,6 +1,7 @@
 {
-  "/api/workspace/runtime/events/route": "app/api/workspace/runtime/events/route.js",
   "/page": "app/page.js",
+  "/api/workspace/projects/route": "app/api/workspace/projects/route.js",
+  "/api/workspace/runtime/events/route": "app/api/workspace/runtime/events/route.js",
   "/api/workspace/brain/route": "app/api/workspace/brain/route.js",
   "/admin/page": "app/admin/page.js",
   "/admin/[section]/page": "app/admin/[section]/page.js"
