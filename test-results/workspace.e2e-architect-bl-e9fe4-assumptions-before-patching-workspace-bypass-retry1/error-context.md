@@ -81,8 +81,14 @@ Call log:
   - textbox: "export default function DemoPage() { return <main>BootRise demo workspace</main>; }"
   - paragraph: Runtime monitor
   - button "Refresh"
+  - paragraph: Deploy readiness ready for production.
+  - paragraph: ×1 · no file mapping
+  - button "Suggest scoped fix →"
+  - paragraph: Provider duel comparison completed.
+  - paragraph: ×4 · src/app/page.tsx, src/components/status.tsx
+  - button "Suggest scoped fix →"
   - paragraph: "Security scan complete. Critical findings: 0."
-  - paragraph: ×3 · no file mapping
+  - paragraph: ×14 · no file mapping
   - button "Suggest scoped fix →"
 - complementary:
   - paragraph: Context inspector
@@ -209,10 +215,6 @@ Call log:
 # Test source
 
 ```ts
-  33  |   await expect(page.getByText("Approval gate remains required")).toBeVisible();
-  34  | });
-  35  | 
-  36  | test("workspace full loop: multi-pass rerun approve verify open draft PR", async ({ page }) => {
   37  |   const workspace = new WorkspacePage(page);
   38  |   await workspace.goto();
   39  |   await workspace.expectLoaded();
@@ -309,8 +311,12 @@ Call log:
   130 |   // After approving, the fix should proceed
   131 |   await approveBtn.click();
   132 |   await page.getByRole("button", { name: "Run Fix" }).click();
-> 133 |   await expect(page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+  133 |   const useSinglePass = page.getByRole("button", { name: "Use single-pass fix" });
+  134 |   if (await useSinglePass.isVisible().catch(() => false)) {
+  135 |     await useSinglePass.click();
+  136 |   }
+> 137 |   await expect(page.getByRole("button", { name: "Approve patch" })).toBeVisible();
       |                                                                     ^ Error: expect(locator).toBeVisible() failed
-  134 | });
-  135 | 
+  138 | });
+  139 | 
 ```

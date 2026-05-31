@@ -29,7 +29,8 @@ export class WorkspacePage {
     await this.page.getByLabel("Fix request").fill(request);
     await this.page.getByRole("button", { name: "Run Fix" }).click();
     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-    if (await approveAssumptions.isVisible().catch(() => false)) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (!(await approveAssumptions.isVisible().catch(() => false))) break;
       await approveAssumptions.click();
       await this.page.getByRole("button", { name: "Run Fix" }).click();
     }
@@ -65,16 +66,12 @@ export class WorkspacePage {
 
   async runSecurityScan() {
     await this.page.getByRole("button", { name: "Run security scan" }).click();
-    await expect(this.page.getByText("Security scan complete")).toBeVisible();
+    await expect(this.page.getByText("Security scan complete", { exact: true })).toBeVisible();
   }
 
   async runDeployReadiness() {
     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
-    await expect(
-      this.page
-        .getByText("Deploy readiness complete")
-        .or(this.page.getByText("Deployment readiness: ready for production."))
-    ).toBeVisible();
+    await expect(this.page.getByText("Deploy readiness complete", { exact: true })).toBeVisible();
   }
 
   async exportBundle() {
@@ -91,6 +88,11 @@ export class WorkspacePage {
   }
 
   async runMultiPass() {
+    const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+    if (await approveAssumptions.isVisible().catch(() => false)) {
+      await approveAssumptions.click();
+      await this.page.getByRole("button", { name: "Run Fix" }).click();
+    }
     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
     await expect(this.page.getByText("Work unit execution")).toBeVisible();
   }

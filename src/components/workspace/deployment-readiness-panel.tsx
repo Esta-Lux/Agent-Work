@@ -31,9 +31,9 @@ export function DeploymentReadinessPanel({ report, checkedAt, busy, onRun }: Dep
             <ReadinessFlag label="Safe for staging" ready={report.status === "safe_for_staging" || report.status === "production_candidate" || report.status === "production_ready"} />
             <ReadinessFlag label="Safe for production" ready={report.status === "production_ready"} />
           </div>
-          <TextList title="Blockers" items={report.blockers.map((finding) => `${finding.file ? `${finding.file}: ` : ""}${finding.title}`)} tone="red" />
-          <TextList title="Warnings" items={report.warnings.map((finding) => `${finding.file ? `${finding.file}: ` : ""}${finding.title}`)} tone="amber" />
-          <TextList title="Missing production items" items={report.missingProductionItems} tone="muted" />
+          <TextList title="Blockers" items={(report.blockers ?? []).map((finding) => `${finding.file ? `${finding.file}: ` : ""}${finding.title}`)} tone="red" />
+          <TextList title="Warnings" items={(report.warnings ?? []).map((finding) => `${finding.file ? `${finding.file}: ` : ""}${finding.title}`)} tone="amber" />
+          <TextList title="Missing production items" items={report.missingProductionItems ?? []} tone="muted" />
         </div>
       ) : (
         <p className="mt-3 text-xs leading-5 text-text-ws-2">No deployment readiness result yet.</p>
