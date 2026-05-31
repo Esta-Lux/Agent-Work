@@ -7,10 +7,10 @@ export async function GET(request: Request) {
   const config = getSupabaseConfig();
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") ?? "/";
+  const next = sanitizeNextPath(url.searchParams.get("next") ?? "/dashboard");
 
   if (!config?.publishableKey || !code) {
-    return NextResponse.redirect(new URL("/auth/sign-in?error=auth", request.url));
+    return NextResponse.redirect(new URL("/auth/sign-in?error=auth_callback_failed", request.url));
   }
 
   const cookieStore = await cookies();
@@ -29,8 +29,13 @@ export async function GET(request: Request) {
 
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return NextResponse.redirect(new URL(`/auth/sign-in?error=${encodeURIComponent(error.message)}`, request.url));
+    return NextResponse.redirect(new URL("/auth/sign-in?error=auth_callback_failed", request.url));
   }
 
   return NextResponse.redirect(new URL(next, request.url));
+}
+
+function sanitizeNextPath(next: string): string {
+  if (!next.startsWith("/") || next.startsWith("//")) return "/dashboard";
+  return next;
 }

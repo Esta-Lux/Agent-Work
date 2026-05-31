@@ -26,9 +26,17 @@ export function AuthEntryPage({ mode }: { mode: "sign-in" | "sign-up" }) {
 
   useEffect(() => {
     if (!devBypass) return;
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/dashboard";
     router.replace(next);
   }, [router]);
+
+  useEffect(() => {
+    const error = new URLSearchParams(window.location.search).get("error");
+    if (error === "auth_callback_failed") {
+      setStatus("error");
+      setMessage("We could not finish signing you in from that magic link. Please request a fresh link and try again.");
+    }
+  }, []);
 
   async function sendMagicLink(event: React.FormEvent) {
     event.preventDefault();
@@ -41,11 +49,10 @@ export function AuthEntryPage({ mode }: { mode: "sign-in" | "sign-up" }) {
       return;
     }
     setStatus("loading");
-    const origin = window.location.origin;
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/dashboard";
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}` }
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` }
     });
     if (error) {
       setStatus("error");
@@ -63,7 +70,7 @@ export function AuthEntryPage({ mode }: { mode: "sign-in" | "sign-up" }) {
       setMessage("Supabase is not configured.");
       return;
     }
-    const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+    const next = new URLSearchParams(window.location.search).get("next") ?? "/dashboard";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "github",
       options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` }
