@@ -483,7 +483,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setMultiPassExecution(null);
       void recordRuntimeContinuity("Repository import completed and workspace files are loaded.", nextFiles.slice(0, 6).map((file) => file.path));
       void recordActivity({
-        id: `repository_cloned_${data.projectId ?? data.repositoryId ?? Date.now()}`,
+        id: `repository_cloned_${data.projectId ?? data.repositoryId ?? crypto.randomUUID()}`,
         projectId: data.projectId ?? projectId ?? data.repositoryId ?? undefined,
         actor: "system",
         type: "repository_cloned",

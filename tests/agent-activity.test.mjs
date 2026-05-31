@@ -35,6 +35,7 @@ describe("agent activity events", () => {
       status: "success",
       title: "Diff ready for review",
       detail: "Edited 2 files",
+      // Duplicate file paths verify normalization and deduplication before persistence.
       filePaths: ["src/a.ts", "src/a.ts", "src/b.ts"],
       timestamp: "2026-01-01T10:00:01.000Z"
     });
