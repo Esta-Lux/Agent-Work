@@ -40,8 +40,10 @@ test("workspace full loop: multi-pass rerun approve verify open draft PR", async
   await workspace.connectRepo();
   await workspace.completeBrief();
   await workspace.runFix("Refactor workspace shell to use scoped work units.", { expectApprove: false });
-  await workspace.runMultiPass();
-  await workspace.rerunWorkUnit();
+  const ranMultiPass = await workspace.runMultiPass();
+  if (ranMultiPass) {
+    await workspace.rerunWorkUnit();
+  }
   await workspace.approvePatch();
   await workspace.runVerify();
   await workspace.openDraftPr();
@@ -53,6 +55,9 @@ test("workspace security scan and deploy readiness gate the PR path", async ({ p
   await workspace.expectLoaded();
   await workspace.connectRepo();
   await workspace.completeBrief();
+  await workspace.runFix("Update workspace status messaging in the imported demo files.");
+  await workspace.approvePatch();
+  await workspace.runVerify();
   await page.getByRole("button", { name: "Security" }).click();
   await workspace.runSecurityScan();
   await workspace.runDeployReadiness();

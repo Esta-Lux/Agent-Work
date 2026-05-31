@@ -12,25 +12,34 @@
 # Error details
 
 ```
-Error: expect(locator).toBeVisible() failed
+Test timeout of 60000ms exceeded.
+```
 
-Locator: getByText('Security scan complete')
-Expected: visible
-Error: strict mode violation: getByText('Security scan complete') resolved to 3 elements:
-    1) <p class="font-medium text-ink">Security scan complete. Critical findings: 0.</p> aka getByText('Security scan complete.')
-    2) <p class="mt-1 text-xs leading-5 text-text-ws-2">Security scan completed.</p> aka getByText('Security scan completed.')
-    3) <p class="mt-1 text-xs text-text-ws-2">Security scan complete</p> aka getByText('Security scan complete', { exact: true })
-
+```
+Error: locator.click: Test timeout of 60000ms exceeded.
 Call log:
-  - Expect "toBeVisible" with timeout 10000ms
-  - waiting for getByText('Security scan complete')
+  - waiting for getByRole('button', { name: 'Open draft PR' })
+    - locator resolved to <button disabled type="button" class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/30 disabled:pointer-events-none disabled:opacity-50 h-9 px-4 text-sm border border-border-ws bg-transparent text-text-ws-2 hover:bg-white/5 w-full">…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not enabled
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not enabled
+    - retrying click action
+      - waiting 100ms
+    118 × waiting for element to be visible, enabled and stable
+        - element is not enabled
+      - retrying click action
+        - waiting 500ms
 
 ```
 
 # Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
+- generic [ref=e1]:
   - alert [ref=e2]
   - generic [ref=e3]:
     - banner [ref=e4]:
@@ -50,14 +59,14 @@ Call log:
         - generic [ref=e19]:
           - paragraph [ref=e20]: BootRise Command Center
           - heading "Agent Work" [level=1] [ref=e21]
-          - paragraph [ref=e22]: Run Verify is the next safe step.
+          - paragraph [ref=e22]: Export bundle is the next safe step.
         - generic [ref=e23]:
           - button "Guide" [ref=e24] [cursor=pointer]:
             - generic [ref=e25]: Guide
           - button "Mode" [ref=e27] [cursor=pointer]:
             - generic [ref=e28]: Mode
-          - button "Run Verify" [ref=e29] [cursor=pointer]:
-            - generic [ref=e30]: Run Verify
+          - button "Export bundle" [ref=e29] [cursor=pointer]:
+            - generic [ref=e30]: Export bundle
       - generic [ref=e31]:
         - generic [ref=e32]:
           - paragraph [ref=e33]: Brain
@@ -101,21 +110,21 @@ Call log:
                 - generic [ref=e73]: Fix
                 - generic [ref=e74]: Work units + patch
           - listitem [ref=e76]:
-            - button "4 Security Scan + verify" [ref=e77] [cursor=pointer]:
-              - generic [ref=e78]: "4"
+            - button "OK Security Scan + verify" [ref=e77] [cursor=pointer]:
+              - generic [ref=e78]: OK
               - generic [ref=e79]:
                 - generic [ref=e80]: Security
                 - generic [ref=e81]: Scan + verify
           - listitem [ref=e83]:
-            - button "5 PR Preflight + draft PR" [ref=e84] [cursor=pointer]:
+            - button "5 PR Preflight + draft PR" [active] [ref=e84] [cursor=pointer]:
               - generic [ref=e85]: "5"
               - generic [ref=e86]:
                 - generic [ref=e87]: PR
                 - generic [ref=e88]: Preflight + draft PR
         - generic [ref=e89]:
           - paragraph [ref=e90]: Operator focus
-          - paragraph [ref=e91]: Security
-          - paragraph [ref=e92]: Run Security Center and deployment checks before final verification.
+          - paragraph [ref=e91]: PR
+          - paragraph [ref=e92]: Review PR safety evidence, then open a draft pull request.
       - main [ref=e93]:
         - generic [ref=e94]:
           - generic [ref=e95]:
@@ -155,21 +164,21 @@ Call log:
             - button "Refresh" [ref=e132] [cursor=pointer]
           - generic [ref=e133]:
             - paragraph [ref=e134]: Deploy readiness ready for production.
-            - paragraph [ref=e135]: ×1 · no file mapping
+            - paragraph [ref=e135]: ×13 · no file mapping
             - button "Suggest scoped fix →" [ref=e136] [cursor=pointer]
           - generic [ref=e137]:
             - paragraph [ref=e138]: Provider duel comparison completed.
-            - paragraph [ref=e139]: ×5 · src/app/page.tsx, src/components/status.tsx
+            - paragraph [ref=e139]: ×7 · src/app/page.tsx, src/components/status.tsx
             - button "Suggest scoped fix →" [ref=e140] [cursor=pointer]
           - generic [ref=e141]:
             - paragraph [ref=e142]: "Security scan complete. Critical findings: 0."
-            - paragraph [ref=e143]: ×15 · no file mapping
+            - paragraph [ref=e143]: ×27 · no file mapping
             - button "Suggest scoped fix →" [ref=e144] [cursor=pointer]
       - complementary [ref=e145]:
         - generic [ref=e146]:
           - paragraph [ref=e147]: Context inspector
           - generic [ref=e148]:
-            - heading "verify" [level=2] [ref=e149]
+            - heading "export" [level=2] [ref=e149]
             - generic [ref=e150]: repo loaded
         - generic [ref=e152]:
           - generic [ref=e153]:
@@ -222,123 +231,149 @@ Call log:
                 - generic [ref=e200]:
                   - paragraph [ref=e201]: Deployment Agent
                   - generic [ref=e202]: passed
-                - paragraph [ref=e203]: Deploy readiness not run.
+                - paragraph [ref=e203]: "Deployment readiness: ready for production."
           - generic [ref=e204]:
             - generic [ref=e205]:
-              - paragraph [ref=e206]: Verification status
-              - paragraph [ref=e207]: Security scan complete
-            - generic [ref=e210]:
-              - generic [ref=e211]: i
-              - generic [ref=e212]:
-                - paragraph [ref=e213]: Sandbox verification
-                - paragraph [ref=e214]: Run Verify after importing code. Configure E2B or Fly for deeper sandbox proof.
-            - generic [ref=e215]:
-              - generic [ref=e216]:
-                - generic [ref=e217]:
-                  - generic [ref=e218]:
-                    - paragraph [ref=e219]: Security center
-                    - paragraph [ref=e220]: Repository security scan
-                    - paragraph [ref=e221]: Run a deterministic scan before export or draft PR.
-                  - generic [ref=e222]: 96/100
-                - button "Run security scan" [ref=e223] [cursor=pointer]:
-                  - generic [ref=e224]: Run security scan
-                - paragraph [ref=e226]: No findings were returned by the scan.
-              - generic [ref=e227]:
+              - paragraph [ref=e206]: Export bundle
+              - paragraph [ref=e207]: Export is available after the brief and repo files are ready.
+            - generic [ref=e208]:
+              - generic [ref=e210]:
+                - paragraph [ref=e211]: Safe to PR
+                - paragraph [ref=e212]: Run Fix and Verify first.
+              - generic [ref=e213]:
+                - paragraph [ref=e214]: Security preflight
+                - paragraph [ref=e215]: Security scan score is 96/100.
+                - paragraph [ref=e216]: "Deployment readiness: ready for production."
+              - generic [ref=e217]:
+                - paragraph [ref=e218]: PR composer
+                - generic [ref=e219]:
+                  - generic [ref=e220]: Commit message
+                  - textbox "Commit message" [ref=e221]: "BootRise: workspace patch"
+                - generic [ref=e222]:
+                  - generic [ref=e223]: PR title
+                  - textbox "PR title" [ref=e224]: "BootRise: workspace patch"
+                - button "Draft PR on" [ref=e225] [cursor=pointer]:
+                  - generic [ref=e226]: Draft PR
+                  - generic [ref=e227]: "on"
                 - generic [ref=e228]:
-                  - generic [ref=e229]:
-                    - paragraph [ref=e230]: Deployment readiness
-                    - paragraph [ref=e231]: Staging and production preflight
-                    - paragraph [ref=e232]: Run readiness before relying on deploy status.
-                  - generic [ref=e233]: not run
-                - button "Run deploy readiness" [ref=e234] [cursor=pointer]:
-                  - generic [ref=e235]: Run deploy readiness
-                - paragraph [ref=e236]: No deployment readiness result yet.
-          - generic [ref=e237]:
-            - paragraph [ref=e238]: Project Brain v2
-            - generic [ref=e239]:
-              - generic [ref=e240]:
-                - paragraph [ref=e241]: Files indexed
-                - paragraph [ref=e242]: "2"
-              - generic [ref=e243]:
-                - paragraph [ref=e244]: Symbols
-                - paragraph [ref=e245]: "1"
-              - generic [ref=e246]:
-                - paragraph [ref=e247]: API routes
-                - paragraph [ref=e248]: "0"
-              - generic [ref=e249]:
-                - paragraph [ref=e250]: Unguarded routes
-                - paragraph [ref=e251]: "0"
-              - generic [ref=e252]:
-                - paragraph [ref=e253]: Env vars
-                - paragraph [ref=e254]: "0"
-              - generic [ref=e255]:
-                - paragraph [ref=e256]: Missing env docs
-                - paragraph [ref=e257]: "0"
-          - generic [ref=e258]:
-            - paragraph [ref=e259]: Product Brain
-            - paragraph [ref=e260]: BootRise command workspace
+                  - paragraph [ref=e229]: Preflight
+                  - generic [ref=e230]:
+                    - generic [ref=e231]:
+                      - generic [ref=e232]: Patch approved
+                      - generic [ref=e233]: blocker
+                    - generic [ref=e234]:
+                      - generic [ref=e235]: Files changed
+                      - generic [ref=e236]: blocker
+                    - generic [ref=e237]:
+                      - generic [ref=e238]: Completion evaluator passed
+                      - generic [ref=e239]: ok
+                    - generic [ref=e240]:
+                      - generic [ref=e241]: Vague Output Guard passed
+                      - generic [ref=e242]: ok
+                    - generic [ref=e243]:
+                      - generic [ref=e244]: Reachability passed
+                      - generic [ref=e245]: ok
+                    - generic [ref=e246]:
+                      - generic [ref=e247]: Security scan
+                      - generic [ref=e248]: ok
+                    - generic [ref=e249]:
+                      - generic [ref=e250]: Deploy readiness
+                      - generic [ref=e251]: blocker
+                    - generic [ref=e252]:
+                      - generic [ref=e253]: Verify run completed
+                      - generic [ref=e254]: blocker
+                - generic [ref=e255]:
+                  - generic [ref=e256]: PR body preview
+                  - textbox "PR body preview" [ref=e257]: "# BootRise Draft PR ## Task summary Workspace patch ## Changed files - No files reported ## Safety preflight - Patch approved: blocked - Files changed: blocked - Completion evaluator passed: passed - Vague Output Guard passed: passed - Reachability passed: passed - Security scan: passed - Deploy readiness: blocked - Verify run completed: blocked"
+                - button "Open draft PR" [disabled]:
+                  - generic: Open draft PR
+                - paragraph [ref=e258]: Resolve preflight blockers before opening a draft PR.
+          - generic [ref=e259]:
+            - paragraph [ref=e260]: Project Brain v2
             - generic [ref=e261]:
-              - paragraph [ref=e262]: Users
-              - list [ref=e263]:
-                - listitem [ref=e264]: "- Operators"
-            - generic [ref=e265]:
-              - paragraph [ref=e266]: Workflows
-              - list [ref=e267]:
-                - listitem [ref=e268]: "- import"
-                - listitem [ref=e269]: "- fix"
-                - listitem [ref=e270]: "- verify"
-                - listitem [ref=e271]: "- draft_pr"
-            - generic [ref=e272]:
-              - paragraph [ref=e273]: Policies
-              - list [ref=e274]:
-                - listitem [ref=e275]: "- Approval required before PR"
-            - generic [ref=e276]:
-              - paragraph [ref=e277]: Roadmap
-              - list [ref=e278]:
-                - listitem [ref=e279]: "- Ship workspace E2E (in_progress)"
-            - generic [ref=e280]:
-              - paragraph [ref=e281]: Known risks
-              - list [ref=e282]:
-                - listitem [ref=e283]: "- Auth redirects need strict coverage"
-            - generic [ref=e284]:
-              - paragraph [ref=e285]: Definition of done
-              - list [ref=e286]:
-                - listitem [ref=e287]: "- Patch approved"
-                - listitem [ref=e288]: "- Verify passed"
-                - listitem [ref=e289]: "- Draft PR opened"
-            - generic [ref=e290]:
-              - 'textbox "Correct Product Brain: \"That policy is wrong\", \"Add this business rule\", ..." [ref=e291]'
+              - generic [ref=e262]:
+                - paragraph [ref=e263]: Files indexed
+                - paragraph [ref=e264]: "2"
+              - generic [ref=e265]:
+                - paragraph [ref=e266]: Symbols
+                - paragraph [ref=e267]: "1"
+              - generic [ref=e268]:
+                - paragraph [ref=e269]: API routes
+                - paragraph [ref=e270]: "0"
+              - generic [ref=e271]:
+                - paragraph [ref=e272]: Unguarded routes
+                - paragraph [ref=e273]: "0"
+              - generic [ref=e274]:
+                - paragraph [ref=e275]: Env vars
+                - paragraph [ref=e276]: "0"
+              - generic [ref=e277]:
+                - paragraph [ref=e278]: Missing env docs
+                - paragraph [ref=e279]: "0"
+          - generic [ref=e280]:
+            - paragraph [ref=e281]: Product Brain
+            - paragraph [ref=e282]: BootRise command workspace
+            - generic [ref=e283]:
+              - paragraph [ref=e284]: Users
+              - list [ref=e285]:
+                - listitem [ref=e286]: "- Operators"
+            - generic [ref=e287]:
+              - paragraph [ref=e288]: Workflows
+              - list [ref=e289]:
+                - listitem [ref=e290]: "- import"
+                - listitem [ref=e291]: "- fix"
+                - listitem [ref=e292]: "- verify"
+                - listitem [ref=e293]: "- draft_pr"
+            - generic [ref=e294]:
+              - paragraph [ref=e295]: Policies
+              - list [ref=e296]:
+                - listitem [ref=e297]: "- Approval required before PR"
+            - generic [ref=e298]:
+              - paragraph [ref=e299]: Roadmap
+              - list [ref=e300]:
+                - listitem [ref=e301]: "- Ship workspace E2E (in_progress)"
+            - generic [ref=e302]:
+              - paragraph [ref=e303]: Known risks
+              - list [ref=e304]:
+                - listitem [ref=e305]: "- Auth redirects need strict coverage"
+            - generic [ref=e306]:
+              - paragraph [ref=e307]: Definition of done
+              - list [ref=e308]:
+                - listitem [ref=e309]: "- Patch approved"
+                - listitem [ref=e310]: "- Verify passed"
+                - listitem [ref=e311]: "- Draft PR opened"
+            - generic [ref=e312]:
+              - 'textbox "Correct Product Brain: \"That policy is wrong\", \"Add this business rule\", ..." [ref=e313]'
               - button "Save correction" [disabled]:
                 - generic: Save correction
-          - generic [ref=e292]:
-            - generic [ref=e293]:
-              - paragraph [ref=e294]: Architecture roadmap
-              - paragraph [ref=e295]: nextjs
-              - paragraph [ref=e296]: Workspace and admin surfaces are wired for smoke coverage.
-            - generic [ref=e297]:
-              - paragraph [ref=e298]: Maturity
-              - paragraph [ref=e299]: closed beta
-            - generic [ref=e300]:
-              - paragraph [ref=e301]: Production readiness
-              - paragraph [ref=e302]: safe for staging
-            - generic [ref=e303]:
-              - paragraph [ref=e304]: Missing now
-              - list [ref=e305]:
-                - listitem [ref=e306]: • More edge-case coverage
-            - generic [ref=e307]:
-              - paragraph [ref=e308]: Security policies
-              - list [ref=e309]:
-                - listitem [ref=e310]: • Workspace auth gate
-                - listitem [ref=e311]: • Admin authorization
-            - generic [ref=e312]:
-              - paragraph [ref=e313]: Suggested phases
-              - list [ref=e314]:
-                - listitem [ref=e315]: • Ship Playwright harness
-            - generic [ref=e316]:
-              - paragraph [ref=e317]: Acceptance criteria
-              - list [ref=e318]:
-                - listitem [ref=e319]: • Workspace flow covered
-                - listitem [ref=e320]: • Admin routes covered
+          - generic [ref=e314]:
+            - generic [ref=e315]:
+              - paragraph [ref=e316]: Architecture roadmap
+              - paragraph [ref=e317]: nextjs
+              - paragraph [ref=e318]: Workspace and admin surfaces are wired for smoke coverage.
+            - generic [ref=e319]:
+              - paragraph [ref=e320]: Maturity
+              - paragraph [ref=e321]: closed beta
+            - generic [ref=e322]:
+              - paragraph [ref=e323]: Production readiness
+              - paragraph [ref=e324]: safe for staging
+            - generic [ref=e325]:
+              - paragraph [ref=e326]: Missing now
+              - list [ref=e327]:
+                - listitem [ref=e328]: • More edge-case coverage
+            - generic [ref=e329]:
+              - paragraph [ref=e330]: Security policies
+              - list [ref=e331]:
+                - listitem [ref=e332]: • Workspace auth gate
+                - listitem [ref=e333]: • Admin authorization
+            - generic [ref=e334]:
+              - paragraph [ref=e335]: Suggested phases
+              - list [ref=e336]:
+                - listitem [ref=e337]: • Ship Playwright harness
+            - generic [ref=e338]:
+              - paragraph [ref=e339]: Acceptance criteria
+              - list [ref=e340]:
+                - listitem [ref=e341]: • Workspace flow covered
+                - listitem [ref=e342]: • Admin routes covered
 ```
 
 # Test source
@@ -375,84 +410,86 @@ Call log:
   29  |     await this.page.getByLabel("Fix request").fill(request);
   30  |     await this.page.getByRole("button", { name: "Run Fix" }).click();
   31  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-  32  |     if (await approveAssumptions.isVisible().catch(() => false)) {
-  33  |       await approveAssumptions.click();
-  34  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
-  35  |     }
-  36  |     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
-  37  |     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
-  38  |       await useSinglePass.click();
-  39  |     }
-  40  |     if (options?.expectApprove !== false) {
-  41  |       await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
-  42  |     }
-  43  |   }
-  44  | 
-  45  |   async openGuide() {
-  46  |     await this.page.getByRole("button", { name: "Guide" }).click();
-  47  |     await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
-  48  |     await this.page.getByRole("button", { name: "Skip tour" }).click();
-  49  |   }
-  50  | 
-  51  |   async compareProviders() {
-  52  |     await this.page.getByRole("button", { name: "Compare providers" }).click();
-  53  |     await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
-  54  |   }
-  55  | 
-  56  |   async approvePatch() {
-  57  |     await this.page.getByRole("button", { name: "Approve patch" }).click();
-  58  |     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
-  59  |   }
-  60  | 
-  61  |   async runVerify() {
-  62  |     await this.page.getByRole("button", { name: "Run Verify" }).click();
-  63  |     await this.page.waitForTimeout(500);
-  64  |   }
-  65  | 
-  66  |   async runSecurityScan() {
-  67  |     await this.page.getByRole("button", { name: "Run security scan" }).click();
-> 68  |     await expect(this.page.getByText("Security scan complete")).toBeVisible();
-      |                                                                 ^ Error: expect(locator).toBeVisible() failed
-  69  |   }
-  70  | 
-  71  |   async runDeployReadiness() {
-  72  |     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
-  73  |     await expect(
-  74  |       this.page
-  75  |         .getByText("Deploy readiness complete")
-  76  |         .or(this.page.getByText("Deployment readiness: ready for production."))
-  77  |     ).toBeVisible();
-  78  |   }
-  79  | 
-  80  |   async exportBundle() {
-  81  |     const exportButton = this.page.getByRole("button", { name: "Export bundle" }).first();
-  82  |     if (await exportButton.isVisible().catch(() => false)) {
-  83  |       await exportButton.click();
-  84  |       await expect(this.page.getByText("Export bundle saved to /tmp/bootrise-export.zip")).toBeVisible();
-  85  |     }
-  86  |   }
-  87  | 
-  88  |   async openDraftPr() {
-  89  |     await this.page.getByRole("button", { name: "Open draft PR" }).click();
-  90  |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
-  91  |   }
-  92  | 
-  93  |   async runMultiPass() {
-  94  |     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
-  95  |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
-  96  |   }
-  97  | 
-  98  |   async rerunWorkUnit() {
-  99  |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
-  100 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
-  101 |   }
-  102 | 
-  103 |   async saveProductBrainCorrection() {
-  104 |     await this.page
-  105 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
-  106 |       .fill("Correction: add edge-case review.");
-  107 |     await this.page.getByRole("button", { name: "Save correction" }).click();
-  108 |   }
-  109 | }
-  110 | 
+  32  |     for (let attempt = 0; attempt < 2; attempt += 1) {
+  33  |       if (!(await approveAssumptions.isVisible().catch(() => false))) break;
+  34  |       await approveAssumptions.click();
+  35  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
+  36  |     }
+  37  |     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+  38  |     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
+  39  |       await useSinglePass.click();
+  40  |     }
+  41  |     if (options?.expectApprove !== false) {
+  42  |       await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+  43  |     }
+  44  |   }
+  45  | 
+  46  |   async openGuide() {
+  47  |     await this.page.getByRole("button", { name: "Guide" }).click();
+  48  |     await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
+  49  |     await this.page.getByRole("button", { name: "Skip tour" }).click();
+  50  |   }
+  51  | 
+  52  |   async compareProviders() {
+  53  |     await this.page.getByRole("button", { name: "Compare providers" }).click();
+  54  |     await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
+  55  |   }
+  56  | 
+  57  |   async approvePatch() {
+  58  |     await this.page.getByRole("button", { name: "Approve patch" }).click();
+  59  |     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
+  60  |   }
+  61  | 
+  62  |   async runVerify() {
+  63  |     await this.page.getByRole("button", { name: "Run Verify" }).click();
+  64  |     await this.page.waitForTimeout(500);
+  65  |   }
+  66  | 
+  67  |   async runSecurityScan() {
+  68  |     await this.page.getByRole("button", { name: "Run security scan" }).click();
+  69  |     await expect(this.page.getByText("Security scan complete", { exact: true })).toBeVisible();
+  70  |   }
+  71  | 
+  72  |   async runDeployReadiness() {
+  73  |     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
+  74  |     await expect(this.page.getByText("Deploy readiness complete", { exact: true })).toBeVisible();
+  75  |   }
+  76  | 
+  77  |   async exportBundle() {
+  78  |     const exportButton = this.page.getByRole("button", { name: "Export bundle" }).first();
+  79  |     if (await exportButton.isVisible().catch(() => false)) {
+  80  |       await exportButton.click();
+  81  |       await expect(this.page.getByText("Export bundle saved to /tmp/bootrise-export.zip")).toBeVisible();
+  82  |     }
+  83  |   }
+  84  | 
+  85  |   async openDraftPr() {
+> 86  |     await this.page.getByRole("button", { name: "Open draft PR" }).click();
+      |                                                                    ^ Error: locator.click: Test timeout of 60000ms exceeded.
+  87  |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
+  88  |   }
+  89  | 
+  90  |   async runMultiPass() {
+  91  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+  92  |     if (await approveAssumptions.isVisible().catch(() => false)) {
+  93  |       await approveAssumptions.click();
+  94  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
+  95  |     }
+  96  |     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+  97  |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
+  98  |   }
+  99  | 
+  100 |   async rerunWorkUnit() {
+  101 |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
+  102 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
+  103 |   }
+  104 | 
+  105 |   async saveProductBrainCorrection() {
+  106 |     await this.page
+  107 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
+  108 |       .fill("Correction: add edge-case review.");
+  109 |     await this.page.getByRole("button", { name: "Save correction" }).click();
+  110 |   }
+  111 | }
+  112 | 
 ```

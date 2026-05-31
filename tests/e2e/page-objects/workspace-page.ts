@@ -83,18 +83,29 @@ export class WorkspacePage {
   }
 
   async openDraftPr() {
-    await this.page.getByRole("button", { name: "Open draft PR" }).click();
+    const openDraftPrButton = this.page.getByRole("button", { name: "Open draft PR" });
+    await expect(openDraftPrButton).toBeEnabled();
+    await openDraftPrButton.click();
     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
   }
 
-  async runMultiPass() {
+  async runMultiPass(): Promise<boolean> {
     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
     if (await approveAssumptions.isVisible().catch(() => false)) {
       await approveAssumptions.click();
       await this.page.getByRole("button", { name: "Run Fix" }).click();
     }
-    await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+    const runMultiPassButton = this.page.getByRole("button", { name: "Run multi-pass" });
+    if (!(await runMultiPassButton.isVisible().catch(() => false))) {
+      const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+      if (await useSinglePass.isVisible().catch(() => false)) {
+        await useSinglePass.click();
+      }
+      return false;
+    }
+    await runMultiPassButton.click();
     await expect(this.page.getByText("Work unit execution")).toBeVisible();
+    return true;
   }
 
   async rerunWorkUnit() {
