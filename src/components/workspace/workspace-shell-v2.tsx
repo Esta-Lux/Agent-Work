@@ -37,7 +37,7 @@ import {
   updateWorkspaceFile,
   type WorkspaceFileState
 } from "@/lib/workspace/workspace-file-state";
-import type { AgentActivityEvent } from "@/lib/workspace/agent-activity";
+import type { AgentActivityEvent } from "@/lib/agent-activity/agent-activity-types";
 
 interface WorkspaceFile {
   path: string;
@@ -107,7 +107,6 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
   const [runtimeRefreshToken, setRuntimeRefreshToken] = useState(0);
   const [activityRefreshToken, setActivityRefreshToken] = useState(0);
   const roadmapRequestRef = useRef<string | null>(null);
-  const lastActivityFileViewRef = useRef<string | null>(null);
 
   const apiFiles = useMemo(() => toApiWorkspaceFiles(workspaceFiles), [workspaceFiles]);
   const effectiveProjectId = projectId ?? repositoryId;
@@ -135,11 +134,11 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     [effectiveProjectId]
   );
   const recordActivity = useCallback(
-    async (event: Omit<AgentActivityEvent, "projectId" | "timestamp"> & { projectId?: string }) => {
+    async (event: Omit<AgentActivityEvent, "projectId" | "createdAt"> & { projectId?: string; createdAt?: string }) => {
       const targetProjectId = event.projectId ?? effectiveProjectId;
       if (!targetProjectId) return;
       try {
-        await fetch("/api/workspace/activity/events", {
+        await fetch("/api/workspace/agent-activity", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -199,6 +198,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
   }
 
   const refreshRoadmap = useCallback(async () => {
+    const roadmapEventId = makeActivityId("roadmap", effectiveProjectId ?? repositoryId ?? "workspace");
     const requestKey = JSON.stringify({
       files: apiFiles.map((file) => ({ path: file.path, content: file.content })),
       brief,
@@ -209,6 +209,13 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (roadmapRequestRef.current === requestKey) return;
     roadmapRequestRef.current = requestKey;
     setRoadmapLoading(true);
+    void recordActivity({
+      id: roadmapEventId,
+      actor: "architect_agent",
+      type: "roadmap_started",
+      status: "running",
+      title: "Building architecture roadmap"
+    });
     try {
       const res = await fetch("/api/workspace/architecture/roadmap", {
         method: "POST",
@@ -230,15 +237,38 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       const data = (await res.json()) as { roadmap?: ArchitectureRoadmap; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Architecture roadmap failed.");
       setRoadmap(data.roadmap ?? null);
+      void recordActivity({
+        id: roadmapEventId,
+        actor: "architect_agent",
+        type: "roadmap_completed",
+        status: "success",
+        title: "Architecture roadmap ready",
+        detail: data.roadmap?.currentStateSummary
+      });
     } catch {
       setRoadmap(null);
       roadmapRequestRef.current = null;
+      void recordActivity({
+        id: roadmapEventId,
+        actor: "architect_agent",
+        type: "roadmap_completed",
+        status: "failed",
+        title: "Architecture roadmap failed"
+      });
     } finally {
       setRoadmapLoading(false);
     }
-  }, [apiFiles, brief, productBrain, report]);
+  }, [apiFiles, brief, productBrain, report, effectiveProjectId, repositoryId, recordActivity]);
 
   const refreshProjectBrain = useCallback(async () => {
+    const projectBrainEventId = makeActivityId("project_brain", effectiveProjectId ?? "workspace");
+    void recordActivity({
+      id: projectBrainEventId,
+      actor: "project_brain_agent",
+      type: "project_brain_started",
+      status: "running",
+      title: "Building Project Brain"
+    });
     try {
       const res = await fetch("/api/workspace/brain", {
         method: "POST",
@@ -254,9 +284,9 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setProjectBrain(data.brainV2 ?? null);
       if (data.brainV2 && effectiveProjectId) {
         void recordActivity({
-          id: `project_brain_${effectiveProjectId}_${data.brainV2.builtAt}`,
+          id: projectBrainEventId,
           actor: "project_brain_agent",
-          type: "progress_update",
+          type: "project_brain_completed",
           status: "success",
           title: `Project Brain indexed ${data.brainV2.indexedFiles} files`,
           detail: `${data.brainV2.summary.totalApiRoutes} routes, ${data.brainV2.summary.totalComponents} components, ${data.brainV2.summary.envVarsReferenced.length} env vars.`,
@@ -265,6 +295,13 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       }
     } catch {
       setProjectBrain(null);
+      void recordActivity({
+        id: projectBrainEventId,
+        actor: "project_brain_agent",
+        type: "project_brain_completed",
+        status: "failed",
+        title: "Project Brain failed"
+      });
     }
   }, [effectiveProjectId, apiFiles, recordActivity]);
 
@@ -287,6 +324,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
   const refreshProductBrain = useCallback(
     async (correction?: string) => {
       if (!effectiveProjectId) return;
+      const productBrainEventId = makeActivityId("product_brain", effectiveProjectId, correction ?? "refresh");
+      void recordActivity({
+        id: productBrainEventId,
+        actor: "product_brain_agent",
+        type: "product_brain_started",
+        status: "running",
+        title: correction ? "Applying Product Brain correction" : "Building Product Brain"
+      });
       try {
         const res = await fetch("/api/workspace/product-brain", {
           method: "POST",
@@ -303,11 +348,27 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
         if (!res.ok || !data.jobId) throw new Error(data.error ?? "Product Brain failed.");
         const job = await waitForWorkspaceJob<{ productBrain?: ProductBrain }>(data.jobId, "Product Brain failed.");
         setProductBrain(job.productBrain ?? null);
+        void recordActivity({
+          id: productBrainEventId,
+          jobId: data.jobId,
+          actor: "product_brain_agent",
+          type: "product_brain_completed",
+          status: "success",
+          title: "Product Brain updated",
+          detail: job.productBrain?.oneLineDescription
+        });
       } catch {
         setProductBrain(null);
+        void recordActivity({
+          id: productBrainEventId,
+          actor: "product_brain_agent",
+          type: "product_brain_completed",
+          status: "failed",
+          title: "Product Brain failed"
+        });
       }
     },
-    [effectiveProjectId, brief, apiFiles, waitForWorkspaceJob]
+    [effectiveProjectId, brief, apiFiles, waitForWorkspaceJob, recordActivity]
   );
 
   useEffect(() => {
@@ -324,22 +385,6 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!repoConnected || !effectiveProjectId) return;
     void refreshProductBrain();
   }, [repoConnected, effectiveProjectId, refreshProductBrain]);
-
-  useEffect(() => {
-    if (!effectiveProjectId || !selectedPath || !repoConnected) return;
-    const nextKey = `${effectiveProjectId}:${selectedPath}`;
-    if (lastActivityFileViewRef.current === nextKey) return;
-    lastActivityFileViewRef.current = nextKey;
-    void recordActivity({
-      id: `file_view_${effectiveProjectId}_${selectedPath}`,
-      actor: "self_agent",
-      type: "file_viewed",
-      status: "success",
-      title: "Viewed file",
-      detail: selectedPath,
-      filePaths: [selectedPath]
-    });
-  }, [effectiveProjectId, repoConnected, selectedPath, recordActivity]);
 
   async function loadProject(id: string) {
     setBusy(true);
@@ -448,6 +493,15 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!githubUrl.trim()) return setIssue("Enter a GitHub URL before importing.");
     setBusy(true);
     setStatus("Importing repository");
+    const importEventId = makeActivityId("repository_import", githubUrl.trim(), githubBranch);
+    void recordActivity({
+      id: importEventId,
+      actor: "context_agent",
+      type: "repository_import_started",
+      status: "running",
+      title: "Importing repository",
+      detail: `${githubUrl.trim()} (${githubBranch})`
+    });
     try {
       const res = await fetch("/api/workspace/github/import", {
         method: "POST",
@@ -483,18 +537,26 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setMultiPassExecution(null);
       void recordRuntimeContinuity("Repository import completed and workspace files are loaded.", nextFiles.slice(0, 6).map((file) => file.path));
       void recordActivity({
-        id: makeActivityId("repository_cloned", data.projectId ?? data.repositoryId ?? githubUrl.trim(), data.branch ?? githubBranch),
+        id: importEventId,
         projectId: data.projectId ?? projectId ?? data.repositoryId ?? undefined,
-        actor: "system",
-        type: "repository_cloned",
+        actor: "context_agent",
+        type: "repository_import_completed",
         status: "success",
-        title: `Cloned ${githubUrl.split("/").slice(-2).join("/") || githubUrl.trim()}`,
+        title: `Imported ${githubUrl.split("/").slice(-2).join("/") || githubUrl.trim()}`,
         detail: `Imported ${nextFiles.length} files from ${data.branch ?? githubBranch}.`,
         filePaths: nextFiles.slice(0, 8).map((file) => file.path)
       });
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Import failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: importEventId,
+        actor: "context_agent",
+        type: "repository_import_completed",
+        status: "failed",
+        title: "Repository import failed",
+        detail: caught instanceof Error ? caught.message : "Import failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -516,13 +578,13 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     }
     setBusy(true);
     setStatus("Running Fix");
-    const diffEventId = makeActivityId("diff_generated", effectiveProjectId ?? repositoryId ?? "workspace", fixRequest);
+    const fixEventId = makeActivityId("fix", effectiveProjectId ?? repositoryId ?? "workspace", fixRequest);
     void recordActivity({
-      id: diffEventId,
+      id: fixEventId,
       actor: "builder_agent",
-      type: "diff_generated",
+      type: "fix_started",
       status: "running",
-      title: "Generating diff",
+      title: "Running fix request",
       detail: fixRequest
     });
     try {
@@ -552,11 +614,11 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setDraftPrMessage(null);
       void recordRuntimeContinuity("Fix report generated and pending approval.", data.report.patches?.map((patch) => patch.path));
       void recordActivity({
-        id: diffEventId,
+        id: fixEventId,
         actor: "builder_agent",
-        type: "diff_generated",
+        type: "fix_report_generated",
         status: "success",
-        title: "Diff ready for review",
+        title: "Fix report generated",
         detail: `${data.report.patches?.length ?? 0} patch(es) prepared.`,
         filePaths: data.report.patches?.map((patch) => patch.path)
       });
@@ -564,11 +626,11 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setIssue(caught instanceof Error ? caught.message : "Fix failed.");
       setStatus("Blocked");
       void recordActivity({
-        id: diffEventId,
+        id: fixEventId,
         actor: "builder_agent",
-        type: "diff_generated",
+        type: "fix_report_generated",
         status: "failed",
-        title: "Diff generation failed",
+        title: "Fix failed",
         detail: caught instanceof Error ? caught.message : "Fix failed."
       });
     } finally {
@@ -583,7 +645,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     void recordActivity({
       id: workUnitEventId,
       actor: "architect_agent",
-      type: "work_unit_started",
+      type: "work_unit_plan_started",
       status: "running",
       title: "Creating work unit plan",
       detail: fixRequest
@@ -612,7 +674,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       void recordActivity({
         id: workUnitEventId,
         actor: "architect_agent",
-        type: "work_unit_completed",
+        type: "work_unit_plan_completed",
         status: data.workUnitPlan.requiresMultiPass ? "warning" : "success",
         title: "Work unit plan created",
         detail: `${data.workUnitPlan.totalUnits} unit(s), ${data.workUnitPlan.estimatedRiskLevel} risk.`,
@@ -625,7 +687,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       void recordActivity({
         id: workUnitEventId,
         actor: "architect_agent",
-        type: "work_unit_blocked",
+        type: "work_unit_plan_completed",
         status: "failed",
         title: "Work unit planning failed",
         detail: caught instanceof Error ? caught.message : "Work unit planning failed."
@@ -652,6 +714,15 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     }
     setBusy(true);
     setStatus("Running multi-pass executor");
+    const multiPassEventId = makeActivityId("multi_pass", effectiveProjectId ?? repositoryId ?? "workspace", fixRequest);
+    void recordActivity({
+      id: multiPassEventId,
+      actor: "builder_agent",
+      type: "multi_pass_started",
+      status: "running",
+      title: "Running multi-pass execution",
+      detail: fixRequest
+    });
     try {
       const res = await fetch("/api/workspace/multi-pass", {
         method: "POST",
@@ -675,6 +746,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setMultiPassExecution(result);
       setMultiPassRunId(job.runId ?? null);
       if (result.status === "blocked") {
+        void recordActivity({
+          id: multiPassEventId,
+          actor: "builder_agent",
+          type: "multi_pass_completed",
+          status: "failed",
+          title: "Multi-pass execution blocked",
+          detail: result.blockers[0] ?? "Execution blocked."
+        });
         setStatus("Blocked");
         setIssue(result.blockers[0] ?? "Work unit execution was blocked.");
         return;
@@ -684,13 +763,22 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
         void recordActivity({
           id: makeActivityId("multi_pass_diff", job.runId ?? multiPassRunId ?? fixRequest),
           actor: "builder_agent",
-          type: "diff_generated",
+          type: "fix_report_generated",
           status: "success",
-          title: "Multi-pass diff ready",
+          title: "Multi-pass report generated",
           detail: `${job.report.patches?.length ?? 0} patch(es) merged for review.`,
           filePaths: job.report.patches?.map((patch) => patch.path)
         });
       }
+      void recordActivity({
+        id: multiPassEventId,
+        actor: "builder_agent",
+        type: "multi_pass_completed",
+        status: "success",
+        runId: job.runId,
+        title: "Multi-pass execution complete",
+        detail: `${result.executions.length} work unit(s) processed.`
+      });
       setStatus("Multi-pass execution complete");
       setIssue(null);
       setWorkUnitApproved(true);
@@ -698,6 +786,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Multi-pass execution failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: multiPassEventId,
+        actor: "builder_agent",
+        type: "multi_pass_completed",
+        status: "failed",
+        title: "Multi-pass execution failed",
+        detail: caught instanceof Error ? caught.message : "Multi-pass execution failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -707,6 +803,16 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!multiPassRunId) return setIssue("Run multi-pass once before re-running a unit.");
     setBusy(true);
     setStatus(`Re-running ${workUnitId}`);
+    const workUnitEventId = makeActivityId("work_unit", multiPassRunId, workUnitId);
+    void recordActivity({
+      id: workUnitEventId,
+      actor: "builder_agent",
+      type: "work_unit_started",
+      status: "running",
+      runId: multiPassRunId,
+      workUnitId,
+      title: `Re-running ${workUnitId}`
+    });
     try {
       const res = await fetch("/api/workspace/multi-pass/rerun-unit", {
         method: "POST",
@@ -724,7 +830,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       if (data.report) {
         setReport(data.report);
         void recordActivity({
-          id: makeActivityId("work_unit_rerun", data.runId ?? multiPassRunId ?? "run", workUnitId),
+          id: workUnitEventId,
           actor: "builder_agent",
           type: data.result.status === "blocked" ? "work_unit_blocked" : "work_unit_completed",
           status: data.result.status === "blocked" ? "warning" : "success",
@@ -739,6 +845,16 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Work unit rerun failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: workUnitEventId,
+        actor: "builder_agent",
+        type: "work_unit_blocked",
+        status: "failed",
+        runId: multiPassRunId,
+        workUnitId,
+        title: "Work unit rerun failed",
+        detail: caught instanceof Error ? caught.message : "Work unit rerun failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -773,7 +889,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     void recordActivity({
       id: verifyEventId,
       actor: "qa_agent",
-      type: "test_started",
+      type: "verify_started",
       status: "running",
       title: "Running verify checks",
       detail: "Collecting sandbox output and command results."
@@ -797,32 +913,20 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       void recordActivity({
         id: verifyEventId,
         actor: "qa_agent",
-        type: "test_completed",
+        type: "verify_completed",
         status: data.status === "passed" ? "success" : "warning",
         title: data.status === "passed" ? "Verify passed" : "Verify completed",
         detail: `${data.commands?.length ?? 0} command(s) executed.`,
+        command: (data.commands ?? []).map((command) => command.label).join(", "),
         outputPreview: data.commands?.map((command) => `${command.label} (${command.exitCode})\n${command.output}`).join("\n\n")
       });
-      for (const [index, command] of (data.commands ?? []).entries()) {
-        void recordActivity({
-          id: makeActivityId("verify_command", verifyEventId, `${index}`, command.label),
-          actor: "qa_agent",
-          type: command.exitCode === 0 ? "command_completed" : "command_failed",
-          status: command.exitCode === 0 ? "success" : "failed",
-          title: command.label,
-          detail: command.exitCode === 0 ? "Command passed" : "Command failed",
-          command: command.label,
-          exitCode: command.exitCode,
-          outputPreview: command.output
-        });
-      }
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Verify failed.");
       setStatus("Blocked");
       void recordActivity({
         id: verifyEventId,
         actor: "qa_agent",
-        type: "test_completed",
+        type: "verify_completed",
         status: "failed",
         title: "Verify failed",
         detail: caught instanceof Error ? caught.message : "Verify failed."
@@ -836,6 +940,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!briefReady) return setIssue("Complete product name and primary workflow before exporting.");
     setBusy(true);
     setStatus("Preparing export");
+    const exportEventId = makeActivityId("pr_prepare_export", effectiveProjectId ?? repositoryId ?? "workspace");
+    void recordActivity({
+      id: exportEventId,
+      actor: "builder_agent",
+      type: "pr_prepared",
+      status: "running",
+      title: "Preparing export bundle"
+    });
     try {
       const res = await fetch("/api/workspace/export", {
         method: "POST",
@@ -847,9 +959,25 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setExportMessage(data.message ?? data.downloadUrl ?? "Export bundle is ready.");
       setIssue(null);
       setStatus("Export ready");
+      void recordActivity({
+        id: exportEventId,
+        actor: "builder_agent",
+        type: "pr_prepared",
+        status: "success",
+        title: "Export bundle prepared",
+        detail: data.message ?? data.downloadUrl
+      });
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Export failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: exportEventId,
+        actor: "builder_agent",
+        type: "pr_prepared",
+        status: "failed",
+        title: "Export bundle failed",
+        detail: caught instanceof Error ? caught.message : "Export failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -913,9 +1041,9 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       void recordActivity({
         id: `patch_applied_${report.pendingFixId}`,
         actor: "builder_agent",
-        type: "file_edited",
+        type: "patch_approved",
         status: "success",
-        title: `Edited ${approvedReport.patches?.length ?? 0} files`,
+        title: "Patch approved",
         detail: "Approved patch applied to the workspace.",
         filePaths: approvedReport.patches?.map((patch) => patch.path)
       });
@@ -960,6 +1088,13 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setStatus("Patch rejected");
       setActiveStep("fix");
       setDraftPrMessage(null);
+      void recordActivity({
+        id: `patch_rejected_${report.pendingFixId}`,
+        actor: "builder_agent",
+        type: "patch_rejected",
+        status: "warning",
+        title: "Patch rejected"
+      });
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Patch rejection failed.");
       setStatus("Blocked");
@@ -975,6 +1110,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
 
     setBusy(true);
     setStatus("Opening draft PR");
+    void recordActivity({
+      id: `pr_prepared_${report.pendingFixId}`,
+      actor: "builder_agent",
+      type: "pr_prepared",
+      status: "running",
+      title: "Preparing draft PR",
+      detail: githubUrl.trim()
+    });
     try {
       const res = await fetch("/api/workspace/github/pr", {
         method: "POST",
@@ -1018,7 +1161,7 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       void recordActivity({
         id: `branch_prepared_${report.pendingFixId}`,
         actor: "builder_agent",
-        type: "branch_prepared",
+        type: "pr_prepared",
         status: "success",
         title: `Prepared branch ${data.push?.branch ?? githubBranch}`,
         detail: githubUrl.trim()
@@ -1034,6 +1177,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Draft PR creation failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: `pr_prepared_${report.pendingFixId}`,
+        actor: "builder_agent",
+        type: "pr_prepared",
+        status: "failed",
+        title: "Draft PR preparation failed",
+        detail: caught instanceof Error ? caught.message : "Draft PR creation failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -1043,6 +1194,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!repoConnected) return setIssue("Connect a repo before running a security scan.");
     setBusy(true);
     setStatus("Running security scan");
+    const securityEventId = makeActivityId("security", effectiveProjectId ?? repositoryId ?? "workspace", report?.pendingFixId ?? "workspace");
+    void recordActivity({
+      id: securityEventId,
+      actor: "security_agent",
+      type: "security_scan_started",
+      status: "running",
+      title: "Running security scan"
+    });
     try {
       const res = await fetch("/api/workspace/security/scan", {
         method: "POST",
@@ -1062,9 +1221,26 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setIssue(null);
       setStatus("Security scan complete");
       void recordRuntimeContinuity(`Security scan complete. Critical findings: ${job.criticalCount ?? 0}.`, job.findings?.slice(0, 6).map((finding) => finding.file).filter(Boolean) as string[]);
+      void recordActivity({
+        id: securityEventId,
+        actor: "security_agent",
+        type: "security_scan_completed",
+        status: (job.criticalCount ?? 0) > 0 ? "warning" : "success",
+        title: "Security scan completed",
+        detail: `${job.criticalCount ?? 0} critical finding(s).`,
+        filePaths: (job.findings ?? []).slice(0, 8).map((finding) => finding.file).filter(Boolean) as string[]
+      });
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Security scan failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: securityEventId,
+        actor: "security_agent",
+        type: "security_scan_completed",
+        status: "failed",
+        title: "Security scan failed",
+        detail: caught instanceof Error ? caught.message : "Security scan failed."
+      });
     } finally {
       setBusy(false);
     }
@@ -1074,6 +1250,14 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
     if (!repoConnected) return setIssue("Connect a repo before running deployment readiness.");
     setBusy(true);
     setStatus("Running deploy readiness");
+    const deployEventId = makeActivityId("deploy", effectiveProjectId ?? repositoryId ?? "workspace", report?.pendingFixId ?? "workspace");
+    void recordActivity({
+      id: deployEventId,
+      actor: "deployment_agent",
+      type: "deploy_readiness_started",
+      status: "running",
+      title: "Running deployment readiness"
+    });
     try {
       const res = await fetch("/api/workspace/deploy/readiness", {
         method: "POST",
@@ -1090,9 +1274,26 @@ export function WorkspaceShellV2({ initialProjectId = null }: { initialProjectId
       setIssue(null);
       setStatus("Deploy readiness complete");
       void recordRuntimeContinuity(`Deploy readiness ${job.report.status.replace(/_/g, " ")}.`, job.report.blockers.slice(0, 6).map((finding) => finding.file).filter(Boolean) as string[]);
+      void recordActivity({
+        id: deployEventId,
+        actor: "deployment_agent",
+        type: "deploy_readiness_completed",
+        status: job.report.blockers.length ? "warning" : "success",
+        title: "Deployment readiness completed",
+        detail: job.report.status.replace(/_/g, " "),
+        filePaths: job.report.blockers.slice(0, 8).map((blocker) => blocker.file).filter(Boolean) as string[]
+      });
     } catch (caught) {
       setIssue(caught instanceof Error ? caught.message : "Deployment readiness failed.");
       setStatus("Blocked");
+      void recordActivity({
+        id: deployEventId,
+        actor: "deployment_agent",
+        type: "deploy_readiness_completed",
+        status: "failed",
+        title: "Deployment readiness failed",
+        detail: caught instanceof Error ? caught.message : "Deployment readiness failed."
+      });
     } finally {
       setBusy(false);
     }

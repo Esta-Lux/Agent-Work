@@ -66,6 +66,21 @@ test("workspace security scan and deploy readiness gate the PR path", async ({ p
   await expect(page.getByRole("button", { name: "Open draft PR" })).toBeDisabled();
 });
 
+test("activity timeline shows import, fix, security, and verify events", async ({ page }) => {
+  const workspace = new WorkspacePage(page);
+  await workspace.goto();
+  await workspace.expectLoaded();
+  await workspace.connectRepo();
+  await workspace.completeBrief();
+  await workspace.runFix("Ship an evented timeline for workspace trust.", { expectApprove: false });
+  await page.getByRole("button", { name: "Security" }).click();
+  await workspace.runSecurityScan();
+  await workspace.runVerify();
+  const timeline = page.locator("div").filter({ hasText: "Agent Activity Timeline" }).first();
+  await expect(timeline).toBeVisible();
+  await expect(timeline).toContainText("Verify passed");
+});
+
 test("architect blocks a high-risk task and approves assumptions before patching", async ({ page }) => {
   // Route the fix endpoint to return an architect-blocked state first
   await page.route("**/api/workspace/fix", (route: Route) => {
