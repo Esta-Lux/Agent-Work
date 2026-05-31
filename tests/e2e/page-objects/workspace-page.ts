@@ -16,7 +16,7 @@ export class WorkspacePage {
     await this.page.getByLabel("GitHub URL").fill("https://github.com/Esta-Lux/Agent-Work");
     await this.page.getByRole("button", { name: "Connect repo", exact: true }).click();
     await expect(this.page.getByRole("button", { name: "Complete brief" })).toBeVisible();
-    await expect(this.page.getByText("src/app/page.tsx")).toBeVisible();
+    await expect(this.page.getByText("src/app/page.tsx", { exact: true })).toBeVisible();
   }
 
   async completeBrief() {
@@ -70,7 +70,11 @@ export class WorkspacePage {
 
   async runDeployReadiness() {
     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
-    await expect(this.page.getByText("Deploy readiness complete")).toBeVisible();
+    await expect(
+      this.page
+        .getByText("Deploy readiness complete")
+        .or(this.page.getByText("Deployment readiness: ready for production."))
+    ).toBeVisible();
   }
 
   async exportBundle() {

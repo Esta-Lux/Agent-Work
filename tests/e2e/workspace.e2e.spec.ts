@@ -130,5 +130,9 @@ test("architect blocks a high-risk task and approves assumptions before patching
   // After approving, the fix should proceed
   await approveBtn.click();
   await page.getByRole("button", { name: "Run Fix" }).click();
+  const useSinglePass = page.getByRole("button", { name: "Use single-pass fix" });
+  if (await useSinglePass.isVisible().catch(() => false)) {
+    await useSinglePass.click();
+  }
   await expect(page.getByRole("button", { name: "Approve patch" })).toBeVisible();
 });
