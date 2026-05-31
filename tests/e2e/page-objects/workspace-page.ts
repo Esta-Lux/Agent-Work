@@ -29,17 +29,25 @@ export class WorkspacePage {
     await this.page.getByLabel("Fix request").fill(request);
     await this.page.getByRole("button", { name: "Run Fix" }).click();
     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+    const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+    const runMultiPass = this.page.getByRole("button", { name: "Run multi-pass" });
+    const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      await Promise.race([
+        approveAssumptions.waitFor({ state: "visible", timeout: 4000 }),
+        approvePatch.waitFor({ state: "visible", timeout: 4000 }),
+        runMultiPass.waitFor({ state: "visible", timeout: 4000 }),
+        useSinglePass.waitFor({ state: "visible", timeout: 4000 })
+      ]).catch(() => undefined);
       if (!(await approveAssumptions.isVisible().catch(() => false))) break;
       await approveAssumptions.click();
       await this.page.getByRole("button", { name: "Run Fix" }).click();
     }
-    const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
       await useSinglePass.click();
     }
     if (options?.expectApprove !== false) {
-      await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
+      await expect(approvePatch).toBeVisible();
     }
   }
 
@@ -55,7 +63,16 @@ export class WorkspacePage {
   }
 
   async approvePatch() {
-    await this.page.getByRole("button", { name: "Approve patch" }).click();
+    const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+    if (!(await approvePatch.isVisible().catch(() => false))) {
+      const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+      if (await approveAssumptions.isVisible().catch(() => false)) {
+        await approveAssumptions.click();
+        await this.page.getByRole("button", { name: "Run Fix" }).click();
+      }
+    }
+    await expect(approvePatch).toBeVisible();
+    await approvePatch.click();
     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
   }
 

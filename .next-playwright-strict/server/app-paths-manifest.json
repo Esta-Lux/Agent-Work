@@ -1,9 +1,9 @@
 {
   "/page": "app/page.js",
   "/api/workspace/me/route": "app/api/workspace/me/route.js",
+  "/api/workspace/runtime/events/route": "app/api/workspace/runtime/events/route.js",
   "/api/workspace/brain/route": "app/api/workspace/brain/route.js",
   "/auth/sign-in/page": "app/auth/sign-in/page.js",
-  "/api/workspace/runtime/events/route": "app/api/workspace/runtime/events/route.js",
   "/admin/page": "app/admin/page.js",
   "/admin/[section]/page": "app/admin/[section]/page.js"
 }

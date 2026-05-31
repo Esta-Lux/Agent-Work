@@ -18,7 +18,7 @@ Test timeout of 60000ms exceeded.
 ```
 Error: locator.click: Test timeout of 60000ms exceeded.
 Call log:
-  - waiting for getByRole('button', { name: 'Run multi-pass' })
+  - waiting for getByRole('button', { name: 'Approve patch' })
 
 ```
 
@@ -150,15 +150,15 @@ Call log:
             - button "Refresh" [ref=e132] [cursor=pointer]
           - generic [ref=e133]:
             - paragraph [ref=e134]: Deploy readiness ready for production.
-            - paragraph [ref=e135]: ×13 · no file mapping
+            - paragraph [ref=e135]: ×15 · no file mapping
             - button "Suggest scoped fix →" [ref=e136] [cursor=pointer]
           - generic [ref=e137]:
             - paragraph [ref=e138]: Provider duel comparison completed.
-            - paragraph [ref=e139]: ×7 · src/app/page.tsx, src/components/status.tsx
+            - paragraph [ref=e139]: ×10 · src/app/page.tsx, src/components/status.tsx
             - button "Suggest scoped fix →" [ref=e140] [cursor=pointer]
           - generic [ref=e141]:
             - paragraph [ref=e142]: "Security scan complete. Critical findings: 0."
-            - paragraph [ref=e143]: ×27 · no file mapping
+            - paragraph [ref=e143]: ×29 · no file mapping
             - button "Suggest scoped fix →" [ref=e144] [cursor=pointer]
       - complementary [ref=e145]:
         - generic [ref=e146]:
@@ -394,7 +394,8 @@ Call log:
   55  |   }
   56  | 
   57  |   async approvePatch() {
-  58  |     await this.page.getByRole("button", { name: "Approve patch" }).click();
+> 58  |     await this.page.getByRole("button", { name: "Approve patch" }).click();
+      |                                                                    ^ Error: locator.click: Test timeout of 60000ms exceeded.
   59  |     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
   60  |   }
   61  | 
@@ -422,32 +423,42 @@ Call log:
   83  |   }
   84  | 
   85  |   async openDraftPr() {
-  86  |     await this.page.getByRole("button", { name: "Open draft PR" }).click();
-  87  |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
-  88  |   }
-  89  | 
-  90  |   async runMultiPass() {
-  91  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-  92  |     if (await approveAssumptions.isVisible().catch(() => false)) {
-  93  |       await approveAssumptions.click();
-  94  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
-  95  |     }
-> 96  |     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
-      |                                                                     ^ Error: locator.click: Test timeout of 60000ms exceeded.
-  97  |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
-  98  |   }
-  99  | 
-  100 |   async rerunWorkUnit() {
-  101 |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
-  102 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
-  103 |   }
-  104 | 
-  105 |   async saveProductBrainCorrection() {
-  106 |     await this.page
-  107 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
-  108 |       .fill("Correction: add edge-case review.");
-  109 |     await this.page.getByRole("button", { name: "Save correction" }).click();
-  110 |   }
-  111 | }
-  112 | 
+  86  |     const openDraftPrButton = this.page.getByRole("button", { name: "Open draft PR" });
+  87  |     await expect(openDraftPrButton).toBeEnabled();
+  88  |     await openDraftPrButton.click();
+  89  |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
+  90  |   }
+  91  | 
+  92  |   async runMultiPass(): Promise<boolean> {
+  93  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+  94  |     if (await approveAssumptions.isVisible().catch(() => false)) {
+  95  |       await approveAssumptions.click();
+  96  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
+  97  |     }
+  98  |     const runMultiPassButton = this.page.getByRole("button", { name: "Run multi-pass" });
+  99  |     if (!(await runMultiPassButton.isVisible().catch(() => false))) {
+  100 |       const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+  101 |       if (await useSinglePass.isVisible().catch(() => false)) {
+  102 |         await useSinglePass.click();
+  103 |       }
+  104 |       return false;
+  105 |     }
+  106 |     await runMultiPassButton.click();
+  107 |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
+  108 |     return true;
+  109 |   }
+  110 | 
+  111 |   async rerunWorkUnit() {
+  112 |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
+  113 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
+  114 |   }
+  115 | 
+  116 |   async saveProductBrainCorrection() {
+  117 |     await this.page
+  118 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
+  119 |       .fill("Correction: add edge-case review.");
+  120 |     await this.page.getByRole("button", { name: "Save correction" }).click();
+  121 |   }
+  122 | }
+  123 | 
 ```
