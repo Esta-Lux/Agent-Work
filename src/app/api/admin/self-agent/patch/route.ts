@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   return withAdminAuth(request, async (user) => {
-    const body = (await request.json().catch(() => null)) as { missionId?: string; branchName?: string } | null;
+    const body = (await request.json().catch(() => null)) as { missionId?: string; branchName?: string; provider?: string } | null;
     const boundary = validateSelfAgentBoundary({ missionId: body?.missionId, branchName: body?.branchName });
 
     if (!boundary.ok) {
@@ -35,9 +35,12 @@ export async function POST(request: Request) {
       description: mission.objective,
       repoFiles
     });
-    const preview = runSelfAgentBuilder({
+    const preview = await runSelfAgentBuilder({
       missionId: mission.id,
-      workUnits: scope.workUnits
+      workUnits: scope.workUnits,
+      user,
+      orgId: "org_default",
+      provider: body?.provider
     });
 
     const validations: SelfAgentPatchValidation[] = scope.workUnits.map((workUnit) =>
