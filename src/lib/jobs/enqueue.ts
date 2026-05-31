@@ -201,7 +201,7 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         result: { report, estimatedCredits: estimateCreditsForAction(deployAction) }
       });
       syncJobActivity(jobId, input, {
-        status: report.status === "ready" ? "success" : "warning",
+        status: report.status === "production_ready" || report.status === "production_candidate" || report.status === "safe_for_staging" ? "success" : "warning",
         durationMs: Date.now() - startedAt,
         detail: `Deployment readiness is ${report.status.replace(/_/g, " ")} with ${report.blockers.length} blocker(s).`,
         filePaths: report.blockers.map((blocker) => blocker.file).filter(Boolean) as string[]
@@ -285,9 +285,9 @@ async function runJobAsync(jobId: string, input: EnqueueJobInput) {
         detail:
           result.status === "blocked"
             ? result.blockers[0] ?? "Multi-pass execution was blocked."
-            : `${result.executions.length} work unit(s) executed and ${report.patches.length} patch(es) prepared.`,
+            : `${result.executions.length} work unit(s) executed and ${report.patches?.length ?? 0} patch(es) prepared.`,
         runId: run.id,
-        filePaths: report.patches.map((patch) => patch.path)
+        filePaths: report.patches?.map((patch) => patch.path)
       });
       return;
     }
