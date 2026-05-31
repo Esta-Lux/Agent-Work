@@ -81,14 +81,11 @@ Call log:
   - textbox: "export default function DemoPage() { return <main>BootRise demo workspace</main>; }"
   - paragraph: Runtime monitor
   - button "Refresh"
-  - paragraph: Deploy readiness ready for production.
-  - paragraph: ×5 · no file mapping
+  - paragraph: Provider duel comparison completed.
+  - paragraph: ×1 · src/app/page.tsx, src/components/status.tsx
   - button "Suggest scoped fix →"
   - paragraph: "Security scan complete. Critical findings: 0."
-  - paragraph: ×6 · no file mapping
-  - button "Suggest scoped fix →"
-  - paragraph: Provider duel comparison completed.
-  - paragraph: ×2 · src/app/page.tsx, src/components/status.tsx
+  - paragraph: ×5 · no file mapping
   - button "Suggest scoped fix →"
 - complementary:
   - paragraph: Context inspector

@@ -12,24 +12,20 @@
 # Error details
 
 ```
-Error: expect(locator).toBeVisible() failed
+Test timeout of 60000ms exceeded.
+```
 
-Locator: getByText('src/app/page.tsx')
-Expected: visible
-Error: strict mode violation: getByText('src/app/page.tsx') resolved to 2 elements:
-    1) <p title="src/app/page.tsx" class="truncate font-mono text-xs font-medium text-text-ws-1">src/app/page.tsx</p> aka getByText('src/app/page.tsx', { exact: true })
-    2) <p class="text-xs text-steel">×2 · src/app/page.tsx, src/components/status.tsx</p> aka getByText('×2 · src/app/page.tsx, src/')
-
+```
+Error: locator.click: Test timeout of 60000ms exceeded.
 Call log:
-  - Expect "toBeVisible" with timeout 10000ms
-  - waiting for getByText('src/app/page.tsx')
+  - waiting for getByRole('button', { name: 'Run multi-pass' })
 
 ```
 
 # Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
+- generic [ref=e1]:
   - alert [ref=e2]
   - generic [ref=e3]:
     - banner [ref=e4]:
@@ -49,14 +45,14 @@ Call log:
         - generic [ref=e19]:
           - paragraph [ref=e20]: BootRise Command Center
           - heading "Agent Work" [level=1] [ref=e21]
-          - paragraph [ref=e22]: Complete brief is the next safe step.
+          - paragraph [ref=e22]: Run Fix is the next safe step.
         - generic [ref=e23]:
           - button "Guide" [ref=e24] [cursor=pointer]:
             - generic [ref=e25]: Guide
           - button "Mode" [ref=e27] [cursor=pointer]:
             - generic [ref=e28]: Mode
-          - button "Complete brief" [ref=e29] [cursor=pointer]:
-            - generic [ref=e30]: Complete brief
+          - button "Run Fix" [active] [ref=e29] [cursor=pointer]:
+            - generic [ref=e30]: Run Fix
       - generic [ref=e31]:
         - generic [ref=e32]:
           - paragraph [ref=e33]: Brain
@@ -88,8 +84,8 @@ Call log:
                 - generic [ref=e59]: Connect
                 - generic [ref=e60]: Repo + import
           - listitem [ref=e62]:
-            - button "2 Brain Context + roadmap" [ref=e63] [cursor=pointer]:
-              - generic [ref=e64]: "2"
+            - button "OK Brain Context + roadmap" [ref=e63] [cursor=pointer]:
+              - generic [ref=e64]: OK
               - generic [ref=e65]:
                 - generic [ref=e66]: Brain
                 - generic [ref=e67]: Context + roadmap
@@ -113,8 +109,8 @@ Call log:
                 - generic [ref=e88]: Preflight + draft PR
         - generic [ref=e89]:
           - paragraph [ref=e90]: Operator focus
-          - paragraph [ref=e91]: Brain
-          - paragraph [ref=e92]: Build Project Brain and architecture roadmap from live repository files.
+          - paragraph [ref=e91]: Fix
+          - paragraph [ref=e92]: Split complex tasks into work units and execute controlled patches.
       - main [ref=e93]:
         - generic [ref=e94]:
           - generic [ref=e95]:
@@ -153,174 +149,185 @@ Call log:
             - paragraph [ref=e131]: Runtime monitor
             - button "Refresh" [ref=e132] [cursor=pointer]
           - generic [ref=e133]:
-            - paragraph [ref=e134]: Deploy readiness ready for production.
-            - paragraph [ref=e135]: ×2 · no file mapping
+            - paragraph [ref=e134]: Provider duel comparison completed.
+            - paragraph [ref=e135]: ×1 · src/app/page.tsx, src/components/status.tsx
             - button "Suggest scoped fix →" [ref=e136] [cursor=pointer]
           - generic [ref=e137]:
             - paragraph [ref=e138]: "Security scan complete. Critical findings: 0."
             - paragraph [ref=e139]: ×3 · no file mapping
             - button "Suggest scoped fix →" [ref=e140] [cursor=pointer]
-          - generic [ref=e141]:
-            - paragraph [ref=e142]: Provider duel comparison completed.
-            - paragraph [ref=e143]: ×2 · src/app/page.tsx, src/components/status.tsx
-            - button "Suggest scoped fix →" [ref=e144] [cursor=pointer]
-      - complementary [ref=e145]:
-        - generic [ref=e146]:
-          - paragraph [ref=e147]: Context inspector
-          - generic [ref=e148]:
-            - heading "brief" [level=2] [ref=e149]
-            - generic [ref=e150]: repo loaded
-        - generic [ref=e152]:
-          - generic [ref=e153]:
-            - paragraph [ref=e154]: Agent council
-            - generic [ref=e155]:
-              - paragraph [ref=e156]: Agent status
-              - paragraph [ref=e157]: "Active: Architect Agent"
-            - generic [ref=e158]:
-              - article [ref=e159]:
-                - generic [ref=e160]:
-                  - paragraph [ref=e161]: Architect Agent
-                  - generic [ref=e162]: passed
-                - paragraph [ref=e163]: Roadmap created and app type detected.
-              - article [ref=e164]:
-                - generic [ref=e165]:
-                  - paragraph [ref=e166]: Project Brain Agent
-                  - generic [ref=e167]: passed
-                - paragraph [ref=e168]: Indexed 2 files with 0 routes.
-              - article [ref=e169]:
-                - generic [ref=e170]:
-                  - paragraph [ref=e171]: Product Brain Agent
-                  - generic [ref=e172]: passed
-                - paragraph [ref=e173]: Tracking 4 workflow(s) and 1 policies.
-              - article [ref=e174]:
-                - generic [ref=e175]:
-                  - paragraph [ref=e176]: Architect Conversation Agent
-                  - generic [ref=e177]: idle
-                - paragraph [ref=e178]: Describe the task in one scoped sentence before patching.
-              - article [ref=e179]:
-                - generic [ref=e180]:
-                  - paragraph [ref=e181]: Scope Agent
-                  - generic [ref=e182]: idle
-                - paragraph [ref=e183]: Scope locks start after planning.
-              - article [ref=e184]:
-                - generic [ref=e185]:
-                  - paragraph [ref=e186]: Builder Agent
-                  - generic [ref=e187]: idle
-                - paragraph [ref=e188]: Patch pending.
-              - article [ref=e189]:
-                - generic [ref=e190]:
-                  - paragraph [ref=e191]: Security Agent
-                  - generic [ref=e192]: idle
-                - paragraph [ref=e193]: Security scan not run.
-              - article [ref=e194]:
-                - generic [ref=e195]:
-                  - paragraph [ref=e196]: QA Agent
-                  - generic [ref=e197]: idle
-                - paragraph [ref=e198]: Verify is pending.
-              - article [ref=e199]:
-                - generic [ref=e200]:
-                  - paragraph [ref=e201]: Deployment Agent
-                  - generic [ref=e202]: passed
-                - paragraph [ref=e203]: Deploy readiness not run.
-          - generic [ref=e204]:
-            - generic [ref=e205]:
-              - generic [ref=e206]: Product name
-              - textbox "Product name" [ref=e207]: Agent Work
+      - complementary [ref=e141]:
+        - generic [ref=e142]:
+          - paragraph [ref=e143]: Context inspector
+          - generic [ref=e144]:
+            - heading "fix" [level=2] [ref=e145]
+            - generic [ref=e146]: repo loaded
+        - generic [ref=e147]:
+          - generic [ref=e151]:
+            - generic [ref=e152]: "!"
+            - generic [ref=e153]:
+              - paragraph [ref=e154]: Needs attention
+              - paragraph [ref=e155]: Should access and billing changes apply globally, per workspace, or per project owner?
+          - generic [ref=e156]:
+            - generic [ref=e157]:
+              - paragraph [ref=e158]: Agent council
+              - generic [ref=e159]:
+                - paragraph [ref=e160]: Agent status
+                - paragraph [ref=e161]: "Active: Architect Conversation Agent"
+              - generic [ref=e162]:
+                - article [ref=e163]:
+                  - generic [ref=e164]:
+                    - paragraph [ref=e165]: Architect Agent
+                    - generic [ref=e166]: passed
+                  - paragraph [ref=e167]: Roadmap created and app type detected.
+                - article [ref=e168]:
+                  - generic [ref=e169]:
+                    - paragraph [ref=e170]: Project Brain Agent
+                    - generic [ref=e171]: passed
+                  - paragraph [ref=e172]: Indexed 2 files with 0 routes.
+                - article [ref=e173]:
+                  - generic [ref=e174]:
+                    - paragraph [ref=e175]: Product Brain Agent
+                    - generic [ref=e176]: passed
+                  - paragraph [ref=e177]: Tracking 4 workflow(s) and 1 policies.
+                - article [ref=e178]:
+                  - generic [ref=e179]:
+                    - paragraph [ref=e180]: Architect Conversation Agent
+                    - generic [ref=e181]: running
+                  - paragraph [ref=e182]: This task touches high-risk boundaries, so assumptions must be confirmed before patching.
+                - article [ref=e183]:
+                  - generic [ref=e184]:
+                    - paragraph [ref=e185]: Scope Agent
+                    - generic [ref=e186]: running
+                  - paragraph [ref=e187]: Scope locks start after planning.
+                - article [ref=e188]:
+                  - generic [ref=e189]:
+                    - paragraph [ref=e190]: Builder Agent
+                    - generic [ref=e191]: idle
+                  - paragraph [ref=e192]: Patch pending.
+                - article [ref=e193]:
+                  - generic [ref=e194]:
+                    - paragraph [ref=e195]: Security Agent
+                    - generic [ref=e196]: idle
+                  - paragraph [ref=e197]: Security scan not run.
+                - article [ref=e198]:
+                  - generic [ref=e199]:
+                    - paragraph [ref=e200]: QA Agent
+                    - generic [ref=e201]: idle
+                  - paragraph [ref=e202]: Verify is pending.
+                - article [ref=e203]:
+                  - generic [ref=e204]:
+                    - paragraph [ref=e205]: Deployment Agent
+                    - generic [ref=e206]: passed
+                  - paragraph [ref=e207]: Deploy readiness not run.
             - generic [ref=e208]:
-              - generic [ref=e209]: Audience
-              - textbox "Audience" [ref=e210]
-            - generic [ref=e211]:
-              - generic [ref=e212]: Primary workflow
-              - textbox "Primary workflow" [ref=e213]: Ship the core user workflow
-            - generic [ref=e214]:
-              - button "Auth" [ref=e215] [cursor=pointer]
-              - button "Payments" [ref=e216] [cursor=pointer]
-          - generic [ref=e217]:
-            - paragraph [ref=e218]: Project Brain v2
-            - generic [ref=e219]:
-              - generic [ref=e220]:
-                - paragraph [ref=e221]: Files indexed
-                - paragraph [ref=e222]: "2"
-              - generic [ref=e223]:
-                - paragraph [ref=e224]: Symbols
-                - paragraph [ref=e225]: "1"
-              - generic [ref=e226]:
-                - paragraph [ref=e227]: API routes
-                - paragraph [ref=e228]: "0"
-              - generic [ref=e229]:
-                - paragraph [ref=e230]: Unguarded routes
-                - paragraph [ref=e231]: "0"
-              - generic [ref=e232]:
-                - paragraph [ref=e233]: Env vars
-                - paragraph [ref=e234]: "0"
-              - generic [ref=e235]:
-                - paragraph [ref=e236]: Missing env docs
-                - paragraph [ref=e237]: "0"
-          - generic [ref=e238]:
-            - paragraph [ref=e239]: Product Brain
-            - paragraph [ref=e240]: BootRise command workspace
-            - generic [ref=e241]:
-              - paragraph [ref=e242]: Users
-              - list [ref=e243]:
-                - listitem [ref=e244]: "- Operators"
-            - generic [ref=e245]:
-              - paragraph [ref=e246]: Workflows
-              - list [ref=e247]:
-                - listitem [ref=e248]: "- import"
-                - listitem [ref=e249]: "- fix"
-                - listitem [ref=e250]: "- verify"
-                - listitem [ref=e251]: "- draft_pr"
-            - generic [ref=e252]:
-              - paragraph [ref=e253]: Policies
-              - list [ref=e254]:
-                - listitem [ref=e255]: "- Approval required before PR"
-            - generic [ref=e256]:
-              - paragraph [ref=e257]: Roadmap
-              - list [ref=e258]:
-                - listitem [ref=e259]: "- Ship workspace E2E (in_progress)"
-            - generic [ref=e260]:
-              - paragraph [ref=e261]: Known risks
-              - list [ref=e262]:
-                - listitem [ref=e263]: "- Auth redirects need strict coverage"
-            - generic [ref=e264]:
-              - paragraph [ref=e265]: Definition of done
-              - list [ref=e266]:
-                - listitem [ref=e267]: "- Patch approved"
-                - listitem [ref=e268]: "- Verify passed"
-                - listitem [ref=e269]: "- Draft PR opened"
-            - generic [ref=e270]:
-              - 'textbox "Correct Product Brain: \"That policy is wrong\", \"Add this business rule\", ..." [ref=e271]'
-              - button "Save correction" [disabled]:
-                - generic: Save correction
-          - generic [ref=e272]:
-            - generic [ref=e273]:
-              - paragraph [ref=e274]: Architecture roadmap
-              - paragraph [ref=e275]: nextjs
-              - paragraph [ref=e276]: Workspace and admin surfaces are wired for smoke coverage.
-            - generic [ref=e277]:
-              - paragraph [ref=e278]: Maturity
-              - paragraph [ref=e279]: closed beta
-            - generic [ref=e280]:
-              - paragraph [ref=e281]: Production readiness
-              - paragraph [ref=e282]: safe for staging
+              - generic [ref=e209]:
+                - generic [ref=e210]: Fix request
+                - textbox "Fix request" [ref=e211]:
+                  - /placeholder: Describe one scoped change...
+                  - text: Refactor workspace shell to use scoped work units.
+              - generic [ref=e212]:
+                - generic [ref=e213]:
+                  - paragraph [ref=e214]: Plan summary
+                  - generic [ref=e215]: fast
+                - paragraph [ref=e216]: "Provider: BootRise. Approval gate remains required before workspace changes are applied."
+                - button "Compare providers" [ref=e217] [cursor=pointer]:
+                  - generic [ref=e218]: Compare providers
+              - generic [ref=e219]:
+                - generic [ref=e220]:
+                  - paragraph [ref=e221]: Architect conversation
+                  - generic [ref=e222]: high risk
+                - paragraph [ref=e223]: This task touches high-risk boundaries, so assumptions must be confirmed before patching.
+                - paragraph [ref=e224]: "Question: Should access and billing changes apply globally, per workspace, or per project owner?"
+                - paragraph [ref=e225]: "Recommended: Prefer least-privilege scope and keep tenant boundaries explicit."
+                - button "Approve assumptions" [ref=e226] [cursor=pointer]:
+                  - generic [ref=e227]: Approve assumptions
+            - generic [ref=e228]:
+              - paragraph [ref=e229]: Project Brain v2
+              - generic [ref=e230]:
+                - generic [ref=e231]:
+                  - paragraph [ref=e232]: Files indexed
+                  - paragraph [ref=e233]: "2"
+                - generic [ref=e234]:
+                  - paragraph [ref=e235]: Symbols
+                  - paragraph [ref=e236]: "1"
+                - generic [ref=e237]:
+                  - paragraph [ref=e238]: API routes
+                  - paragraph [ref=e239]: "0"
+                - generic [ref=e240]:
+                  - paragraph [ref=e241]: Unguarded routes
+                  - paragraph [ref=e242]: "0"
+                - generic [ref=e243]:
+                  - paragraph [ref=e244]: Env vars
+                  - paragraph [ref=e245]: "0"
+                - generic [ref=e246]:
+                  - paragraph [ref=e247]: Missing env docs
+                  - paragraph [ref=e248]: "0"
+            - generic [ref=e249]:
+              - paragraph [ref=e250]: Product Brain
+              - paragraph [ref=e251]: BootRise command workspace
+              - generic [ref=e252]:
+                - paragraph [ref=e253]: Users
+                - list [ref=e254]:
+                  - listitem [ref=e255]: "- Operators"
+              - generic [ref=e256]:
+                - paragraph [ref=e257]: Workflows
+                - list [ref=e258]:
+                  - listitem [ref=e259]: "- import"
+                  - listitem [ref=e260]: "- fix"
+                  - listitem [ref=e261]: "- verify"
+                  - listitem [ref=e262]: "- draft_pr"
+              - generic [ref=e263]:
+                - paragraph [ref=e264]: Policies
+                - list [ref=e265]:
+                  - listitem [ref=e266]: "- Approval required before PR"
+              - generic [ref=e267]:
+                - paragraph [ref=e268]: Roadmap
+                - list [ref=e269]:
+                  - listitem [ref=e270]: "- Ship workspace E2E (in_progress)"
+              - generic [ref=e271]:
+                - paragraph [ref=e272]: Known risks
+                - list [ref=e273]:
+                  - listitem [ref=e274]: "- Auth redirects need strict coverage"
+              - generic [ref=e275]:
+                - paragraph [ref=e276]: Definition of done
+                - list [ref=e277]:
+                  - listitem [ref=e278]: "- Patch approved"
+                  - listitem [ref=e279]: "- Verify passed"
+                  - listitem [ref=e280]: "- Draft PR opened"
+              - generic [ref=e281]:
+                - 'textbox "Correct Product Brain: \"That policy is wrong\", \"Add this business rule\", ..." [ref=e282]'
+                - button "Save correction" [disabled]:
+                  - generic: Save correction
             - generic [ref=e283]:
-              - paragraph [ref=e284]: Missing now
-              - list [ref=e285]:
-                - listitem [ref=e286]: • More edge-case coverage
-            - generic [ref=e287]:
-              - paragraph [ref=e288]: Security policies
-              - list [ref=e289]:
-                - listitem [ref=e290]: • Workspace auth gate
-                - listitem [ref=e291]: • Admin authorization
-            - generic [ref=e292]:
-              - paragraph [ref=e293]: Suggested phases
-              - list [ref=e294]:
-                - listitem [ref=e295]: • Ship Playwright harness
-            - generic [ref=e296]:
-              - paragraph [ref=e297]: Acceptance criteria
-              - list [ref=e298]:
-                - listitem [ref=e299]: • Workspace flow covered
-                - listitem [ref=e300]: • Admin routes covered
+              - generic [ref=e284]:
+                - paragraph [ref=e285]: Architecture roadmap
+                - paragraph [ref=e286]: nextjs
+                - paragraph [ref=e287]: Workspace and admin surfaces are wired for smoke coverage.
+              - generic [ref=e288]:
+                - paragraph [ref=e289]: Maturity
+                - paragraph [ref=e290]: closed beta
+              - generic [ref=e291]:
+                - paragraph [ref=e292]: Production readiness
+                - paragraph [ref=e293]: safe for staging
+              - generic [ref=e294]:
+                - paragraph [ref=e295]: Missing now
+                - list [ref=e296]:
+                  - listitem [ref=e297]: • More edge-case coverage
+              - generic [ref=e298]:
+                - paragraph [ref=e299]: Security policies
+                - list [ref=e300]:
+                  - listitem [ref=e301]: • Workspace auth gate
+                  - listitem [ref=e302]: • Admin authorization
+              - generic [ref=e303]:
+                - paragraph [ref=e304]: Suggested phases
+                - list [ref=e305]:
+                  - listitem [ref=e306]: • Ship Playwright harness
+              - generic [ref=e307]:
+                - paragraph [ref=e308]: Acceptance criteria
+                - list [ref=e309]:
+                  - listitem [ref=e310]: • Workspace flow covered
+                  - listitem [ref=e311]: • Admin routes covered
 ```
 
 # Test source
@@ -344,8 +351,7 @@ Call log:
   16  |     await this.page.getByLabel("GitHub URL").fill("https://github.com/Esta-Lux/Agent-Work");
   17  |     await this.page.getByRole("button", { name: "Connect repo", exact: true }).click();
   18  |     await expect(this.page.getByRole("button", { name: "Complete brief" })).toBeVisible();
-> 19  |     await expect(this.page.getByText("src/app/page.tsx")).toBeVisible();
-      |                                                           ^ Error: expect(locator).toBeVisible() failed
+  19  |     await expect(this.page.getByText("src/app/page.tsx")).toBeVisible();
   20  |   }
   21  | 
   22  |   async completeBrief() {
@@ -416,7 +422,8 @@ Call log:
   87  |   }
   88  | 
   89  |   async runMultiPass() {
-  90  |     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+> 90  |     await this.page.getByRole("button", { name: "Run multi-pass" }).click();
+      |                                                                     ^ Error: locator.click: Test timeout of 60000ms exceeded.
   91  |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
   92  |   }
   93  | 
