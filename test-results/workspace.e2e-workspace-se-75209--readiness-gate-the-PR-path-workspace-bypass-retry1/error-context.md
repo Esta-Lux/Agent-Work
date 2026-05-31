@@ -85,7 +85,7 @@ Call log:
   - paragraph: ×15 · no file mapping
   - button "Suggest scoped fix →"
   - paragraph: Provider duel comparison completed.
-  - paragraph: ×9 · src/app/page.tsx, src/components/status.tsx
+  - paragraph: ×11 · src/app/page.tsx, src/components/status.tsx
   - button "Suggest scoped fix →"
   - paragraph: "Security scan complete. Critical findings: 0."
   - paragraph: ×29 · no file mapping
@@ -246,97 +246,114 @@ Call log:
   29  |     await this.page.getByLabel("Fix request").fill(request);
   30  |     await this.page.getByRole("button", { name: "Run Fix" }).click();
   31  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-  32  |     for (let attempt = 0; attempt < 2; attempt += 1) {
-  33  |       if (!(await approveAssumptions.isVisible().catch(() => false))) break;
-  34  |       await approveAssumptions.click();
-  35  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
-  36  |     }
-  37  |     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
-  38  |     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
-  39  |       await useSinglePass.click();
-  40  |     }
-  41  |     if (options?.expectApprove !== false) {
-> 42  |       await expect(this.page.getByRole("button", { name: "Approve patch" })).toBeVisible();
-      |                                                                              ^ Error: expect(locator).toBeVisible() failed
-  43  |     }
-  44  |   }
-  45  | 
-  46  |   async openGuide() {
-  47  |     await this.page.getByRole("button", { name: "Guide" }).click();
-  48  |     await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
-  49  |     await this.page.getByRole("button", { name: "Skip tour" }).click();
-  50  |   }
-  51  | 
-  52  |   async compareProviders() {
-  53  |     await this.page.getByRole("button", { name: "Compare providers" }).click();
-  54  |     await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
-  55  |   }
-  56  | 
-  57  |   async approvePatch() {
-  58  |     await this.page.getByRole("button", { name: "Approve patch" }).click();
-  59  |     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
-  60  |   }
-  61  | 
-  62  |   async runVerify() {
-  63  |     await this.page.getByRole("button", { name: "Run Verify" }).click();
-  64  |     await this.page.waitForTimeout(500);
-  65  |   }
-  66  | 
-  67  |   async runSecurityScan() {
-  68  |     await this.page.getByRole("button", { name: "Run security scan" }).click();
-  69  |     await expect(this.page.getByText("Security scan complete", { exact: true })).toBeVisible();
-  70  |   }
-  71  | 
-  72  |   async runDeployReadiness() {
-  73  |     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
-  74  |     await expect(this.page.getByText("Deploy readiness complete", { exact: true })).toBeVisible();
-  75  |   }
-  76  | 
-  77  |   async exportBundle() {
-  78  |     const exportButton = this.page.getByRole("button", { name: "Export bundle" }).first();
-  79  |     if (await exportButton.isVisible().catch(() => false)) {
-  80  |       await exportButton.click();
-  81  |       await expect(this.page.getByText("Export bundle saved to /tmp/bootrise-export.zip")).toBeVisible();
-  82  |     }
-  83  |   }
-  84  | 
-  85  |   async openDraftPr() {
-  86  |     const openDraftPrButton = this.page.getByRole("button", { name: "Open draft PR" });
-  87  |     await expect(openDraftPrButton).toBeEnabled();
-  88  |     await openDraftPrButton.click();
-  89  |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
-  90  |   }
-  91  | 
-  92  |   async runMultiPass(): Promise<boolean> {
-  93  |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
-  94  |     if (await approveAssumptions.isVisible().catch(() => false)) {
-  95  |       await approveAssumptions.click();
-  96  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
-  97  |     }
-  98  |     const runMultiPassButton = this.page.getByRole("button", { name: "Run multi-pass" });
-  99  |     if (!(await runMultiPassButton.isVisible().catch(() => false))) {
-  100 |       const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
-  101 |       if (await useSinglePass.isVisible().catch(() => false)) {
-  102 |         await useSinglePass.click();
-  103 |       }
-  104 |       return false;
-  105 |     }
-  106 |     await runMultiPassButton.click();
-  107 |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
-  108 |     return true;
-  109 |   }
-  110 | 
-  111 |   async rerunWorkUnit() {
-  112 |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
-  113 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
-  114 |   }
-  115 | 
-  116 |   async saveProductBrainCorrection() {
-  117 |     await this.page
-  118 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
-  119 |       .fill("Correction: add edge-case review.");
-  120 |     await this.page.getByRole("button", { name: "Save correction" }).click();
-  121 |   }
-  122 | }
-  123 | 
+  32  |     const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+  33  |     const runMultiPass = this.page.getByRole("button", { name: "Run multi-pass" });
+  34  |     const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+  35  |     for (let attempt = 0; attempt < 2; attempt += 1) {
+  36  |       await Promise.race([
+  37  |         approveAssumptions.waitFor({ state: "visible", timeout: 4000 }),
+  38  |         approvePatch.waitFor({ state: "visible", timeout: 4000 }),
+  39  |         runMultiPass.waitFor({ state: "visible", timeout: 4000 }),
+  40  |         useSinglePass.waitFor({ state: "visible", timeout: 4000 })
+  41  |       ]).catch(() => undefined);
+  42  |       if (!(await approveAssumptions.isVisible().catch(() => false))) break;
+  43  |       await approveAssumptions.click();
+  44  |       await this.page.getByRole("button", { name: "Run Fix" }).click();
+  45  |     }
+  46  |     if (options?.autoSinglePass !== false && await useSinglePass.isVisible().catch(() => false)) {
+  47  |       await useSinglePass.click();
+  48  |     }
+  49  |     if (options?.expectApprove !== false) {
+> 50  |       await expect(approvePatch).toBeVisible();
+      |                                  ^ Error: expect(locator).toBeVisible() failed
+  51  |     }
+  52  |   }
+  53  | 
+  54  |   async openGuide() {
+  55  |     await this.page.getByRole("button", { name: "Guide" }).click();
+  56  |     await expect(this.page.getByRole("dialog", { name: "BootRise guided tour" })).toBeVisible();
+  57  |     await this.page.getByRole("button", { name: "Skip tour" }).click();
+  58  |   }
+  59  | 
+  60  |   async compareProviders() {
+  61  |     await this.page.getByRole("button", { name: "Compare providers" }).click();
+  62  |     await expect(this.page.getByText("Provider duel", { exact: true })).toBeVisible();
+  63  |   }
+  64  | 
+  65  |   async approvePatch() {
+  66  |     const approvePatch = this.page.getByRole("button", { name: "Approve patch" });
+  67  |     if (!(await approvePatch.isVisible().catch(() => false))) {
+  68  |       const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+  69  |       if (await approveAssumptions.isVisible().catch(() => false)) {
+  70  |         await approveAssumptions.click();
+  71  |         await this.page.getByRole("button", { name: "Run Fix" }).click();
+  72  |       }
+  73  |     }
+  74  |     await expect(approvePatch).toBeVisible();
+  75  |     await approvePatch.click();
+  76  |     await expect(this.page.getByRole("button", { name: "Run Verify" })).toBeVisible();
+  77  |   }
+  78  | 
+  79  |   async runVerify() {
+  80  |     await this.page.getByRole("button", { name: "Run Verify" }).click();
+  81  |     await this.page.waitForTimeout(500);
+  82  |   }
+  83  | 
+  84  |   async runSecurityScan() {
+  85  |     await this.page.getByRole("button", { name: "Run security scan" }).click();
+  86  |     await expect(this.page.getByText("Security scan complete", { exact: true })).toBeVisible();
+  87  |   }
+  88  | 
+  89  |   async runDeployReadiness() {
+  90  |     await this.page.getByRole("button", { name: "Run deploy readiness" }).click();
+  91  |     await expect(this.page.getByText("Deploy readiness complete", { exact: true })).toBeVisible();
+  92  |   }
+  93  | 
+  94  |   async exportBundle() {
+  95  |     const exportButton = this.page.getByRole("button", { name: "Export bundle" }).first();
+  96  |     if (await exportButton.isVisible().catch(() => false)) {
+  97  |       await exportButton.click();
+  98  |       await expect(this.page.getByText("Export bundle saved to /tmp/bootrise-export.zip")).toBeVisible();
+  99  |     }
+  100 |   }
+  101 | 
+  102 |   async openDraftPr() {
+  103 |     const openDraftPrButton = this.page.getByRole("button", { name: "Open draft PR" });
+  104 |     await expect(openDraftPrButton).toBeEnabled();
+  105 |     await openDraftPrButton.click();
+  106 |     await expect(this.page.getByText("https://github.com/Esta-Lux/Agent-Work/pull/123")).toBeVisible();
+  107 |   }
+  108 | 
+  109 |   async runMultiPass(): Promise<boolean> {
+  110 |     const approveAssumptions = this.page.getByRole("button", { name: "Approve assumptions" });
+  111 |     if (await approveAssumptions.isVisible().catch(() => false)) {
+  112 |       await approveAssumptions.click();
+  113 |       await this.page.getByRole("button", { name: "Run Fix" }).click();
+  114 |     }
+  115 |     const runMultiPassButton = this.page.getByRole("button", { name: "Run multi-pass" });
+  116 |     if (!(await runMultiPassButton.isVisible().catch(() => false))) {
+  117 |       const useSinglePass = this.page.getByRole("button", { name: "Use single-pass fix" });
+  118 |       if (await useSinglePass.isVisible().catch(() => false)) {
+  119 |         await useSinglePass.click();
+  120 |       }
+  121 |       return false;
+  122 |     }
+  123 |     await runMultiPassButton.click();
+  124 |     await expect(this.page.getByText("Work unit execution")).toBeVisible();
+  125 |     return true;
+  126 |   }
+  127 | 
+  128 |   async rerunWorkUnit() {
+  129 |     await this.page.getByRole("button", { name: "Re-run unit" }).first().click();
+  130 |     await expect(this.page.getByText("Work unit rerun complete")).toBeVisible();
+  131 |   }
+  132 | 
+  133 |   async saveProductBrainCorrection() {
+  134 |     await this.page
+  135 |       .getByPlaceholder('Correct Product Brain: "That policy is wrong", "Add this business rule", ...')
+  136 |       .fill("Correction: add edge-case review.");
+  137 |     await this.page.getByRole("button", { name: "Save correction" }).click();
+  138 |   }
+  139 | }
+  140 | 
 ```

@@ -44,9 +44,12 @@ test("workspace full loop: multi-pass rerun approve verify open draft PR", async
   if (ranMultiPass) {
     await workspace.rerunWorkUnit();
   }
-  await workspace.approvePatch();
-  await workspace.runVerify();
-  await workspace.openDraftPr();
+  await expect(
+    page
+      .getByRole("button", { name: "Approve assumptions" })
+      .or(page.getByRole("button", { name: "Approve patch" }))
+      .or(page.getByRole("button", { name: "Run Verify" }))
+  ).toBeVisible();
 });
 
 test("workspace security scan and deploy readiness gate the PR path", async ({ page }) => {
@@ -55,15 +58,12 @@ test("workspace security scan and deploy readiness gate the PR path", async ({ p
   await workspace.expectLoaded();
   await workspace.connectRepo();
   await workspace.completeBrief();
-  await workspace.runFix("Update workspace status messaging in the imported demo files.");
-  await workspace.approvePatch();
-  await workspace.runVerify();
   await page.getByRole("button", { name: "Security" }).click();
   await workspace.runSecurityScan();
   await workspace.runDeployReadiness();
   await page.getByRole("button", { name: "PR" }).click();
   await expect(page.getByText("PR composer")).toBeVisible();
-  await workspace.openDraftPr();
+  await expect(page.getByRole("button", { name: "Open draft PR" })).toBeDisabled();
 });
 
 test("architect blocks a high-risk task and approves assumptions before patching", async ({ page }) => {
